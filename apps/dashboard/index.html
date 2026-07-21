@@ -1,7 +1,36 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sentinel DVN</title><link rel="stylesheet" href="./src/style.css"></head><body><header><div class="mark">S</div><div><strong>Sentinel DVN</strong><span>GenLayer policy firewall for LayerZero</span></div><b>TESTNET PROTOTYPE</b></header><main><section class="hero"><p>ETHEREUM SEPOLIA → ARBITRUM SEPOLIA</p><h1>Every high-value message must explain itself.</h1><p class="lede">Sentinel independently proves the packet, asks decentralized semantic consensus whether governance actually authorized the action, then requires isolated signer quorum.</p><div class="notice" id="live-notice">Connecting to the coordinator. No simulated state will be shown.</div></section><section><div class="section-head"><div><p>OPERATIONS</p><h2>Packet lifecycle</h2></div><span class="status" id="connection-status">CONNECTING</span></div><div class="timeline" id="timeline"></div></section><section class="split"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic consensus</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>3-of-5 isolated operators; local MVP may use fewer and must say so</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Read-only operations dashboard for the GenLayer Sentinel LayerZero DVN testnet prototype.">
+  <title>GenLayer Sentinel · Operations</title>
+  <link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+  <header><div class="mark">S</div><div><strong>GenLayer Sentinel</strong><span>Policy firewall for LayerZero</span></div><b>TESTNET PROTOTYPE</b></header>
+  <main>
+    <section class="hero"><p>ETHEREUM SEPOLIA → ARBITRUM SEPOLIA</p><h1>Every high-value message must explain itself.</h1><p class="lede">Sentinel independently proves the packet, asks decentralized semantic consensus whether governance authorized the action, then requires isolated signer quorum.</p><div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div></section>
+    <section>
+      <div class="section-head"><div><p>OPERATIONS</p><h2>Packet lifecycle</h2></div><span class="status" id="connection-status">CONNECTING</span></div>
+      <div class="packet-bar"><label for="job-select">Observed packet</label><select id="job-select" disabled><option>Waiting for coordinator</option></select><span id="refresh-time">Never refreshed</span></div>
+      <div class="timeline" id="timeline" aria-live="polite"></div>
+    </section>
+    <section class="inspector" id="inspector" hidden>
+      <article><p>CANONICAL PACKET</p><h2>Deterministic identity</h2><dl id="packet-details"></dl></article>
+      <article><p>INDEPENDENT RPC</p><h2>Inclusion &amp; confirmations</h2><div id="verification-details" class="cards"></div></article>
+      <article><p>GENLAYER</p><h2>Semantic decision</h2><dl id="policy-details"></dl></article>
+      <article><p>SIGNER GATE</p><h2>Quorum progress</h2><div id="signer-details"></div></article>
+    </section>
+    <section class="split"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>3-of-5 isolated operators; any smaller local setup must be explicitly identified</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
 
-deployment       NOT DEPLOYED
-live data         NOT CONNECTED
+deployment        NOT DEPLOYED
+dashboard mode    READ ONLY / LIVE API
 genlayer finality SDK PINNED / NOT LIVE
 gasolina async    CONFIRMATION NEEDED
-mainnet ready     NO</pre></article></section></main><footer>GenLayer Sentinel · honest-by-default testnet engineering</footer><script src="./src/app.js"></script></body></html>
+mainnet ready     NO</pre></article></section>
+  </main>
+  <footer>GenLayer Sentinel · honest-by-default testnet engineering</footer>
+  <script src="./src/app.js"></script>
+</body>
+</html>

@@ -14,7 +14,7 @@ Normal transport verification answers “was this packet emitted?” It cannot a
 - `intelligent-contract/`: GUID-keyed GenLayer semantic policy record.
 - `services/coordinator/`: fail-closed lifecycle and signer abstractions.
 - `packages/core/`: protocol types and tested state machine.
-- `apps/dashboard/`: operational dashboard that reads same-origin coordinator state and has no simulated fallback.
+- `apps/dashboard/`: read-only operational packet inspector that reads same-origin coordinator state, exposes deterministic and semantic proofs separately, and has no simulated fallback.
 - `docs/`: ADR, PRD, threat model, audit, unknowns, demo and milestones.
 - `config/networks.json`: dated, audited testnet metadata; never blindly deploy from it.
 
@@ -39,7 +39,7 @@ Alert on stuck stage age, RPC disagreement, reorg, evidence staleness, GenLayer 
 
 ## Limitations
 
-Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. The pinned GenLayer SDK adapter is fixture-tested but has not contacted Studio or a testnet. Signer objects are abstractions, not isolated infrastructure. Coordinator jobs are durable, but listener cursor/seen state is still in memory and SQLite is single-node rather than HA consensus storage. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard reads coordinator lifecycle state but does not yet initiate OApp wallet transactions.
+Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. The pinned GenLayer SDK adapter is fixture-tested but has not contacted Studio or a testnet. Signer objects are abstractions, not isolated infrastructure. Coordinator jobs are durable, but listener cursor/seen state is still in memory and SQLite is single-node rather than HA consensus storage. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard is deliberately read-only: it inspects coordinator lifecycle state and does not initiate OApp wallet transactions or signing actions.
 
 ## Primary references
 
