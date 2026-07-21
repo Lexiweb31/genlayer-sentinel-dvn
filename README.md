@@ -2,7 +2,7 @@
 
 GenLayer Sentinel is a clean-room, production-quality **testnet prototype** of an application-specific LayerZero DVN policy firewall. It withholds its optional DVN verification for high-value treasury/governance messages until (1) independent deterministic checks prove the packet and (2) a GenLayer Intelligent Contract reaches a finalized semantic consensus that the decoded action matches authoritative governance authorization.
 
-**Status (2026-07-21): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity now compiles against pinned official LayerZero packages and the adapter is exercised on a local EVM. GenLayer direct-mode and EndpointV2 integration tests remain required before deployment.
+**Status (2026-07-21): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
 
 ## Trust problem
 
@@ -39,7 +39,7 @@ Alert on stuck stage age, RPC disagreement, reorg, evidence staleness, GenLayer 
 
 ## Limitations
 
-Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID, receive-library/DVN addresses and programmatic GenLayer finality consumption require confirmation. Signer objects are abstractions, not isolated infrastructure. Packet parsing currently binds the full encoded `PacketSent` payload hash; production ingestion must additionally decode and independently recompute every canonical packet field using the pinned LayerZero codec. The dashboard is static and not contract-connected yet. See the threat model and audit for the complete trust assumptions.
+Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. GenLayer's official SDK exposes `FINALIZED` receipt waiting and execution-result fields, but the concrete SDK/direct-mode integration is not yet installed or tested. Signer objects are abstractions, not isolated infrastructure. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard is static and not contract-connected yet. See the threat model and audit for the complete trust assumptions.
 
 ## Primary references
 

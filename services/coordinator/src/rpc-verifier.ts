@@ -1,5 +1,6 @@
-import {Interface, keccak256} from "ethers";
+import {Interface} from "ethers";
 import type {Hex, Packet, Verification} from "../../../packages/core/src/types.js";
+import {assertCanonicalPacket} from "../../../packages/core/src/packet-v1.js";
 import type {PacketVerifier} from "./coordinator.js";
 
 type RpcReceipt={status:Hex;blockHash:Hex;blockNumber:Hex;logs:Array<{address:string;topics:Hex[];data:Hex}>};
@@ -22,7 +23,7 @@ export class IndependentRpcPacketVerifier implements PacketVerifier {
       const log=receipt.logs.find(x=>x.address.toLowerCase()===this.endpoint.toLowerCase()&&x.topics[0]?.toLowerCase()===topic);
       if(!log) throw new Error("PacketSent not emitted by configured EndpointV2");
       const parsed=packetSent.parseLog({topics:log.topics,data:log.data}); if(!parsed) throw new Error("invalid PacketSent log");
-      if(keccak256(parsed.args.encodedPayload).toLowerCase()!==packet.encodedPayloadHash.toLowerCase()) throw new Error("encoded packet mismatch");
+      assertCanonicalPacket(parsed.args.encodedPayload as Hex,packet);
       return {provider:redact(url),blockHash:receipt.blockHash,payloadHash:packet.payloadHash,confirmations};
     }));
   }
