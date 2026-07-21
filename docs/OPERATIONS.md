@@ -6,7 +6,9 @@
 
 The listener holds a block-number/hash cursor and rewinds by the configured lookback if the cursor block is no longer canonical. Events above `latest - confirmations` are not emitted. `SqliteListenerStore` checkpoints the cursor and seen transaction/block pairs under an explicit pathway key using WAL, full synchronous writes and an immediate transaction. A restarted listener resumes at the next block and retains deduplication state; reorg removal and the resulting new cursor are saved together.
 
-Checkpointing occurs before `poll()` returns detected packets. This prevents restart re-emission but is not an exactly-once handoff: a crash after the checkpoint commits and before the caller creates the job can require an operator replay/reconciliation. Production needs the listener checkpoint and job creation in one transactional inbox/outbox boundary, plus pruning of seen entries below a proven reorg horizon.
+New detections and the advanced cursor are checkpointed in one transaction before `poll()` returns. Pending packets are redelivered without scanning forward until the caller explicitly acknowledges their transaction hash. `IngestionRunner` invokes the handler first and acknowledges only after it resolves, so a failed job write remains retryable after restart. The durable coordinator then deduplicates retries by packet GUID.
+
+This is recoverable at-least-once delivery, not distributed exactly-once semantics. A handler must durably create or recognize the job before returning. Production also needs bounded retry/dead-letter policy, operator reconciliation tooling, multi-writer fencing, and pruning of acknowledged `seen` entries below a proven reorg horizon.
 
 ## Job recovery
 
