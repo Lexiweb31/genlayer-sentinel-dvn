@@ -7,6 +7,7 @@ export interface Packet {
   message: Hex; payloadHash: Hex; encodedPayloadHash: Hex; txHash: Hex; blockHash: Hex; blockNumber: bigint;
 }
 export interface Evidence { uri: string; digest: Hex; observedAt: number; validUntil: number; }
+export interface PolicyRequest { packet: Packet; evidence: Evidence; decodedAction: string; policy: string; }
 export interface PolicyResult { guid: Hex; packetDigest: Hex; evidenceDigest: Hex; decision: Decision; reasonCode: string; finalizedAt: number; policyVersion: string; }
 export interface Verification { provider: string; blockHash: Hex; payloadHash: Hex; confirmations: bigint; }
 export interface Snapshot { packet: Packet; stage: Stage; verifications: Verification[]; result?: PolicyResult; signers: string[]; }
