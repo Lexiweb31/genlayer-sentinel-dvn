@@ -2,7 +2,7 @@
 
 GenLayer Sentinel is a clean-room, production-quality **testnet prototype** of an application-specific LayerZero DVN policy firewall. It withholds its optional DVN verification for high-value treasury/governance messages until (1) independent deterministic checks prove the packet and (2) a GenLayer Intelligent Contract reaches a finalized semantic consensus that the decoded action matches authoritative governance authorization.
 
-**Status (2026-07-22): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. The coordinator is pinned to GenLayerJS 1.1.8 and fail-closes on every state except a successful `FINALIZED` execution with matching policy records. Domain-exact isolated signer quorum, idempotent destination submission, reorg-aware event pairing and a read-only live dashboard API are fixture-tested. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
+**Status (2026-07-22): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. The coordinator is pinned to GenLayerJS 1.1.8 and fail-closes on every state except a successful `FINALIZED` execution with matching policy records. Domain-exact signer quorum, destination submission, reorg-aware event pairing, SQLite lifecycle recovery and a read-only dashboard API are fixture-tested. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
 
 ## Trust problem
 
@@ -20,7 +20,7 @@ Normal transport verification answers “was this packet emitted?” It cannot a
 
 ## Local checks
 
-Requires Node.js 20+, Python 3 and npm. `npm install`, then `npm run check`. This performs strict TypeScript checking, compiles the OApp and adapter with Solidity `0.8.30` targeting Shanghai, syntax-checks the Intelligent Contract and its required safety constructs, and runs state-machine, GenLayer finality, RPC and local-EVM tests. Evidence digests supplied to policy consensus are SHA-256 over the exact UTF-8 rendered evidence text. To inspect the dashboard, serve `apps/dashboard` with any local static server. No private key belongs in this repository or frontend. Production signers should run in five isolated processes/operators backed by KMS/HSM-style providers; the target quorum is 3-of-5.
+Requires Node.js 22.13+, Python 3 and npm. `npm install`, then `npm run check`. Node's built-in SQLite provides transactional coordinator persistence without a native add-on. Checks include strict TypeScript, Solidity `0.8.30` compilation targeting Shanghai, Intelligent Contract guardrails, dashboard no-simulation rules, state-machine, recovery, GenLayer finality, RPC and local-EVM tests. Evidence digests supplied to policy consensus are SHA-256 over the exact UTF-8 rendered evidence text. No private key belongs in this repository or frontend. Production signers should run in five isolated processes/operators backed by KMS/HSM-style providers; the target quorum is 3-of-5.
 
 ## Deployment outline (not executed)
 
@@ -39,7 +39,7 @@ Alert on stuck stage age, RPC disagreement, reorg, evidence staleness, GenLayer 
 
 ## Limitations
 
-Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. The pinned GenLayer SDK adapter is fixture-tested but has not contacted Studio or a testnet. Signer objects are abstractions, not isolated infrastructure. Listener cursor/job state is not durable yet. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard reads coordinator lifecycle state but does not yet initiate OApp wallet transactions. See the threat model and audit for the complete trust assumptions.
+Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. The pinned GenLayer SDK adapter is fixture-tested but has not contacted Studio or a testnet. Signer objects are abstractions, not isolated infrastructure. Coordinator jobs are durable, but listener cursor/seen state is still in memory and SQLite is single-node rather than HA consensus storage. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard reads coordinator lifecycle state but does not yet initiate OApp wallet transactions.
 
 ## Primary references
 

@@ -3,6 +3,7 @@ import type { Packet, PolicyResult, Snapshot, Verification } from "./types.js";
 export class SentinelJob {
   readonly snapshot: Snapshot;
   constructor(packet: Packet) { this.snapshot = { packet, stage: "DETECTED", verifications: [], signers: [] }; }
+  static restore(snapshot:Snapshot):SentinelJob {const stages=new Set(["DETECTED","CONFIRMED","POLICY_PENDING","POLICY_FINALIZED","QUORUM_REACHED","VERIFIED","EXECUTED","REJECTED"]);if(!snapshot?.packet||!/^0x[0-9a-fA-F]{64}$/.test(snapshot.packet.guid)||!stages.has(snapshot.stage)||!Array.isArray(snapshot.verifications)||!Array.isArray(snapshot.signers))throw new Error("invalid persisted job snapshot");const job=new SentinelJob(snapshot.packet);Object.assign(job.snapshot,snapshot);return job;}
   addVerification(v: Verification, minimum: bigint): void {
     if (this.snapshot.stage !== "DETECTED") throw new Error("verification stage closed");
     if (v.payloadHash !== this.snapshot.packet.payloadHash || v.blockHash !== this.snapshot.packet.blockHash) throw new Error("RPC disagreement");
