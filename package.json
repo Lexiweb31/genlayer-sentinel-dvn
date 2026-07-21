@@ -1,6 +1,6 @@
 {
   "name": "genlayer-sentinel",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -11,7 +11,8 @@
   "scripts": {
     "compile:contracts": "node scripts/compile-contracts.mjs",
     "check:ic": "python3 scripts/check-intelligent-contract.py",
-    "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic",
+    "check:dashboard": "node --check apps/dashboard/src/app.js && node scripts/check-dashboard.mjs",
+    "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run check:dashboard",
     "test": "npm run build && node --test packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm test"

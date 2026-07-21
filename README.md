@@ -2,7 +2,7 @@
 
 GenLayer Sentinel is a clean-room, production-quality **testnet prototype** of an application-specific LayerZero DVN policy firewall. It withholds its optional DVN verification for high-value treasury/governance messages until (1) independent deterministic checks prove the packet and (2) a GenLayer Intelligent Contract reaches a finalized semantic consensus that the decoded action matches authoritative governance authorization.
 
-**Status (2026-07-22): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. The coordinator is pinned to GenLayerJS 1.1.8 and fail-closes on every state except a successful `FINALIZED` execution with matching policy records. Domain-exact isolated signer quorum and idempotent destination submission are fixture-tested. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
+**Status (2026-07-22): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. The coordinator is pinned to GenLayerJS 1.1.8 and fail-closes on every state except a successful `FINALIZED` execution with matching policy records. Domain-exact isolated signer quorum, idempotent destination submission, reorg-aware event pairing and a read-only live dashboard API are fixture-tested. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
 
 ## Trust problem
 
@@ -14,7 +14,7 @@ Normal transport verification answers “was this packet emitted?” It cannot a
 - `intelligent-contract/`: GUID-keyed GenLayer semantic policy record.
 - `services/coordinator/`: fail-closed lifecycle and signer abstractions.
 - `packages/core/`: protocol types and tested state machine.
-- `apps/dashboard/`: operationally honest static dashboard.
+- `apps/dashboard/`: operational dashboard that reads same-origin coordinator state and has no simulated fallback.
 - `docs/`: ADR, PRD, threat model, audit, unknowns, demo and milestones.
 - `config/networks.json`: dated, audited testnet metadata; never blindly deploy from it.
 
@@ -39,7 +39,7 @@ Alert on stuck stage age, RPC disagreement, reorg, evidence staleness, GenLayer 
 
 ## Limitations
 
-Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. The pinned GenLayer SDK adapter is fixture-tested but has not contacted Studio or a testnet. Signer objects are abstractions, not isolated infrastructure. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard is static and not contract-connected yet. See the threat model and audit for the complete trust assumptions.
+Gasolina does not document asynchronous pending/retry behavior for extra context. Test confirmation values are placeholders. DVN onboarding/VID and receive-library/DVN addresses require confirmation. The pinned GenLayer SDK adapter is fixture-tested but has not contacted Studio or a testnet. Signer objects are abstractions, not isolated infrastructure. Listener cursor/job state is not durable yet. The local Endpoint harness is behavioral test code, not LayerZero protocol code. The dashboard reads coordinator lifecycle state but does not yet initiate OApp wallet transactions. See the threat model and audit for the complete trust assumptions.
 
 ## Primary references
 
