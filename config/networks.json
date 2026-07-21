@@ -1,0 +1,9 @@
+{
+  "auditDate": "2026-07-21",
+  "status": "AUDITED_NOT_DEPLOYED",
+  "pathway": {
+    "ethereum-sepolia": {"chainId": 11155111, "eid": 40161, "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f", "confirmations": {"prototype": 3, "productionCandidate": 15}},
+    "arbitrum-sepolia": {"chainId": 421614, "eid": 40231, "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f", "confirmations": {"prototype": 20, "productionCandidate": 64}}
+  },
+  "warning": "Re-audit official deployment pages before every deployment. ProductionCandidate values require a risk review."
+}
