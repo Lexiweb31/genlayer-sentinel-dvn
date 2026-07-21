@@ -4,7 +4,7 @@ export type Stage = "DETECTED" | "CONFIRMED" | "POLICY_PENDING" | "POLICY_FINALI
 
 export interface Packet {
   guid: Hex; srcEid: number; dstEid: number; nonce: bigint; sender: Hex; receiver: Hex;
-  message: Hex; payloadHash: Hex; txHash: Hex; blockHash: Hex; blockNumber: bigint;
+  message: Hex; payloadHash: Hex; encodedPayloadHash: Hex; txHash: Hex; blockHash: Hex; blockNumber: bigint;
 }
 export interface Evidence { uri: string; digest: Hex; observedAt: number; validUntil: number; }
 export interface PolicyResult { guid: Hex; packetDigest: Hex; evidenceDigest: Hex; decision: Decision; reasonCode: string; finalizedAt: number; policyVersion: string; }

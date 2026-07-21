@@ -1,3 +1,5 @@
 # Contract test status
 
-M0 includes reviewable Solidity sources but no claim that they compile against production LayerZero packages. Foundry/Hardhat integration, EndpointV2 mocks, signature malleability tests, fuzzing, static analysis, and fork tests are M1 blockers. The TypeScript state-machine tests exercise the sign-before-finality and replay-domain invariants today.
+The contracts compile against exact LayerZero/OZ versions in `package.json`. Local-EVM tests cover sorted quorum signatures, insufficient quorum, replay rejection, target-call success, and atomic rollback on target failure. OpenZeppelin ECDSA rejects malformed/high-s signatures.
+
+Still required before testnet deployment: an EndpointV2 integration harness, ULN302 receive-library calldata fixture, OApp send/receive tests, fuzz/property testing, static analysis, GenLayer direct-mode tests, and an independent review. No audit is claimed.

@@ -1,1 +1,32 @@
-{"name":"genlayer-sentinel","version":"0.1.0","private":true,"type":"module","workspaces":["packages/*","services/*","apps/*"],"scripts":{"build":"tsc -p tsconfig.json","test":"npm run build && node --test packages/core/test/*.test.js services/coordinator/test/*.test.js","typecheck":"tsc -p tsconfig.json --noEmit","check":"npm run typecheck && npm test"},"devDependencies":{"typescript":"5.8.3"}}
+{
+  "name": "genlayer-sentinel",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "compile:contracts": "node scripts/compile-contracts.mjs",
+    "build": "tsc -p tsconfig.json && npm run compile:contracts",
+    "test": "npm run build && node --test packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@layerzerolabs/lz-evm-messagelib-v2": "3.0.168",
+    "@layerzerolabs/lz-evm-protocol-v2": "3.0.168",
+    "@layerzerolabs/lz-evm-v1-0.7": "3.0.168",
+    "@layerzerolabs/oapp-evm": "0.4.1",
+    "@openzeppelin/contracts": "5.4.0",
+    "@openzeppelin/contracts-upgradeable": "5.4.0",
+    "ganache": "7.9.2",
+    "solc": "0.8.30",
+    "typescript": "5.8.3"
+  },
+  "dependencies": {
+    "ethers": "6.17.0"
+  }
+}

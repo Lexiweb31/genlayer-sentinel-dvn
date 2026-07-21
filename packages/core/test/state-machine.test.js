@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { SentinelJob } from "../../../dist/packages/core/src/state-machine.js";
 
 const h = n => `0x${n.repeat(64)}`;
-const packet = {guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:h("2"),receiver:h("3"),message:"0x",payloadHash:h("4"),txHash:h("5"),blockHash:h("6"),blockNumber:1n};
+const packet = {guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:h("2"),receiver:h("3"),message:"0x",payloadHash:h("4"),encodedPayloadHash:h("8"),txHash:h("5"),blockHash:h("6"),blockNumber:1n};
 test("requires two agreeing RPCs and finalized allow before quorum", () => {
   const j = new SentinelJob(packet);
   j.addVerification({provider:"a",blockHash:h("6"),payloadHash:h("4"),confirmations:15n},15n);
