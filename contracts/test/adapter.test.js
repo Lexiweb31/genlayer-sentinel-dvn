@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import ganache from "ganache";
 import {BrowserProvider, ContractFactory, Interface, Wallet, getBytes, id} from "ethers";
+import {executionDigest as coordinatorDigest} from "../../dist/services/coordinator/src/signing.js";
 
 const artifact = name => JSON.parse(fs.readFileSync(`dist/contracts/${name}.json`, "utf8"));
 async function fixture() {
@@ -17,7 +18,7 @@ async function fixture() {
   return {adapter:adapter.connect(await provider.getSigner(5)),target,signerWallets};
 }
 test("executes an approved verification once with sorted quorum signatures",async()=>{
-  const {adapter,target,signerWallets}=await fixture(); const callData=new Interface(["function verify(bytes32)"]).encodeFunctionData("verify",[id("verified")]); const block=await adapter.runner.provider.getBlock("latest"); const expiry=BigInt(block.timestamp+600); const guid=id("guid"),packet=id("packet"),evidence=id("evidence"); const digest=await adapter.executionDigest(guid,packet,evidence,callData,expiry);
+  const {adapter,target,signerWallets}=await fixture(); const callData=new Interface(["function verify(bytes32)"]).encodeFunctionData("verify",[id("verified")]); const block=await adapter.runner.provider.getBlock("latest"); const expiry=BigInt(block.timestamp+600); const guid=id("guid"),packet=id("packet"),evidence=id("evidence"); const digest=await adapter.executionDigest(guid,packet,evidence,callData,expiry);assert.equal(coordinatorDigest({chainId:31337n,adapter:await adapter.getAddress(),verificationTarget:await target.getAddress(),guid,packetDigest:packet,evidenceDigest:evidence,callData,expiry}),digest);
   const signed=[];for(const wallet of signerWallets.slice(0,2))signed.push({address:wallet.address.toLowerCase(),sig:await wallet.signMessage(getBytes(digest))});signed.sort((a,b)=>a.address.localeCompare(b.address));await(await adapter.submitVerification(guid,packet,evidence,callData,expiry,signed.map(x=>x.sig))).wait();assert.equal(await target.last(),id("verified"));await assert.rejects(async()=>{const tx=await adapter.submitVerification(guid,packet,evidence,callData,expiry,signed.map(x=>x.sig));await tx.wait()});
 });
 test("rejects insufficient quorum and reverts target failures atomically",async()=>{

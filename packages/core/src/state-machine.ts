@@ -29,4 +29,6 @@ export class SentinelJob {
     this.snapshot.signers.push(normalized);
     if (this.snapshot.signers.length >= quorum) this.snapshot.stage = "QUORUM_REACHED";
   }
+  markVerified():void {if(this.snapshot.stage!=="QUORUM_REACHED")throw new Error("quorum not reached");this.snapshot.stage="VERIFIED";}
+  markExecuted():void {if(this.snapshot.stage!=="VERIFIED")throw new Error("message not verified");this.snapshot.stage="EXECUTED";}
 }

@@ -2,7 +2,7 @@
 
 GenLayer Sentinel is a clean-room, production-quality **testnet prototype** of an application-specific LayerZero DVN policy firewall. It withholds its optional DVN verification for high-value treasury/governance messages until (1) independent deterministic checks prove the packet and (2) a GenLayer Intelligent Contract reaches a finalized semantic consensus that the decoded action matches authoritative governance authorization.
 
-**Status (2026-07-21): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. The coordinator is pinned to GenLayerJS 1.1.8 and fail-closes on every state except a successful `FINALIZED` execution with matching policy records. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
+**Status (2026-07-22): M1 local vertical slice; not deployed, not live, not audited, not mainnet-ready. Live app URL: none.** The dashboard refuses to invent packet activity. Solidity compiles against pinned official LayerZero packages; the adapter and an EndpointV2-compatible OApp lifecycle are exercised on a local EVM. The coordinator is pinned to GenLayerJS 1.1.8 and fail-closes on every state except a successful `FINALIZED` execution with matching policy records. Domain-exact isolated signer quorum and idempotent destination submission are fixture-tested. GenLayer direct-mode and real ULN302 integration tests remain required before deployment.
 
 ## Trust problem
 

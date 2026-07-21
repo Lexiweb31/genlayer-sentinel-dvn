@@ -1,14 +1,15 @@
 import { SentinelJob } from "../../../packages/core/src/state-machine.js";
 import type { PolicyRequest, PolicyResult, Verification } from "../../../packages/core/src/types.js";
+import type {Hex} from "../../../packages/core/src/types.js";
+import {collectQuorum,type IsolatedSignerService,type SignatureShare,type SigningEnvelope} from "./signing.js";
 
 export interface PacketVerifier { verify(packet: PolicyRequest["packet"]): Promise<Verification[]>; }
 export interface GenLayerFinality { submit(request: PolicyRequest): Promise<string>; finalized(requestId: string): Promise<PolicyResult | undefined>; }
-export interface SignerNode { address: string; sign(result: PolicyResult): Promise<string>; }
 
 export class Coordinator {
   readonly jobs = new Map<string, SentinelJob>();
   readonly requestIds = new Map<string, string>();
-  constructor(private verifier: PacketVerifier, private genlayer: GenLayerFinality, private signers: SignerNode[], private quorum = 3, private minimumConfirmations = 15n) {}
+  constructor(private verifier: PacketVerifier, private genlayer: GenLayerFinality, private signers: IsolatedSignerService[], private quorum = 3, private minimumConfirmations = 15n) {}
   async detect(request: PolicyRequest, now=Math.floor(Date.now()/1000)): Promise<string> {
     const {packet,evidence}=request;
     if(!evidence.uri.startsWith("https://")) throw new Error("authoritative evidence must use HTTPS");
@@ -24,7 +25,11 @@ export class Coordinator {
     const job = this.jobs.get(guid); if (!job) throw new Error("unknown GUID");
     if (["REJECTED","QUORUM_REACHED","VERIFIED","EXECUTED"].includes(job.snapshot.stage)) return;
     const result = await this.genlayer.finalized(requestId); if (!result) return;
-    job.finalize(result, now); if (job.snapshot.stage === "REJECTED") return;
-    for (const signer of this.signers) { await signer.sign(result); job.addSigner(signer.address, this.quorum); if(job.snapshot.stage==="QUORUM_REACHED") break; }
+    job.finalize(result, now);
+  }
+  async authorize(guid:string,envelope:SigningEnvelope,authorized:Hex[]):Promise<SignatureShare[]>{
+    const job=this.jobs.get(guid);if(!job||job.snapshot.stage!=="POLICY_FINALIZED"||!job.snapshot.result)throw new Error("job is not ready for signing");
+    const shares=await collectQuorum(envelope,job.snapshot.result,this.signers,authorized,this.quorum);
+    for(const share of shares)job.addSigner(share.address,this.quorum);return shares;
   }
 }
