@@ -4,7 +4,9 @@
 
 `PacketFeeListener` polls finalized source blocks through `JsonRpcLogSource`. It filters the configured EndpointV2 and SendUln302 addresses for the official `PacketSent(bytes,bytes,address)` and `DVNFeePaid(address[],address[],uint256[])` topics. A detection is emitted only when both events occur in the same transaction. This proves a fee event exists but does not replace the later two-provider receipt and canonical packet verification.
 
-The listener holds a block-number/hash cursor and rewinds by the configured lookback if the cursor block is no longer canonical. Events above `latest - confirmations` are not emitted. Listener cursor and seen-state remain in memory; production requires storing them transactionally with job creation so restarts and multi-instance coordination cannot skip work.
+The listener holds a block-number/hash cursor and rewinds by the configured lookback if the cursor block is no longer canonical. Events above `latest - confirmations` are not emitted. `SqliteListenerStore` checkpoints the cursor and seen transaction/block pairs under an explicit pathway key using WAL, full synchronous writes and an immediate transaction. A restarted listener resumes at the next block and retains deduplication state; reorg removal and the resulting new cursor are saved together.
+
+Checkpointing occurs before `poll()` returns detected packets. This prevents restart re-emission but is not an exactly-once handoff: a crash after the checkpoint commits and before the caller creates the job can require an operator replay/reconciliation. Production needs the listener checkpoint and job creation in one transactional inbox/outbox boundary, plus pruning of seen entries below a proven reorg horizon.
 
 ## Job recovery
 

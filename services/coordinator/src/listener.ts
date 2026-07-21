@@ -1,5 +1,6 @@
 import {Interface} from "ethers";
 import type {Hex} from "../../../packages/core/src/types.js";
+import type {ListenerStore} from "./listener-store.js";
 
 export interface ChainLog {address:Hex;topics:Hex[];data:Hex;transactionHash:Hex;blockHash:Hex;blockNumber:bigint;logIndex:number;}
 export interface BlockRef {number:bigint;hash:Hex;}
@@ -10,16 +11,19 @@ const feeAbi=new Interface(["event DVNFeePaid(address[] requiredDVNs,address[] o
 const packetTopic=endpointAbi.getEvent("PacketSent")!.topicHash as Hex,feeTopic=feeAbi.getEvent("DVNFeePaid")!.topicHash as Hex;
 
 export class PacketFeeListener {
-  private cursor?:BlockRef;private seen=new Map<string,bigint>();
-  constructor(private source:LogSource,private endpoint:Hex,private sendLibrary:Hex,private confirmations:bigint,private startBlock:bigint,private reorgLookback=64n){}
+  private cursor?:BlockRef;private seen=new Map<string,bigint>();private restored=false;
+  constructor(private source:LogSource,private endpoint:Hex,private sendLibrary:Hex,private confirmations:bigint,private startBlock:bigint,private reorgLookback=64n,private store?:ListenerStore,private pathwayKey=`${endpoint.toLowerCase()}:${sendLibrary.toLowerCase()}`){}
   async poll():Promise<DetectedPacket[]>{
+    await this.restore();
     const latest=await this.source.blockNumber();if(latest<this.confirmations)return[];const safe=latest-this.confirmations;
     let from=this.cursor?this.cursor.number+1n:this.startBlock;
     if(this.cursor){const canonical=await this.source.block(this.cursor.number);if(canonical.hash.toLowerCase()!==this.cursor.hash.toLowerCase()){from=this.cursor.number>this.reorgLookback?this.cursor.number-this.reorgLookback:0n;for(const [tx,b]of this.seen)if(b>=from)this.seen.delete(tx);}}
     if(from>safe)return[];const logs=await this.source.logs(from,safe,[this.endpoint,this.sendLibrary],[packetTopic,feeTopic]);const byTx=new Map<string,ChainLog[]>();for(const log of logs){const key=log.transactionHash.toLowerCase();const group=byTx.get(key)??[];group.push(log);byTx.set(key,group)}
     const out:DetectedPacket[]=[];for(const group of byTx.values()){const p=group.find(x=>x.address.toLowerCase()===this.endpoint.toLowerCase()&&x.topics[0]?.toLowerCase()===packetTopic.toLowerCase());const f=group.find(x=>x.address.toLowerCase()===this.sendLibrary.toLowerCase()&&x.topics[0]?.toLowerCase()===feeTopic.toLowerCase());if(!p||!f||this.seen.has(p.transactionHash.toLowerCase()))continue;const sent=endpointAbi.parseLog({topics:p.topics,data:p.data}),paid=feeAbi.parseLog({topics:f.topics,data:f.data});if(!sent||!paid)continue;out.push({transactionHash:p.transactionHash,blockHash:p.blockHash,blockNumber:p.blockNumber,encodedPayload:sent.args.encodedPayload,options:sent.args.options,sendLibrary:sent.args.sendLibrary,requiredDvns:[...paid.args.requiredDVNs],optionalDvns:[...paid.args.optionalDVNs],fees:[...paid.args.fees]});this.seen.set(p.transactionHash.toLowerCase(),p.blockNumber)}
-    this.cursor=await this.source.block(safe);return out.sort((a,b)=>a.blockNumber<b.blockNumber?-1:a.blockNumber>b.blockNumber?1:0);
+    this.cursor=await this.source.block(safe);await this.persist();return out.sort((a,b)=>a.blockNumber<b.blockNumber?-1:a.blockNumber>b.blockNumber?1:0);
   }
+  private async restore():Promise<void>{if(this.restored)return;const checkpoint=await this.store?.load(this.pathwayKey);if(checkpoint){this.cursor=checkpoint.cursor;this.seen=new Map(checkpoint.seen.map(value=>[value.transactionHash.toLowerCase(),value.blockNumber]))}this.restored=true}
+  private async persist():Promise<void>{await this.store?.save(this.pathwayKey,{cursor:this.cursor,seen:[...this.seen].map(([transactionHash,blockNumber])=>({transactionHash,blockNumber}))})}
 }
 
 export class JsonRpcLogSource implements LogSource {
