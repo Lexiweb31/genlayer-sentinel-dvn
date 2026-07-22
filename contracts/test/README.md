@@ -1,5 +1,7 @@
 # Contract test status
 
-The contracts compile against exact LayerZero/OZ versions in `package.json`. Local-EVM tests cover sorted quorum signatures, insufficient quorum, replay rejection, target-call success, and atomic rollback on target failure. OpenZeppelin ECDSA rejects malformed/high-s signatures.
+The contracts compile with Sentinel's pinned solc script against the exact LayerZero/OZ versions in `package.json`. Hardhat `3.10.0` is used only as a local EDR execution server configured for chain ID `31337` and Shanghai; it is not the compiler or a deployment framework. Each test fixture starts a loopback server on an operating-system-selected port and uses disposable unlocked test identities without storing private keys.
 
-Still required before testnet deployment: an EndpointV2 integration harness, ULN302 receive-library calldata fixture, OApp send/receive tests, fuzz/property testing, static analysis, GenLayer direct-mode tests, and an independent review. No audit is claimed.
+The deployed-adapter tests cover sorted quorum signatures, insufficient quorum, replay rejection, target-call success and atomic rollback on target failure. The deployed-OApp tests cover quote/send, `PacketSent` decoding, trusted-peer delivery and execution, replay rejection, untrusted-peer rejection and unauthorized-target rejection. OpenZeppelin ECDSA rejects malformed/high-s signatures.
+
+Still required before testnet deployment: conformance against a real LayerZero EndpointV2 and ULN302 receive-library calldata, fuzz/property testing, Solidity static analysis, GenLayer direct-mode testing and an independent review. `MockEndpointV2` is a behavioral fixture, not a model of LayerZero's security. No audit is claimed.
