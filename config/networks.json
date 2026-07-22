@@ -1,9 +1,42 @@
 {
-  "auditDate": "2026-07-21",
-  "status": "AUDITED_NOT_DEPLOYED",
+  "auditDate": "2026-07-22",
+  "status": "AUDITED_CONTRACT_METADATA_NOT_PATHWAY_VALIDATED",
+  "auditEvidence": "docs/research/2026-07-22-official-audit.md",
   "pathway": {
-    "ethereum-sepolia": {"chainId": 11155111, "eid": 40161, "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f", "confirmations": {"prototype": 3, "productionCandidate": 15}},
-    "arbitrum-sepolia": {"chainId": 421614, "eid": 40231, "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f", "confirmations": {"prototype": 20, "productionCandidate": 64}}
+    "ethereum-sepolia": {
+      "chainId": 11155111,
+      "eid": 40161,
+      "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f",
+      "sendUln302": "0xcc1ae8Cf5D3904Cef3360A9532B477529b177cCE",
+      "receiveUln302": "0xdAf00F5eE2158dD58E0d3857851c432E34A3A851",
+      "executor": "0x718B92b5CB0a5552039B593faF724D182A881eDA",
+      "deadDvn": "0x8b450b0acF56E1B0e25C581bB04FBAbeeb0644b8",
+      "confirmations": {
+        "prototypeTestValue": 3,
+        "unapprovedSecurityReviewCandidate": 15
+      },
+      "source": "https://docs.layerzero.network/v2/deployments/chains/sepolia"
+    },
+    "arbitrum-sepolia": {
+      "chainId": 421614,
+      "eid": 40231,
+      "endpointV2": "0x6EDCE65403992e310A62460808c4b910D972f10f",
+      "sendUln302": "0x4f7cd4DA19ABB31b0eC98b9066B9e857B1bf9C0E",
+      "receiveUln302": "0x75Db67CDab2824970131D5aa9CECfC9F69c69636",
+      "executor": "0x5Df3a1cEbBD9c8BA7F8dF51Fd632A9aef8308897",
+      "deadDvn": "0xA85BE08A6Ce2771C730661766AACf2c8Bb24C611",
+      "confirmations": {
+        "prototypeTestValue": 20,
+        "unapprovedSecurityReviewCandidate": 64
+      },
+      "source": "https://docs.layerzero.network/v2/deployments/chains/arbitrum-sepolia"
+    }
   },
-  "warning": "Re-audit official deployment pages before every deployment. ProductionCandidate values require a risk review."
+  "pathwayValidation": {
+    "ethereumSepoliaToArbitrumSepolia": "NOT_CHAIN_VALIDATED",
+    "arbitrumSepoliaToEthereumSepolia": "OUT_OF_M2_SCOPE",
+    "dvnSelection": "UNSELECTED",
+    "oappConfiguration": "NOT_DEPLOYED"
+  },
+  "warning": "Protocol metadata is not a resolved OApp pathway. Before any user-approved deployment, re-audit official sources, call isSupportedEid, resolve both directional ULN configs, pin send/receive confirmations, select independent DVNs, reject Dead DVNs, and pass a security review. Every confirmation number above is a project value, not an official testnet recommendation."
 }
