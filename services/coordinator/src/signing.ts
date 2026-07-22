@@ -5,6 +5,7 @@ export interface SigningEnvelope {chainId:bigint;adapter:Hex;verificationTarget:
 export interface SignatureShare {address:Hex;signature:Hex;digest:Hex;}
 export interface FinalityAttestor {assertFinalized(result:PolicyResult):Promise<void>;}
 export interface DigestSigner {address:Hex;signMessageDigest(digest:Hex):Promise<Hex>;}
+export interface SignerService{address:Hex;sign(e:SigningEnvelope,result:PolicyResult):Promise<SignatureShare>;}
 
 export function executionDigest(e:SigningEnvelope):Hex {
   const encoded=AbiCoder.defaultAbiCoder().encode(["uint256","address","address","bytes32","bytes32","bytes32","bytes32","uint64"],[e.chainId,e.adapter,e.verificationTarget,e.guid,e.packetDigest,e.evidenceDigest,keccak256(e.callData),e.expiry]);
@@ -28,7 +29,7 @@ export class IsolatedSignerService {
   }
 }
 
-export async function collectQuorum(e:SigningEnvelope,result:PolicyResult,services:IsolatedSignerService[],authorized:Hex[],quorum:number):Promise<SignatureShare[]>{
+export async function collectQuorum(e:SigningEnvelope,result:PolicyResult,services:SignerService[],authorized:Hex[],quorum:number):Promise<SignatureShare[]>{
   if(quorum<1||quorum>authorized.length) throw new Error("invalid quorum");
   const allowed=new Set(authorized.map(x=>x.toLowerCase())); const settled=await Promise.allSettled(services.map(x=>x.sign(e,result))); const unique=new Map<string,SignatureShare>(); const digest=executionDigest(e);
   for(const item of settled){if(item.status!=="fulfilled")continue;const share=item.value;const a=share.address.toLowerCase();if(!allowed.has(a)||share.digest.toLowerCase()!==digest.toLowerCase()||unique.has(a))continue;unique.set(a,share);}
