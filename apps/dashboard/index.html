@@ -6,6 +6,7 @@
   <meta name="description" content="Read-only operations dashboard for the GenLayer Sentinel LayerZero DVN testnet prototype.">
   <title>GenLayer Sentinel · Operations</title>
   <link rel="stylesheet" href="./src/style.css">
+  <link rel="stylesheet" href="./src/recovery.css">
 </head>
 <body>
   <header><div class="mark">S</div><div><strong>GenLayer Sentinel</strong><span>Policy firewall for LayerZero</span></div><b>TESTNET PROTOTYPE</b></header>
@@ -16,6 +17,7 @@
       <div class="packet-bar"><label for="job-select">Observed packet</label><select id="job-select" disabled><option>Waiting for coordinator</option></select><span id="refresh-time">Never refreshed</span></div>
       <div class="timeline" id="timeline" aria-live="polite"></div>
     </section>
+    <section class="quarantine"><div class="section-head"><div><p>INGESTION RECOVERY</p><h2>Quarantined packets</h2></div><span class="status" id="quarantine-status">CONNECTING</span></div><p class="recovery-note">This browser is read-only. Requeue requires an authenticated local operator using the coordinator recovery service after investigating the failure.</p><div id="dead-letters" class="dead-letters"><p class="empty">Loading durable quarantine state.</p></div></section>
     <section class="inspector" id="inspector" hidden>
       <article><p>CANONICAL PACKET</p><h2>Deterministic identity</h2><dl id="packet-details"></dl></article>
       <article><p>INDEPENDENT RPC</p><h2>Inclusion &amp; confirmations</h2><div id="verification-details" class="cards"></div></article>

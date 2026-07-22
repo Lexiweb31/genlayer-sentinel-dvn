@@ -28,6 +28,6 @@
     "policyContract": "0x6666666666666666666666666666666666666666"
   },
   "storage": {"sqlitePath": "/var/lib/genlayer-sentinel/state.db"},
-  "runtime": {"pollIntervalMs": 5000},
+  "runtime": {"pollIntervalMs": 5000, "maxIngestionAttempts": 3},
   "status": {"host": "127.0.0.1", "port": 8787}
 }

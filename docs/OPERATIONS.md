@@ -2,7 +2,7 @@
 
 ## Startup preflight
 
-Copy `config/sentinel-runtime.example.json` outside the repository, replace every `.invalid` origin and placeholder address from a fresh audited deployment manifest, and set filesystem permissions so only the coordinator identity can read it. Do not source environment variables from another product. `npm run preflight -- /absolute/path/to/private/sentinel-runtime.json` requires prototype mode, two distinct public HTTPS RPC origins, nonzero pathway addresses, decimal block settings, an exact evidence host, a public HTTPS GenLayer endpoint, an absolute SQLite path, and loopback-only status binding. Its output strips RPC paths and hides the database path.
+Copy `config/sentinel-runtime.example.json` outside the repository, replace every `.invalid` origin and placeholder address from a fresh audited deployment manifest, and set filesystem permissions so only the coordinator identity can read it. Do not source environment variables from another product. `npm run preflight -- /absolute/path/to/private/sentinel-runtime.json` requires prototype mode, two distinct public HTTPS RPC origins, nonzero pathway addresses, decimal block settings, an exact evidence host, a public HTTPS GenLayer endpoint, an absolute SQLite path, positive poll and maximum-ingestion-attempt values, and loopback-only status binding. Its output strips RPC paths and hides the database path. The example attempt limit of three is explicitly a test value.
 
 Passing preflight does not authorize deployment or establish that addresses, libraries, DVNs, RPCs or GenLayer are current. Chain-state validation and explicit user approval remain separate gates.
 
@@ -26,7 +26,7 @@ New detections and the advanced cursor are checkpointed in one transaction befor
 
 Application URL validation does not prevent an allowlisted DNS name from resolving to a private address. Production deployment must pin the governance origin operationally, resolve through controlled DNS, deny private/link-local/metadata ranges at the network layer, restrict outbound destinations, and alert on certificate or address changes.
 
-This is recoverable at-least-once delivery, not distributed exactly-once semantics. A handler must durably create or recognize the job before returning. Production also needs bounded retry/dead-letter policy, operator reconciliation tooling, multi-writer fencing, and pruning of acknowledged `seen` entries below a proven reorg horizon.
+This is recoverable at-least-once delivery, not distributed exactly-once semantics. A handler must durably create or recognize the job before returning. Failed ingestion is recorded in `SqliteRecoveryStore` before any quarantine acknowledgement. At the configured limit the record becomes `DEAD`, allowing later packets to progress. Raw errors and payloads are not exposed by HTTP. After investigation, `RecoveryService.requeue(txHash)` restores the retained packet idempotently before resolving the dead-letter record; it is a local programmatic operator boundary, not an HTTP endpoint. Production still needs an authenticated audited CLI, backoff policy, alert integration, multi-writer fencing, and pruning of acknowledged `seen` entries below a proven reorg horizon.
 
 ## Job recovery
 
@@ -40,11 +40,11 @@ The Endpoint, SendUln302, start block, confirmation depth and RPC URL must come 
 
 ## Read-only status API
 
-`createStatusServer` exposes `GET /health`, `GET /api/jobs`, and `GET /api/jobs/:guid`. Other methods are rejected. Responses disable caching, safely encode bigint fields as decimal strings, and contain no key material. The server does not create jobs or sign messages.
+`createStatusServer` exposes `GET /health`, `GET /api/jobs`, `GET /api/jobs/:guid`, and sanitized `GET /api/dead-letters`. Other methods are rejected. Responses disable caching, safely encode bigint fields as decimal strings, and contain no key material, encoded quarantined payload, or raw exception. The server does not create jobs, requeue packets, or sign messages.
 
-`createDashboardServer` serves that API and exactly three allowlisted local assets (`/`, `/src/app.js`, `/src/style.css`) from one origin. It rejects other paths and methods and applies no-store, nosniff, no-referrer, restrictive Permissions-Policy and a self-only Content-Security-Policy with framing, base and form actions disabled. The dashboard contains no external font or script request.
+`createDashboardServer` serves that API and exactly four allowlisted local assets (`/`, `/src/app.js`, `/src/style.css`, `/src/recovery.css`) from one origin. It rejects other paths and methods and applies no-store, nosniff, no-referrer, restrictive Permissions-Policy and a self-only Content-Security-Policy with framing, base and form actions disabled. The dashboard contains no external font or script request.
 
-The dashboard fetches `/api/jobs` from the same origin every five seconds. It lets an operator select an observed GUID and inspect canonical packet fields, each RPC verification, the finalized GenLayer record, and signer quorum. It intentionally exposes no state-changing browser request. Bind the prototype server to manifest-validated loopback and put authenticated TLS termination in front of it for a controlled demo. If the API is absent, invalid, or empty, the dashboard explicitly displays unavailable/no-packets state and never substitutes fixtures. Authentication is still required before exposing operational metadata outside a controlled demo environment.
+The dashboard fetches `/api/jobs` and `/api/dead-letters` from the same origin every five seconds. It lets an operator select an observed GUID and inspect canonical packet fields, each RPC verification, the finalized GenLayer record, signer quorum, and sanitized quarantine incidents. It intentionally exposes no state-changing browser request. Bind the prototype server to manifest-validated loopback and put authenticated TLS termination in front of it for a controlled demo. If either API is absent, invalid, or empty, its section explicitly displays unavailable/empty state and never substitutes fixtures. Authentication is still required before exposing operational metadata outside a controlled demo environment.
 
 ## Alerts
 
