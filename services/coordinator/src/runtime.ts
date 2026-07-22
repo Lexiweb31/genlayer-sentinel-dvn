@@ -1,0 +1,12 @@
+export interface RuntimeDependencies {restore():Promise<void>;ingest():Promise<void>;pollFinality():Promise<void>;listen():Promise<void>;closeServer():Promise<void>;closeStores():void;report(error:unknown):void;intervalMs:number;schedule?(task:()=>Promise<void>,intervalMs:number):()=>void;}
+export interface RuntimeStatus {started:boolean;stopping:boolean;tickActive:boolean;}
+export class SentinelRuntime {
+  private started=false;private stopping=false;private tick?:Promise<void>;private cancel?:()=>void;private closed=false;
+  constructor(private dependencies:RuntimeDependencies){if(!Number.isSafeInteger(dependencies.intervalMs)||dependencies.intervalMs<=0)throw new Error("runtime interval must be positive")}
+  get status():RuntimeStatus{return{started:this.started,stopping:this.stopping,tickActive:!!this.tick}}
+  async start():Promise<void>{if(this.started)return;try{await this.dependencies.restore();await this.dependencies.listen();this.started=true;const schedule=this.dependencies.schedule??defaultSchedule;this.cancel=schedule(()=>this.runTick(),this.dependencies.intervalMs)}catch(error){await this.close();throw error}}
+  async stop():Promise<void>{if(this.stopping)return this.tick;if(!this.started&&this.closed)return;this.stopping=true;this.cancel?.();try{await this.tick;await this.close()}finally{this.started=false;this.stopping=false}}
+  private runTick():Promise<void>{if(this.tick||!this.started||this.stopping)return this.tick??Promise.resolve();const work=(async()=>{try{await this.dependencies.ingest();await this.dependencies.pollFinality()}catch(error){this.dependencies.report(error)}})();this.tick=work.finally(()=>{this.tick=undefined});return this.tick}
+  private async close():Promise<void>{if(this.closed)return;this.closed=true;try{await this.dependencies.closeServer()}finally{this.dependencies.closeStores()}}
+}
+function defaultSchedule(task:()=>Promise<void>,intervalMs:number):()=>void{const timer=setInterval(()=>{void task()},intervalMs);return()=>clearInterval(timer)}
