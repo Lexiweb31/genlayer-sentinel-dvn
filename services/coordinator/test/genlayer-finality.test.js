@@ -1,6 +1,60 @@
-import test from "node:test";import assert from "node:assert/strict";import {ExecutionResult,TransactionStatus} from "genlayer-js/types";import {GenLayerSdkFinality} from "../../../dist/services/coordinator/src/genlayer-finality.js";
-const h=n=>`0x${n.repeat(64)}`;const packet={guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:h("2"),receiver:h("3"),message:"0x",payloadHash:h("4"),encodedPayloadHash:h("8"),txHash:h("5"),blockHash:h("6"),blockNumber:1n};const request={packet,evidence:{uri:"https://governance.example/proposal/1",digest:h("7"),observedAt:9,validUntil:100},decodedAction:"transfer 1 token",policy:"authorization required"};
-function client(tx,record=`ALLOW|${h("4")}|${h("7")}|v1|authorized`){const calls=[];return{calls,writeContract:async a=>{calls.push(a);return h("9")},getTransaction:async()=>tx,readContract:async()=>record}}
-test("submits every evidence binding and returns only finalized successful records",async()=>{const c=client({statusName:TransactionStatus.FINALIZED,txExecutionResultName:ExecutionResult.FINISHED_WITH_RETURN});const g=new GenLayerSdkFinality(c,h("a"),()=>20);const id=await g.submit(request);assert.deepEqual(c.calls[0].args,[h("1"),h("4"),request.evidence.uri,h("7"),request.decodedAction,request.policy]);const result=await g.finalized(id);assert.equal(result.decision,"ALLOW");assert.equal(result.finalizedAt,20)});
-test("returns pending for ACCEPTED and fails closed on execution or record mismatch",async()=>{for(const status of [TransactionStatus.ACCEPTED,TransactionStatus.REVEALING]){const g=new GenLayerSdkFinality(client({statusName:status,txExecutionResultName:ExecutionResult.FINISHED_WITH_RETURN}),h("a"));const id=await g.submit(request);assert.equal(await g.finalized(id),undefined)}const failed=new GenLayerSdkFinality(client({statusName:TransactionStatus.FINALIZED,txExecutionResultName:ExecutionResult.FINISHED_WITH_ERROR}),h("a"));const fid=await failed.submit(request);await assert.rejects(failed.finalized(fid));const mismatch=new GenLayerSdkFinality(client({statusName:TransactionStatus.FINALIZED,txExecutionResultName:ExecutionResult.FINISHED_WITH_RETURN},`ALLOW|${h("0")}|${h("7")}|v1|bad`),h("a"));const mid=await mismatch.submit(request);await assert.rejects(mismatch.finalized(mid))});
-test("re-registers a durable request binding without submitting again",async()=>{const c=client({statusName:TransactionStatus.FINALIZED,txExecutionResultName:ExecutionResult.FINISHED_WITH_RETURN}),g=new GenLayerSdkFinality(c,h("a"),()=>20);g.register(h("9"),request);assert.equal((await g.finalized(h("9"))).decision,"ALLOW");assert.equal(c.calls.length,0);assert.throws(()=>g.register(h("9"),{...request,policy:"different"}),/binding conflict/)});
+import test from "node:test";
+import assert from "node:assert/strict";
+import {GenLayerRpcFinality} from "../../../dist/services/coordinator/src/genlayer-finality.js";
+
+const h=n=>`0x${n.repeat(64)}`;
+const packet={guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:h("2"),receiver:h("3"),message:"0x",payloadHash:h("4"),encodedPayloadHash:h("8"),txHash:h("5"),blockHash:h("6"),blockNumber:1n};
+const request={packet,evidence:{uri:"https://governance.example/proposal/1",digest:h("7"),observedAt:9,validUntil:100},decodedAction:"transfer 1 token",policy:"authorization required"};
+
+function clients(status={status:"FINALIZED",statusCode:7},tx={txExecutionResultName:"FINISHED_WITH_RETURN"},record=`ALLOW|${h("4")}|${h("7")}|v1|authorized`){
+  const calls=[];
+  return{
+    status:{getTransactionStatus:async id=>{calls.push(["status",id]);return status}},
+    contract:{writeContract:async args=>{calls.push(["write",args]);return h("9")},getTransaction:async args=>{calls.push(["transaction",args]);return tx},readContract:async args=>{calls.push(["read",args]);return record}},
+    calls
+  };
+}
+
+test("requires FINALIZED/7, successful execution and a latest-final bound record",async()=>{
+  const c=clients(),finality=new GenLayerRpcFinality(c.contract,c.status,h("a"),()=>20);
+  const id=await finality.submit(request),result=await finality.finalized(id);
+  assert.deepEqual(c.calls[0][1].args,[h("1"),h("4"),request.evidence.uri,h("7"),request.decodedAction,request.policy]);
+  assert.deepEqual(c.calls.find(call=>call[0]==="status"),["status",h("9")]);
+  assert.deepEqual(c.calls.find(call=>call[0]==="transaction"),["transaction",{hash:h("9")}]);
+  assert.deepEqual(c.calls.find(call=>call[0]==="read")[1],{address:h("a"),functionName:"get_record",args:[h("1")],transactionHashVariant:"latest-final"});
+  assert.equal(result.decision,"ALLOW");
+  assert.equal(result.finalizedAt,20);
+});
+
+test("keeps every documented non-final status away from transaction and record reads",async()=>{
+  const all=["UNINITIALIZED","PENDING","PROPOSING","COMMITTING","REVEALING","ACCEPTED","UNDETERMINED","FINALIZED","CANCELED","APPEAL_REVEALING","APPEAL_COMMITTING","READY_TO_FINALIZE","VALIDATORS_TIMEOUT","LEADER_TIMEOUT"];
+  for(const status of all.filter(value=>value!=="FINALIZED")){
+    const c=clients({status,statusCode:all.indexOf(status)}),finality=new GenLayerRpcFinality(c.contract,c.status,h("a")),id=await finality.submit(request);
+    assert.equal(await finality.finalized(id),undefined);
+    assert.equal(c.calls.some(call=>call[0]==="transaction"||call[0]==="read"),false);
+  }
+  const contradictory=clients({status:"FINALIZED",statusCode:5}),finality=new GenLayerRpcFinality(contradictory.contract,contradictory.status,h("a")),id=await finality.submit(request);
+  assert.equal(await finality.finalized(id),undefined);
+  assert.equal(contradictory.calls.some(call=>call[0]==="transaction"||call[0]==="read"),false);
+});
+
+test("fails closed after finality when execution or record binding is invalid",async()=>{
+  for(const tx of [{},{txExecutionResultName:"FINISHED_WITH_ERROR"}]){
+    const c=clients({status:"FINALIZED",statusCode:7},tx),finality=new GenLayerRpcFinality(c.contract,c.status,h("a")),id=await finality.submit(request);
+    await assert.rejects(finality.finalized(id),/execution did not succeed/);
+    assert.equal(c.calls.some(call=>call[0]==="read"),false);
+  }
+  const mismatch=clients({status:"FINALIZED",statusCode:7},{txExecutionResultName:"FINISHED_WITH_RETURN"},`ALLOW|${h("0")}|${h("7")}|v1|bad`),finality=new GenLayerRpcFinality(mismatch.contract,mismatch.status,h("a")),id=await finality.submit(request);
+  await assert.rejects(finality.finalized(id),/record binding mismatch/);
+  const malformed=clients({status:"FINALIZED",statusCode:7},{txExecutionResultName:"FINISHED_WITH_RETURN"},{decision:"ALLOW"}),invalid=new GenLayerRpcFinality(malformed.contract,malformed.status,h("a")),invalidId=await invalid.submit(request);
+  await assert.rejects(invalid.finalized(invalidId),/invalid GenLayer policy record/);
+});
+
+test("restores exactly one durable request binding without resubmission",async()=>{
+  const c=clients(),finality=new GenLayerRpcFinality(c.contract,c.status,h("a"),()=>20);
+  finality.register(h("9"),request);
+  assert.equal((await finality.finalized(h("9"))).decision,"ALLOW");
+  assert.equal(c.calls.some(call=>call[0]==="write"),false);
+  assert.throws(()=>finality.register(h("9"),{...request,policy:"different"}),/binding conflict/);
+  await assert.rejects(finality.finalized(h("0")),/unknown GenLayer request/);
+});
