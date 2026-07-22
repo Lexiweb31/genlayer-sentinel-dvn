@@ -30,6 +30,7 @@ export class Coordinator {
     const result = await this.genlayer.finalized(requestId); if (!result) return;
     job.finalize(result, now);await this.persist(guid,requestId,now);
   }
+  async pollPending(now=Math.floor(Date.now()/1000)):Promise<number>{const pending=[...this.jobs.entries()].filter(([,job])=>job.snapshot.stage==="POLICY_PENDING");for(const[guid]of pending){const requestId=this.requestIds.get(guid);if(!requestId)throw new Error("pending job has no GenLayer request ID");await this.poll(guid,requestId,now)}return pending.length}
   async authorize(guid:string,envelope:SigningEnvelope,authorized:Hex[]):Promise<SignatureShare[]>{
     const job=this.jobs.get(guid);if(!job||job.snapshot.stage!=="POLICY_FINALIZED"||!job.snapshot.result)throw new Error("job is not ready for signing");
     const shares=await collectQuorum(envelope,job.snapshot.result,this.signers,authorized,this.quorum);
