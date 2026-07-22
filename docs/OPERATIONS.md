@@ -8,6 +8,8 @@ The listener holds a block-number/hash cursor and rewinds by the configured look
 
 New detections and the advanced cursor are checkpointed in one transaction before `poll()` returns. Pending packets are redelivered without scanning forward until the caller explicitly acknowledges their transaction hash. `IngestionRunner` invokes the handler first and acknowledges only after it resolves, so a failed job write remains retryable after restart. The durable coordinator then deduplicates retries by packet GUID.
 
+`PolicyRequestFactory` is the only supported listener-to-policy assembly path. It requires the configured send library, exact source/destination EIDs and OApp peers, a positive Sentinel fee in the optional DVN list, and rejects Sentinel if configured as required. It decodes only the `TreasuryPolicyOApp.Action` tuple and renders a stable action record. `HttpsEvidenceSource` refuses redirects, applies a ten-second timeout, and the factory rejects empty or oversized evidence before hashing the exact UTF-8 bytes with SHA-256. The ingestion runner acknowledges only after request assembly, independent RPC verification and durable coordinator detection succeed.
+
 This is recoverable at-least-once delivery, not distributed exactly-once semantics. A handler must durably create or recognize the job before returning. Production also needs bounded retry/dead-letter policy, operator reconciliation tooling, multi-writer fencing, and pruning of acknowledged `seen` entries below a proven reorg horizon.
 
 ## Job recovery
