@@ -12,7 +12,7 @@ The runtime uses one explicit composition root. Components retain their existing
 
 ## Lifecycle and data flow
 
-Startup order is: validate manifest before composition; open stores; restore jobs/request IDs; bind the dashboard to the manifest's loopback host and port; then start polling. Each ingestion tick redelivers pending packets first, assembles canonical requests, performs independent RPC verification, submits the GenLayer request, persists the request ID and only then acknowledges the listener transaction.
+Startup order is: validate manifest before composition; open stores; restore jobs, request IDs and complete policy-request bindings; re-register those bindings with the GenLayer finality adapter; bind the dashboard to the manifest's loopback host and port; then start polling. Persisting only a GenLayer request ID is insufficient because finality validation also needs the original GUID, packet digest and evidence digest. Each ingestion tick redelivers pending packets first, assembles canonical requests, performs independent RPC verification, submits the GenLayer request, persists the request ID and full binding, and only then acknowledges the listener transaction.
 
 Each finality tick polls every durable `POLICY_PENDING` job with a known GenLayer request ID. Pending/accepted states remain pending. Only the existing strict finalized-result adapter can advance a job. Ticks are serialized so slow work cannot overlap itself.
 
