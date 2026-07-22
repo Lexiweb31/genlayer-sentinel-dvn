@@ -7,6 +7,7 @@
   <title>GenLayer Sentinel · Operations</title>
   <link rel="stylesheet" href="./src/style.css">
   <link rel="stylesheet" href="./src/recovery.css">
+  <link rel="stylesheet" href="./src/delivery.css">
 </head>
 <body>
   <header><div class="mark">S</div><div><strong>GenLayer Sentinel</strong><span>Policy firewall for LayerZero</span></div><b>TESTNET PROTOTYPE</b></header>
@@ -18,6 +19,7 @@
       <div class="timeline" id="timeline" aria-live="polite"></div>
     </section>
     <section class="quarantine"><div class="section-head"><div><p>INGESTION RECOVERY</p><h2>Quarantined packets</h2></div><span class="status" id="quarantine-status">CONNECTING</span></div><p class="recovery-note">This browser is read-only. Requeue requires an authenticated local operator using the coordinator recovery service after investigating the failure.</p><div id="dead-letters" class="dead-letters"><p class="empty">Loading durable quarantine state.</p></div></section>
+    <section class="delivery"><div class="section-head"><div><p>DESTINATION DELIVERY</p><h2>Verification outbox</h2></div><span class="status" id="delivery-status">CONNECTING</span></div><p class="recovery-note">Submission is crash-safe and read-only here. Ambiguous broadcasts stop in recovery-required state and are never automatically rebroadcast.</p><div id="deliveries" class="deliveries"><p class="empty">Loading destination delivery state.</p></div></section>
     <section class="inspector" id="inspector" hidden>
       <article><p>CANONICAL PACKET</p><h2>Deterministic identity</h2><dl id="packet-details"></dl></article>
       <article><p>INDEPENDENT RPC</p><h2>Inclusion &amp; confirmations</h2><div id="verification-details" class="cards"></div></article>
