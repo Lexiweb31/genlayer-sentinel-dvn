@@ -24,6 +24,7 @@ export class PacketFeeListener {
     this.cursor=await this.source.block(safe);this.pending=out;await this.persist();return this.sortedPending();
   }
   async acknowledge(transactionHash:Hex):Promise<void>{await this.restore();const normalized=transactionHash.toLowerCase();if(!this.pending.some(packet=>packet.transactionHash.toLowerCase()===normalized))throw new Error("unknown pending transaction");this.pending=this.pending.filter(packet=>packet.transactionHash.toLowerCase()!==normalized);await this.persist()}
+  async requeue(packet:DetectedPacket):Promise<void>{await this.restore();const normalized=packet.transactionHash.toLowerCase();if(!this.pending.some(value=>value.transactionHash.toLowerCase()===normalized)){this.pending.push(packet);if(!this.seen.has(normalized))this.seen.set(normalized,packet.blockNumber);await this.persist()}}
   private sortedPending():DetectedPacket[]{return[...this.pending].sort((a,b)=>a.blockNumber<b.blockNumber?-1:a.blockNumber>b.blockNumber?1:a.transactionHash.localeCompare(b.transactionHash))}
   private async restore():Promise<void>{if(this.restored)return;const checkpoint=await this.store?.load(this.pathwayKey);if(checkpoint){this.cursor=checkpoint.cursor;this.seen=new Map(checkpoint.seen.map(value=>[value.transactionHash.toLowerCase(),value.blockNumber]));this.pending=checkpoint.pending}this.restored=true}
   private async persist():Promise<void>{await this.store?.save(this.pathwayKey,{cursor:this.cursor,seen:[...this.seen].map(([transactionHash,blockNumber])=>({transactionHash,blockNumber})),pending:this.pending})}
