@@ -38,5 +38,6 @@ export class Coordinator {
   }
   async markVerified(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");job.markVerified();await this.persist(guid,this.requestIds.get(guid))}
   async markExecuted(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");job.markExecuted();await this.persist(guid,this.requestIds.get(guid))}
+  async confirmExecution(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");if(job.snapshot.stage==="EXECUTED")return;if(job.snapshot.stage==="QUORUM_REACHED")job.markVerified();if(job.snapshot.stage!=="VERIFIED")throw new Error("job is not ready for destination confirmation");job.markExecuted();await this.persist(guid,this.requestIds.get(guid))}
   private async persist(guid:string,requestId?:string,updatedAt=Math.floor(Date.now()/1000)):Promise<void>{if(!this.store)return;const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");await this.store.save({guid,requestId,request:this.requests.get(guid),snapshot:job.snapshot,updatedAt})}
 }

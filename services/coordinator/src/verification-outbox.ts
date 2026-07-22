@@ -3,7 +3,7 @@ export type OutboxState="READY"|"ATTEMPTING"|"SUBMITTED"|"CONFIRMED"|"FAILED"|"R
 export interface OutboxRecord{guid:Hex;digest:Hex;envelope:SigningEnvelope;shares:SignatureShare[];state:OutboxState;transactionHash?:Hex;confirmations?:bigint;failureCode?:string;createdAt:number;updatedAt:number;}
 export interface OutboxUpdate{state:OutboxState;transactionHash?:Hex;confirmations?:bigint;failureCode?:string;updatedAt:number;}
 export interface VerificationOutboxStore{prepare(guid:Hex,envelope:SigningEnvelope,shares:SignatureShare[],now:number):Promise<OutboxRecord>;transition(guid:Hex,expected:OutboxState,update:OutboxUpdate):Promise<OutboxRecord>;get(guid:Hex):Promise<OutboxRecord|undefined>;list():Promise<OutboxRecord[]>;close():void;}
-const allowed:Record<OutboxState,OutboxState[]>={READY:["ATTEMPTING","CONFIRMED","FAILED"],ATTEMPTING:["SUBMITTED","CONFIRMED","RECOVERY_REQUIRED"],SUBMITTED:["CONFIRMED","FAILED"],CONFIRMED:[],FAILED:[],RECOVERY_REQUIRED:[]};
+const allowed:Record<OutboxState,OutboxState[]>={READY:["ATTEMPTING","CONFIRMED","FAILED","RECOVERY_REQUIRED"],ATTEMPTING:["SUBMITTED","CONFIRMED","RECOVERY_REQUIRED"],SUBMITTED:["CONFIRMED","FAILED"],CONFIRMED:[],FAILED:[],RECOVERY_REQUIRED:[]};
 export class SqliteVerificationOutbox implements VerificationOutboxStore{
  private db:DatabaseSync;
  constructor(path:string){this.db=new DatabaseSync(path);this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS verification_outbox(guid TEXT PRIMARY KEY,state TEXT NOT NULL,record_json TEXT NOT NULL,updated_at INTEGER NOT NULL);")}
