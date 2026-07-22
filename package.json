@@ -1,6 +1,6 @@
 {
   "name": "genlayer-sentinel",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "engines": {"node": ">=22.13.0"},
   "packageManager": "npm@10.9.2",
   "private": true,
