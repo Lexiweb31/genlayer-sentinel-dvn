@@ -36,15 +36,23 @@ If submission may have reached GenLayer but its hash was not stored, the pre-sub
 
 SQLite is appropriate for a single testnet coordinator, not active-active high availability. A production candidate needs one elected writer or a transactional shared database with fencing, backups, restore drills, encryption at rest and retention policy.
 
+## Destination verification outbox
+
+`SqliteVerificationOutbox` stores the exact signing envelope and sorted quorum shares before delivery begins. `DestinationWorker` first checks adapter usage, then persists `ATTEMPTING` before calling the injected account-backed submitter. A returned transaction hash advances to `SUBMITTED`. A submission exception is treated as ambiguous because the transaction may already have reached the network; the record moves to `RECOVERY_REQUIRED` and is never automatically rebroadcast.
+
+`IndependentDestinationVerifier` requires at least two distinct public HTTPS RPC origins. Both must agree on a successful receipt, block number/hash, the configured adapter's exact `Verified` event bindings, minimum confirmation depth and `used(executionDigest) == true`. Insufficient confirmation depth remains pending. A confirmed adapter transaction atomically sets used state and calls its verification target, so the coordinator persists `EXECUTED` only after this evidence. Failed, disagreeing, wrong-event, unused or unavailable observations use allowlisted failure codes rather than raw provider messages.
+
+For `RECOVERY_REQUIRED`, pause automated delivery and reconcile the destination account nonce/history plus both RPC providers. Do not edit SQLite or blindly resubmit. A future authenticated recovery CLI must bind an operator decision to the GUID, digest and discovered transaction hash with an audit trail. The current composed runtime deliberately does not create an account submitter or tick this worker.
+
 The Endpoint, SendUln302, start block, confirmation depth and RPC URL must come from an audited deployment manifest. They must never silently default. RPC credentials belong in the coordinator secret store, not the dashboard or repository.
 
 ## Read-only status API
 
-`createStatusServer` exposes `GET /health`, `GET /api/jobs`, `GET /api/jobs/:guid`, and sanitized `GET /api/dead-letters`. Other methods are rejected. Responses disable caching, safely encode bigint fields as decimal strings, and contain no key material, encoded quarantined payload, or raw exception. The server does not create jobs, requeue packets, or sign messages.
+`createStatusServer` exposes `GET /health`, `GET /api/jobs`, `GET /api/jobs/:guid`, sanitized `GET /api/dead-letters`, and sanitized `GET /api/deliveries`. Other methods are rejected. Responses disable caching, safely encode bigint fields as decimal strings, and contain no key material, signatures, call data, encoded quarantined payload, RPC paths, or raw exception. The server does not create jobs, requeue packets, submit transactions, or sign messages.
 
-`createDashboardServer` serves that API and exactly four allowlisted local assets (`/`, `/src/app.js`, `/src/style.css`, `/src/recovery.css`) from one origin. It rejects other paths and methods and applies no-store, nosniff, no-referrer, restrictive Permissions-Policy and a self-only Content-Security-Policy with framing, base and form actions disabled. The dashboard contains no external font or script request.
+`createDashboardServer` serves that API and exactly five allowlisted local assets (`/`, `/src/app.js`, `/src/style.css`, `/src/recovery.css`, `/src/delivery.css`) from one origin. It rejects other paths and methods and applies no-store, nosniff, no-referrer, restrictive Permissions-Policy and a self-only Content-Security-Policy with framing, base and form actions disabled. The dashboard contains no external font or script request.
 
-The dashboard fetches `/api/jobs` and `/api/dead-letters` from the same origin every five seconds. It lets an operator select an observed GUID and inspect canonical packet fields, each RPC verification, the finalized GenLayer record, signer quorum, and sanitized quarantine incidents. It intentionally exposes no state-changing browser request. Bind the prototype server to manifest-validated loopback and put authenticated TLS termination in front of it for a controlled demo. If either API is absent, invalid, or empty, its section explicitly displays unavailable/empty state and never substitutes fixtures. Authentication is still required before exposing operational metadata outside a controlled demo environment.
+The dashboard fetches `/api/jobs`, `/api/dead-letters`, and `/api/deliveries` from the same origin every five seconds. It lets an operator select an observed GUID and inspect canonical packet fields, each RPC verification, the finalized GenLayer record, signer quorum, sanitized quarantine incidents, and delivery/outbox state. It intentionally exposes no state-changing browser request. Bind the prototype server to manifest-validated loopback and put authenticated TLS termination in front of it for a controlled demo. If an API is absent, invalid, or empty, its section explicitly displays unavailable/empty state and never substitutes fixtures. Authentication is still required before exposing operational metadata outside a controlled demo environment.
 
 ## Alerts
 
