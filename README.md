@@ -14,7 +14,7 @@ Normal transport verification answers “was this packet emitted?” It cannot a
 - `intelligent-contract/`: GUID-keyed GenLayer semantic policy record.
 - `services/coordinator/`: fail-closed lifecycle, durable ingestion, strict request assembly, RPC verification and signer abstractions.
 - `packages/core/`: protocol types and tested state machine.
-- `apps/dashboard/`: read-only operational packet inspector that reads same-origin coordinator state, exposes deterministic and semantic proofs separately, and has no simulated fallback.
+- `apps/dashboard/`: self-contained read-only operational packet inspector served beside coordinator state, exposing deterministic and semantic proofs separately with no external assets or simulated fallback.
 - `docs/`: ADR, PRD, threat model, audit, unknowns, demo and milestones.
 - `config/networks.json`: dated, audited testnet metadata; never blindly deploy from it.
 

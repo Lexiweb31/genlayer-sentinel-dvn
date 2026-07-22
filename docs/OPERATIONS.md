@@ -36,7 +36,9 @@ The Endpoint, SendUln302, start block, confirmation depth and RPC URL must come 
 
 `createStatusServer` exposes `GET /health`, `GET /api/jobs`, and `GET /api/jobs/:guid`. Other methods are rejected. Responses disable caching, safely encode bigint fields as decimal strings, and contain no key material. The server does not create jobs or sign messages.
 
-The dashboard fetches `/api/jobs` from the same origin every five seconds. It lets an operator select an observed GUID and inspect canonical packet fields, each RPC verification, the finalized GenLayer record, and signer quorum. It intentionally exposes no state-changing browser request. A reverse proxy should serve the static dashboard and coordinator API under one TLS origin. If the API is absent, invalid, or empty, the dashboard explicitly displays unavailable/no-packets state and never substitutes fixtures. Authentication is still required before exposing operational metadata outside a controlled demo environment.
+`createDashboardServer` serves that API and exactly three allowlisted local assets (`/`, `/src/app.js`, `/src/style.css`) from one origin. It rejects other paths and methods and applies no-store, nosniff, no-referrer, restrictive Permissions-Policy and a self-only Content-Security-Policy with framing, base and form actions disabled. The dashboard contains no external font or script request.
+
+The dashboard fetches `/api/jobs` from the same origin every five seconds. It lets an operator select an observed GUID and inspect canonical packet fields, each RPC verification, the finalized GenLayer record, and signer quorum. It intentionally exposes no state-changing browser request. Bind the prototype server to manifest-validated loopback and put authenticated TLS termination in front of it for a controlled demo. If the API is absent, invalid, or empty, the dashboard explicitly displays unavailable/no-packets state and never substitutes fixtures. Authentication is still required before exposing operational metadata outside a controlled demo environment.
 
 ## Alerts
 
