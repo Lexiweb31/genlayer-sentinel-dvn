@@ -2,6 +2,7 @@ import {AbiCoder,getBytes,keccak256,sha256,toUtf8Bytes} from "ethers";
 import {decodePacketV1} from "../../../packages/core/src/packet-v1.js";
 import type {Hex,PolicyRequest} from "../../../packages/core/src/types.js";
 import type {DetectedPacket} from "./listener.js";
+import {isIP} from "node:net";
 
 export interface AuthoritativeEvidenceSource {read(uri:string):Promise<string>;}
 export interface RequestFactoryConfig {srcEid:number;dstEid:number;sender:Hex;receiver:Hex;sendLibrary:Hex;sentinelDvn:Hex;evidenceUri:string;policy:string;evidenceTtlSeconds:number;maximumEvidenceBytes?:number;}
@@ -16,5 +17,9 @@ export class PolicyRequestFactory {
 function same(a:string,b:string):boolean{return a.toLowerCase()===b.toLowerCase()}
 
 export class HttpsEvidenceSource implements AuthoritativeEvidenceSource {
-  async read(uri:string):Promise<string>{const response=await fetch(uri,{headers:{accept:"application/json, text/plain;q=0.9"},redirect:"error",signal:AbortSignal.timeout(10_000)});if(!response.ok)throw new Error(`evidence HTTP ${response.status}`);return response.text()}
+  private hosts:Set<string>;
+  constructor(allowedHosts:string[]){if(!allowedHosts.length)throw new Error("evidence host allowlist is required");this.hosts=new Set(allowedHosts.map(host=>normalizeHost(host)))}
+  async read(uri:string):Promise<string>{validateEvidenceUrl(uri,this.hosts);const response=await fetch(uri,{headers:{accept:"application/json, text/plain;q=0.9"},redirect:"error",signal:AbortSignal.timeout(10_000)});if(!response.ok)throw new Error(`evidence HTTP ${response.status}`);const contentType=response.headers.get("content-type")?.toLowerCase()??"";if(!contentType.startsWith("application/json")&&!contentType.startsWith("text/plain"))throw new Error("unsupported evidence content type");return response.text()}
 }
+export function validateEvidenceUrl(uri:string,allowedHosts:ReadonlySet<string>):URL{let url:URL;try{url=new URL(uri)}catch{throw new Error("invalid evidence URL")}const host=url.hostname.toLowerCase();if(url.protocol!=="https:"||url.username||url.password||url.port||host==="localhost"||host.endsWith(".localhost")||isIP(host)!==0||!allowedHosts.has(host))throw new Error("evidence URL is not an allowed HTTPS origin");return url}
+function normalizeHost(host:string):string{let url:URL;try{url=new URL(`https://${host}`)}catch{throw new Error("invalid evidence host allowlist entry")}if(url.hostname!==host.toLowerCase()||url.port||url.username||url.password||url.pathname!=="/"||isIP(url.hostname)!==0||url.hostname==="localhost"||url.hostname.endsWith(".localhost"))throw new Error("invalid evidence host allowlist entry");return url.hostname}
