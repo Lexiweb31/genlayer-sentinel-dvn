@@ -5,13 +5,14 @@ import {collectQuorum,type IsolatedSignerService,type SignatureShare,type Signin
 import type {JobStore} from "./job-store.js";
 
 export interface PacketVerifier { verify(packet: PolicyRequest["packet"]): Promise<Verification[]>; }
-export interface GenLayerFinality { submit(request: PolicyRequest): Promise<string>; finalized(requestId: string): Promise<PolicyResult | undefined>; }
+export interface GenLayerFinality { submit(request: PolicyRequest): Promise<string>; finalized(requestId: string): Promise<PolicyResult | undefined>; register?(requestId:string,request:PolicyRequest):void; }
 
 export class Coordinator {
   readonly jobs = new Map<string, SentinelJob>();
   readonly requestIds = new Map<string, string>();
+  readonly requests = new Map<string,PolicyRequest>();
   constructor(private verifier: PacketVerifier, private genlayer: GenLayerFinality, private signers: IsolatedSignerService[], private quorum = 3, private minimumConfirmations = 15n,private store?:JobStore) {}
-  async restore():Promise<void>{if(!this.store)return;for(const record of await this.store.load()){if(record.guid.toLowerCase()!==record.snapshot.packet.guid.toLowerCase())throw new Error("persisted GUID mismatch");const job=SentinelJob.restore(record.snapshot);this.jobs.set(record.guid,job);if(record.requestId)this.requestIds.set(record.guid,record.requestId)}}
+  async restore():Promise<void>{if(!this.store)return;for(const record of await this.store.load()){if(record.guid.toLowerCase()!==record.snapshot.packet.guid.toLowerCase())throw new Error("persisted GUID mismatch");const job=SentinelJob.restore(record.snapshot);this.jobs.set(record.guid,job);if(record.request)this.requests.set(record.guid,record.request);if(record.requestId){this.requestIds.set(record.guid,record.requestId);if(record.request)this.genlayer.register?.(record.requestId,record.request)}}}
   async detect(request: PolicyRequest, now=Math.floor(Date.now()/1000)): Promise<string> {
     const {packet,evidence}=request;
     if(!evidence.uri.startsWith("https://")) throw new Error("authoritative evidence must use HTTPS");
@@ -19,7 +20,7 @@ export class Coordinator {
     if(!/^0x[0-9a-fA-F]{64}$/.test(evidence.digest)) throw new Error("invalid evidence digest");
     if(!request.decodedAction.trim()||!request.policy.trim()) throw new Error("decoded action and policy are required");
     const existing=this.requestIds.get(packet.guid); if(existing) return existing;if(this.jobs.has(packet.guid))throw new Error("policy submission recovery required; refusing duplicate submission");
-    const job = new SentinelJob(packet); this.jobs.set(packet.guid, job);
+    const job = new SentinelJob(packet); this.jobs.set(packet.guid, job);this.requests.set(packet.guid,request);
     for (const result of await this.verifier.verify(packet)) job.addVerification(result, this.minimumConfirmations);
     job.requestPolicy();await this.persist(packet.guid,undefined,now);const requestId=await this.genlayer.submit(request);this.requestIds.set(packet.guid,requestId);await this.persist(packet.guid,requestId,now);return requestId;
   }
@@ -36,5 +37,5 @@ export class Coordinator {
   }
   async markVerified(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");job.markVerified();await this.persist(guid,this.requestIds.get(guid))}
   async markExecuted(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");job.markExecuted();await this.persist(guid,this.requestIds.get(guid))}
-  private async persist(guid:string,requestId?:string,updatedAt=Math.floor(Date.now()/1000)):Promise<void>{if(!this.store)return;const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");await this.store.save({guid,requestId,snapshot:job.snapshot,updatedAt})}
+  private async persist(guid:string,requestId?:string,updatedAt=Math.floor(Date.now()/1000)):Promise<void>{if(!this.store)return;const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");await this.store.save({guid,requestId,request:this.requests.get(guid),snapshot:job.snapshot,updatedAt})}
 }

@@ -16,8 +16,9 @@ export class GenLayerSdkFinality implements GenLayerFinality {
   async submit(request:PolicyRequest):Promise<string>{
     const p=request.packet,e=request.evidence;
     const hash=await this.client.writeContract({address:this.contractAddress,functionName:"evaluate",args:[p.guid,p.payloadHash,e.uri,e.digest,request.decodedAction,request.policy],value:0n});
-    this.requests.set(hash.toLowerCase(),request); return hash;
+    this.register(hash,request); return hash;
   }
+  register(requestId:string,request:PolicyRequest):void{const key=requestId.toLowerCase(),existing=this.requests.get(key);if(existing&&binding(existing)!==binding(request))throw new Error("GenLayer request binding conflict");this.requests.set(key,request)}
   async finalized(requestId:string):Promise<PolicyResult|undefined>{
     const request=this.requests.get(requestId.toLowerCase()); if(!request) throw new Error("unknown GenLayer request");
     const tx=await this.client.getTransaction({hash:requestId as Hex});
@@ -30,3 +31,4 @@ export class GenLayerSdkFinality implements GenLayerFinality {
     return {guid:request.packet.guid,packetDigest:request.packet.payloadHash,evidenceDigest:request.evidence.digest,decision,reasonCode:`GENLAYER_FINALIZED_${decision}`,finalizedAt:this.clock(),policyVersion};
   }
 }
+function binding(request:PolicyRequest):string{return JSON.stringify(request,(_,value)=>typeof value==="bigint"?value.toString():value)}
