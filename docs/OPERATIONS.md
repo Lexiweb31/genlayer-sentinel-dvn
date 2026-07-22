@@ -8,7 +8,9 @@ Passing preflight does not authorize deployment or establish that addresses, lib
 
 ## Runtime lifecycle
 
-`composeRuntime` constructs one testnet-prototype process from a parsed manifest and an injected `GenLayerClientFacade`. It opens both SQLite stores, restores jobs plus complete policy-request bindings, re-registers pending bindings with the GenLayer adapter, binds the same-origin dashboard, then schedules one serialized loop. Each tick runs acknowledged ingestion before polling all `POLICY_PENDING` jobs. Tick failures are reported and retried on the next interval without overlapping work.
+`composeRuntime` constructs one testnet-prototype process from a parsed manifest and an injected `GenLayerContractClient`. It opens both SQLite stores, restores jobs plus complete policy-request bindings, re-registers pending bindings with the GenLayer adapter, binds the same-origin dashboard, then schedules one serialized loop. Each tick runs acknowledged ingestion before polling all `POLICY_PENDING` jobs. Tick failures are reported and retried on the next interval without overlapping work.
+
+The coordinator constructs a read-only status client from the manifest's GenLayer HTTPS endpoint and polls `gen_getTransactionStatus` directly. It requires the exact `FINALIZED`/`7` pair before separately checking `FINISHED_WITH_RETURN` and reading the GUID-keyed policy record with the `latest-final` state variant. All other documented statuses remain pending; malformed or contradictory RPC responses fail closed. Submission, execution lookup and finalized contract reads still use the injected account-aware adapter, which has not been approved or exercised against a live GenLayer network.
 
 Shutdown cancels future ticks, waits for an active tick, closes HTTP, then closes listener and job stores once. Startup failure closes resources already created. The runtime intentionally composes an empty signer list and therefore cannot cross the signer-quorum stage. A standalone process entrypoint is withheld until the GenLayer direct-mode/account-provider contract and secure signer transport are validated; do not add a raw private-key environment variable as a shortcut.
 

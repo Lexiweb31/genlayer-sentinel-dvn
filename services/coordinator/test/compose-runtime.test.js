@@ -1,3 +1,32 @@
-import test from"node:test";import assert from"node:assert/strict";import{mkdtempSync,rmSync}from"node:fs";import{tmpdir}from"node:os";import{join,resolve}from"node:path";import{composeRuntime}from"../../../dist/services/coordinator/src/compose-runtime.js";
+import test from "node:test";
+import assert from "node:assert/strict";
+import {mkdtempSync,rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join,resolve} from "node:path";
+import {composeRuntime} from "../../../dist/services/coordinator/src/compose-runtime.js";
+
 const a=n=>`0x${n.repeat(40)}`,h=n=>`0x${n.repeat(64)}`;
-test("composes a loopback runtime without signer services or network work on startup",async()=>{const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),config={mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:h("3"),destinationOApp:h("4"),sentinelDvn:a("5"),startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},storage:{sqlitePath:join(dir,"state.db")},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}},client={writeContract:async()=>h("7"),getTransaction:async()=>({}),readContract:async()=>""},socketCalls=[];const value=composeRuntime(config,client,resolve("apps/dashboard"),console.error,{listen:async(_server,port,host)=>socketCalls.push(["listen",port,host]),close:async()=>socketCalls.push(["close"])});assert.equal(value.coordinator.signers.length,0);assert.deepEqual(await value.recovery.listDead(),[]);assert.equal(await value.recovery.requeue(h("9")),false);await value.runtime.start();assert.equal(value.runtime.status.started,true);await value.runtime.stop();assert.equal(value.runtime.status.started,false);assert.deepEqual(socketCalls,[["listen",0,"127.0.0.1"],["close"]]);rmSync(dir,{recursive:true,force:true})});
+
+test("composes a loopback runtime without signers or eager GenLayer network work",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-"));
+  const config={mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:h("3"),destinationOApp:h("4"),sentinelDvn:a("5"),startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},storage:{sqlitePath:join(dir,"state.db")},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}};
+  const client={writeContract:async()=>h("7"),getTransaction:async()=>({}),readContract:async()=>""},socketCalls=[];
+  const originalFetch=globalThis.fetch;
+  let genlayerFetches=0;
+  globalThis.fetch=async()=>{genlayerFetches++;throw new Error("unexpected network call")};
+  try{
+    const value=composeRuntime(config,client,resolve("apps/dashboard"),console.error,{listen:async(_server,port,host)=>socketCalls.push(["listen",port,host]),close:async()=>socketCalls.push(["close"])});
+    assert.equal(value.coordinator.signers.length,0);
+    assert.deepEqual(await value.recovery.listDead(),[]);
+    assert.equal(await value.recovery.requeue(h("9")),false);
+    await value.runtime.start();
+    assert.equal(value.runtime.status.started,true);
+    await value.runtime.stop();
+    assert.equal(value.runtime.status.started,false);
+    assert.equal(genlayerFetches,0);
+    assert.deepEqual(socketCalls,[["listen",0,"127.0.0.1"],["close"]]);
+  }finally{
+    globalThis.fetch=originalFetch;
+    rmSync(dir,{recursive:true,force:true});
+  }
+});
