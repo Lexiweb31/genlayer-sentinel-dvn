@@ -22,6 +22,8 @@ Normal transport verification answers “was this packet emitted?” It cannot a
 
 Requires Node.js 22.13+, Python 3 and npm. `npm install`, then `npm run check`. Node's built-in SQLite provides transactional coordinator persistence without a native add-on. Checks include strict TypeScript, Solidity `0.8.30` compilation targeting Shanghai, Intelligent Contract guardrails, dashboard no-simulation rules, state-machine, recovery, GenLayer finality, RPC and local-EVM tests. Evidence digests supplied to policy consensus are SHA-256 over the exact UTF-8 rendered evidence text. No private key belongs in this repository or frontend. Production signers should run in five isolated processes/operators backed by KMS/HSM-style providers; the target quorum is 3-of-5.
 
+Runtime values belong in a private Sentinel-only JSON manifest shaped like `config/sentinel-runtime.example.json`; the checked-in example is deliberately non-deployable. Run `npm run preflight -- /absolute/path/to/sentinel-runtime.json` to validate it and print a redacted summary. Preflight validates structure and fail-closed constraints only—it does not prove addresses, RPC reachability, funding or protocol compatibility.
+
 ## Deployment outline (not executed)
 
 1. Resolve every item in `docs/UNKNOWNS.md` that affects the slice and re-audit official chain pages.

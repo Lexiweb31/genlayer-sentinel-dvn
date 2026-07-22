@@ -1,0 +1,2 @@
+import {readFile}from"node:fs/promises";import{parseRuntimeConfig,publicConfigSummary}from"./runtime-config.js";
+const path=process.argv[2]??process.env.SENTINEL_CONFIG_PATH;if(!path)throw new Error("runtime manifest path required as argument or SENTINEL_CONFIG_PATH");const config=parseRuntimeConfig(JSON.parse(await readFile(path,"utf8")));process.stdout.write(`${JSON.stringify(publicConfigSummary(config),null,2)}\n`);

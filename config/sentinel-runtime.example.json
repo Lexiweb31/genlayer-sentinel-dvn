@@ -1,0 +1,32 @@
+{
+  "_warning": "NON-DEPLOYABLE EXAMPLE. Replace every address and .invalid origin from a fresh official audit.",
+  "mode": "TESTNET_PROTOTYPE",
+  "pathway": {
+    "name": "ethereum-sepolia-to-arbitrum-sepolia",
+    "sourceChainId": 11155111,
+    "destinationChainId": 421614,
+    "srcEid": 40161,
+    "dstEid": 40231,
+    "endpoint": "0x1111111111111111111111111111111111111111",
+    "sendLibrary": "0x2222222222222222222222222222222222222222",
+    "sourceOApp": "0x0000000000000000000000003333333333333333333333333333333333333333",
+    "destinationOApp": "0x0000000000000000000000004444444444444444444444444444444444444444",
+    "sentinelDvn": "0x5555555555555555555555555555555555555555",
+    "startBlock": "1",
+    "confirmations": "15",
+    "rpcUrls": ["https://rpc-a.invalid/path", "https://rpc-b.invalid/path"]
+  },
+  "evidence": {
+    "uri": "https://governance.invalid/authorization.json",
+    "allowedHost": "governance.invalid",
+    "policy": "Require an exact, current governance authorization for this action and pathway.",
+    "ttlSeconds": 300,
+    "maximumBytes": 262144
+  },
+  "genlayer": {
+    "endpoint": "https://genlayer.invalid/api",
+    "policyContract": "0x6666666666666666666666666666666666666666"
+  },
+  "storage": {"sqlitePath": "/var/lib/genlayer-sentinel/state.db"},
+  "status": {"host": "127.0.0.1", "port": 8787}
+}

@@ -1,5 +1,11 @@
 # Coordinator operations
 
+## Startup preflight
+
+Copy `config/sentinel-runtime.example.json` outside the repository, replace every `.invalid` origin and placeholder address from a fresh audited deployment manifest, and set filesystem permissions so only the coordinator identity can read it. Do not source environment variables from another product. `npm run preflight -- /absolute/path/to/private/sentinel-runtime.json` requires prototype mode, two distinct public HTTPS RPC origins, nonzero pathway addresses, decimal block settings, an exact evidence host, a public HTTPS GenLayer endpoint, an absolute SQLite path, and loopback-only status binding. Its output strips RPC paths and hides the database path.
+
+Passing preflight does not authorize deployment or establish that addresses, libraries, DVNs, RPCs or GenLayer are current. Chain-state validation and explicit user approval remain separate gates.
+
 ## Ingestion
 
 `PacketFeeListener` polls finalized source blocks through `JsonRpcLogSource`. It filters the configured EndpointV2 and SendUln302 addresses for the official `PacketSent(bytes,bytes,address)` and `DVNFeePaid(address[],address[],uint256[])` topics. A detection is emitted only when both events occur in the same transaction. This proves a fee event exists but does not replace the later two-provider receipt and canonical packet verification.
