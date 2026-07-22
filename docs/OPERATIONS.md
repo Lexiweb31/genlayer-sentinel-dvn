@@ -6,6 +6,8 @@ Copy `config/sentinel-runtime.example.json` outside the repository, replace ever
 
 Passing preflight does not authorize deployment or establish that addresses, libraries, DVNs, RPCs or GenLayer are current. Chain-state validation and explicit user approval remain separate gates.
 
+The independent receipt verifier repeats critical checks even when a manifest already passed preflight: at least two distinct HTTPS origins, no credentials/custom ports/local or literal-IP targets, a nonzero EndpointV2 address and positive confirmation depth. Its built-in RPC transport refuses redirects and times out after ten seconds. Distinct origins are not proof of independent operators; procurement and infrastructure review must establish separate providers and failure domains.
+
 ## Ingestion
 
 `PacketFeeListener` polls finalized source blocks through `JsonRpcLogSource`. It filters the configured EndpointV2 and SendUln302 addresses for the official `PacketSent(bytes,bytes,address)` and `DVNFeePaid(address[],address[],uint256[])` topics. A detection is emitted only when both events occur in the same transaction. This proves a fee event exists but does not replace the later two-provider receipt and canonical packet verification.
