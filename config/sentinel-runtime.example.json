@@ -1,5 +1,6 @@
 {
   "_warning": "NON-DEPLOYABLE EXAMPLE. Replace every address and .invalid origin from a fresh official audit.",
+  "_testValueWarning": "Confirmations and signature TTL are Sentinel prototype values, not official recommendations.",
   "mode": "TESTNET_PROTOTYPE",
   "pathway": {
     "name": "ethereum-sepolia-to-arbitrum-sepolia",
@@ -15,6 +16,29 @@
     "startBlock": "1",
     "confirmations": "15",
     "rpcUrls": ["https://rpc-a.invalid/path", "https://rpc-b.invalid/path"]
+  },
+  "destination": {
+    "rpcUrls": ["https://destination-rpc-a.invalid/path", "https://destination-rpc-b.invalid/path"],
+    "chainId": 421614,
+    "srcEid": 40161,
+    "endpoint": "0x7777777777777777777777777777777777777777",
+    "receiveLibrary": "0x8888888888888888888888888888888888888888",
+    "oapp": "0x4444444444444444444444444444444444444444",
+    "adapter": "0x9999999999999999999999999999999999999999",
+    "useDefaultReceiveLibrary": false,
+    "confirmations": "64",
+    "requiredDvns": ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    "optionalDvns": ["0x9999999999999999999999999999999999999999", "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+    "optionalDvnThreshold": 1,
+    "authorizedSigners": [
+      "0x1111111111111111111111111111111111111111",
+      "0x2222222222222222222222222222222222222222",
+      "0x3333333333333333333333333333333333333333",
+      "0x4444444444444444444444444444444444444444",
+      "0x5555555555555555555555555555555555555555"
+    ],
+    "quorum": 3,
+    "signatureTtlSeconds": 300
   },
   "evidence": {
     "uri": "https://governance.invalid/authorization.json",
