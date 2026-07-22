@@ -6,6 +6,12 @@ Copy `config/sentinel-runtime.example.json` outside the repository, replace ever
 
 Passing preflight does not authorize deployment or establish that addresses, libraries, DVNs, RPCs or GenLayer are current. Chain-state validation and explicit user approval remain separate gates.
 
+## Runtime lifecycle
+
+`composeRuntime` constructs one testnet-prototype process from a parsed manifest and an injected `GenLayerClientFacade`. It opens both SQLite stores, restores jobs plus complete policy-request bindings, re-registers pending bindings with the GenLayer adapter, binds the same-origin dashboard, then schedules one serialized loop. Each tick runs acknowledged ingestion before polling all `POLICY_PENDING` jobs. Tick failures are reported and retried on the next interval without overlapping work.
+
+Shutdown cancels future ticks, waits for an active tick, closes HTTP, then closes listener and job stores once. Startup failure closes resources already created. The runtime intentionally composes an empty signer list and therefore cannot cross the signer-quorum stage. A standalone process entrypoint is withheld until the GenLayer direct-mode/account-provider contract and secure signer transport are validated; do not add a raw private-key environment variable as a shortcut.
+
 The independent receipt verifier repeats critical checks even when a manifest already passed preflight: at least two distinct HTTPS origins, no credentials/custom ports/local or literal-IP targets, a nonzero EndpointV2 address and positive confirmation depth. Its built-in RPC transport refuses redirects and times out after ten seconds. Distinct origins are not proof of independent operators; procurement and infrastructure review must establish separate providers and failure domains.
 
 ## Ingestion
