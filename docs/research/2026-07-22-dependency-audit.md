@@ -1,6 +1,6 @@
 # Dependency and advisory audit — 2026-07-22
 
-Status: registry metadata audited; no package changed; no automated remediation run.
+Status: registry metadata audited; GenLayerJS removed from the runtime boundary; no automated advisory remediation run.
 
 ## Published-version comparison
 
@@ -12,7 +12,7 @@ Exact versions remain mandatory. Registry `latest` is evidence for triage, not p
 | `@layerzerolabs/lz-evm-messagelib-v2` | `3.0.168` | `3.0.168` | Current and aligned with protocol; retain. |
 | `@layerzerolabs/lz-evm-v1-0.7` | `3.0.168` | `3.0.168` | Current transitive peer for the official packages; retain as development-only. |
 | `@layerzerolabs/oapp-evm` | `0.4.1` | `0.4.1` | Current; its peer range accepts LayerZero `3.0.168`. |
-| `genlayer-js` | `1.1.8` | `1.1.8` | Current; retain pending live API compatibility tests and upstream packaging cleanup. |
+| `genlayer-js` | removed | `1.1.8` | Removed from Sentinel runtime; direct status JSON-RPC plus a structural account-aware adapter replaced the enum-only import. |
 | `ethers` | `6.17.0` | `6.17.0` | Current runtime dependency; retain. |
 | `@openzeppelin/contracts` | `5.4.0` | `5.6.1` | Upgrade candidate, not automatic; requires contract diff/compile/local-EVM review. |
 | `@openzeppelin/contracts-upgradeable` | `5.4.0` | `5.6.1` | Kept aligned with Contracts; currently only an official LayerZero peer. |
@@ -23,7 +23,7 @@ The official LayerZero package manifests accept OpenZeppelin `^4.8.1 || ^5.0.0`;
 
 ## Advisory evidence
 
-`npm audit --omit=dev --json` returned zero production vulnerabilities across 154 production dependency nodes. The full `npm audit --json` returned 22 advisory nodes: 12 low, 3 moderate, 6 high and 1 critical.
+`npm audit --omit=dev --json` returned zero production vulnerabilities across ten production dependency nodes. The full normalized tree retains 22 advisory nodes: 12 low, 3 moderate, 6 high and 1 critical.
 
 The affected full-tree paths are development/build paths:
 
@@ -35,13 +35,11 @@ The registry's automated `fixAvailable` suggestions are not safe migrations: it 
 
 ## Dependency-integrity finding
 
-`npm ls --omit=dev --depth=2` fails with `ELSPROBLEMS` because `genlayer-js@1.1.8` lists `eslint-plugin-import` under production `dependencies`, and that plugin requires an `eslint` peer which is not installed. This condition existed when GenLayerJS was introduced; the 2026-07-22 documentation changes did not create it.
+The prior `ELSPROBLEMS` condition is resolved. `genlayer-js@1.1.8` had published `eslint-plugin-import` as a production dependency with an unmet ESLint peer, while Sentinel imported only its transaction-status and execution-result enums. Version 0.20.0 removes that package, validates the documented `gen_getTransactionStatus` protocol locally, and represents execution results with a Sentinel-owned structural type. `npm ls --omit=dev --depth=2` now exits zero.
 
-Sentinel does not import or execute the lint plugin. Adding ESLint merely to make `npm ls` green would retain unnecessary runtime surface and hide the source problem. Safe options for a separately designed milestone are:
+This is not a custom custody implementation. Account-aware write, execution lookup and finalized contract-read behavior remain injected, so a separately approved adapter may wrap an official GenLayer SDK without pulling its packaging surface into the coordinator core. No live compatibility claim follows from the clean dependency tree.
 
-1. Prefer an upstream `genlayer-js` release that moves lint tooling to development dependencies.
-2. Replace the small runtime SDK boundary with an audited JSON-RPC/ABI client while retaining GenLayerJS only for development if needed.
-3. As a temporary build-only measure, produce a pruned runtime artifact and verify its exact allowlist; do not mutate upstream package contents in `node_modules`.
+The lockfile is pinned to npm 10.9.2. During the audit, npm 11.17 expanded Ganache's bundled development dependencies without preserving their development classification, causing `npm audit --omit=dev` to report 26 Ganache-only nodes even though `npm ls --omit=dev --all` contained only ethers. Regenerating with the pinned tool restored the correct 118-package lock representation and zero-advisory ten-node production audit. This is recorded as package-manager reproducibility evidence, not as dismissal of Ganache's real development findings.
 
 ## Upgrade gates
 
@@ -49,6 +47,7 @@ Sentinel does not import or execute the lint plugin. Adding ESLint merely to mak
 - Replace archived Ganache with a maintained local EVM runner before public/untrusted CI; Foundry Anvil is a candidate, not yet selected or installed.
 - Keep all Solidity input paths fixed and reviewed until the vulnerable compiler wrapper is replaced or isolated.
 - A dependency change must regenerate the lock, run `npm ls`, both advisory audits, `npm run check`, bytecode/ABI comparison and the two local contract lifecycle tests.
+- Regenerate `package-lock.json` with npm 10.9.2; review any package-manager-driven bundled dependency expansion before accepting it.
 - Live deployment additionally requires official LayerZero package/address compatibility and GenLayer target-network testing; registry currency alone proves neither.
 
 ## Primary package sources
