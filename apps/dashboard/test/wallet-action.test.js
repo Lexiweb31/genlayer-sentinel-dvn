@@ -135,6 +135,7 @@ test("submits once and extracts one bound ActionSent GUID from the successful re
   assert.deepEqual(submitted,[{hash:transactionHash,receiptPolls:0}]);
   const sends=provider.calls.filter(call=>call.method==="eth_sendTransaction");
   assert.equal(sends.length,1);
+  assert.equal(provider.calls.some(call=>["personal_sign","eth_sign","eth_sendRawTransaction"].includes(call.method)),false);
   const transaction=sends[0].params[0];
   assert.equal(transaction.from,owner);
   assert.equal(transaction.to,sourceOApp);
