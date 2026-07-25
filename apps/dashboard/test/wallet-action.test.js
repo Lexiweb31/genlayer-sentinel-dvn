@@ -127,8 +127,12 @@ test("validates public config, wallet chain and on-chain OApp owner before quoti
 
 test("submits once and extracts one bound ActionSent GUID from the successful receipt",async()=>{
   const provider=new RecordingProvider(),client=new WalletActionClient(provider,{pollIntervalMs:0,maxReceiptPolls:3}),parsed=parsePublicDemoConfig(config),session=await client.connect(parsed),quote=await client.quote(parsed,session,"approved");
-  const submission=await client.submit(parsed,session,quote);
+  const submitted=[];
+  const submission=await client.submit(parsed,session,quote,hash=>{
+    submitted.push({hash,receiptPolls:provider.calls.filter(call=>call.method==="eth_getTransactionReceipt").length});
+  });
   assert.deepEqual(submission,{transactionHash,guid,blockNumber:12n});
+  assert.deepEqual(submitted,[{hash:transactionHash,receiptPolls:0}]);
   const sends=provider.calls.filter(call=>call.method==="eth_sendTransaction");
   assert.equal(sends.length,1);
   const transaction=sends[0].params[0];

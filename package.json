@@ -1,7 +1,9 @@
 {
   "name": "genlayer-sentinel",
   "version": "0.22.0",
-  "engines": {"node": ">=22.13.0"},
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "packageManager": "npm@10.9.2",
   "private": true,
   "type": "module",
@@ -13,9 +15,10 @@
   "scripts": {
     "compile:contracts": "node scripts/compile-contracts.mjs",
     "check:ic": "python3 scripts/check-intelligent-contract.py",
-    "check:dashboard": "node --check apps/dashboard/src/app.js && node --check apps/dashboard/src/timeline.js && node scripts/check-dashboard.mjs",
+    "build:dashboard": "node scripts/build-dashboard.mjs",
+    "check:dashboard": "node --check apps/dashboard/src/app.js && node --check apps/dashboard/src/timeline.js && node --check dist/apps/dashboard/demo.js && node scripts/check-dashboard.mjs",
     "preflight": "npm run build && node dist/services/coordinator/src/preflight.js",
-    "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run check:dashboard",
+    "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
     "test": "npm run build && node --test apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm test"
@@ -27,6 +30,7 @@
     "@layerzerolabs/oapp-evm": "0.4.1",
     "@openzeppelin/contracts": "5.4.0",
     "@openzeppelin/contracts-upgradeable": "5.4.0",
+    "esbuild": "0.28.1",
     "hardhat": "3.10.0",
     "solc": "0.8.30",
     "typescript": "5.8.3"

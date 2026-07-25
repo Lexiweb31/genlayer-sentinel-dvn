@@ -3,16 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Read-only operations dashboard for the GenLayer Sentinel LayerZero DVN testnet prototype.">
+  <meta name="description" content="Local wallet action and operations app for the GenLayer Sentinel LayerZero DVN testnet prototype.">
   <title>GenLayer Sentinel · Operations</title>
   <link rel="stylesheet" href="./src/style.css">
   <link rel="stylesheet" href="./src/recovery.css">
   <link rel="stylesheet" href="./src/delivery.css">
+  <link rel="stylesheet" href="./src/demo.css">
 </head>
 <body>
   <header><div class="mark">S</div><div><strong>GenLayer Sentinel</strong><span>Policy firewall for LayerZero</span></div><b id="runtime-mode">CHECKING MODE</b></header>
   <main>
     <section class="hero"><p>ETHEREUM SEPOLIA → ARBITRUM SEPOLIA</p><h1>Every high-value message must explain itself.</h1><p class="lede">Sentinel independently proves the packet, asks decentralized semantic consensus whether governance authorized the action, then requires isolated signer quorum.</p><div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div></section>
+    <section class="demo-workspace" id="demo-workspace" aria-labelledby="demo-title">
+      <div class="section-head"><div><p>LOCAL TEST · FIXTURE POLICY</p><h2 id="demo-title">Send a governed treasury action</h2></div><span class="status" id="demo-status">CHECKING CAPABILITY</span></div>
+      <div class="demo-warning"><strong>Local proof path only.</strong> Your wallet sends a real transaction to locally deployed OApp bytecode. The semantic result is an explicitly labeled fixture—not live GenLayer consensus or testnet approval.</div>
+      <div class="demo-grid">
+        <article class="demo-control">
+          <div class="demo-step"><span>01</span><div><strong>Connect the action owner</strong><p>The wallet must be on local chain 31337 and match the source OApp’s on-chain owner.</p></div></div>
+          <button id="demo-connect" type="button" disabled>Connect wallet</button>
+          <dl class="demo-readout"><dt>Account</dt><dd id="demo-account">Not connected</dd><dt>Chain</dt><dd id="demo-chain">Not checked</dd></dl>
+        </article>
+        <article class="demo-control">
+          <div class="demo-step"><span>02</span><div><strong>Prepare the governed action</strong><p>The target, authorization ID, selector, action value, and LayerZero options are immutable.</p></div></div>
+          <label for="demo-record-label">Record value</label>
+          <input id="demo-record-label" type="text" maxlength="80" autocomplete="off" spellcheck="false" disabled>
+          <dl class="demo-readout"><dt>bytes32 argument</dt><dd><code id="demo-argument">—</code></dd><dt>Authorization match</dt><dd id="demo-match">Not evaluated</dd></dl>
+          <button id="demo-quote" type="button" disabled>Quote LayerZero fee</button>
+          <p class="demo-fee">Quoted native fee <strong id="demo-fee">—</strong></p>
+        </article>
+        <article class="demo-control">
+          <div class="demo-step"><span>03</span><div><strong>Emit the packet</strong><p>Wallet confirmation submits once. Mining proves emission only; Sentinel decides later.</p></div></div>
+          <button id="demo-send" type="button" disabled>Send governed action</button>
+          <dl class="demo-readout"><dt>Source transaction</dt><dd><code id="demo-transaction">—</code></dd><dt>Packet GUID</dt><dd><code id="demo-guid">—</code></dd></dl>
+        </article>
+      </div>
+      <div class="notice demo-message" id="demo-message" role="status" aria-live="polite">The wallet action is disabled until the local harness exposes a valid capability.</div>
+      <details class="demo-boundary"><summary>Immutable local action boundary</summary><dl><dt>Source OApp</dt><dd><code id="demo-source-oapp">—</code></dd><dt>Destination EID</dt><dd id="demo-destination-eid">—</dd><dt>Target</dt><dd><code id="demo-target">—</code></dd><dt>Function</dt><dd id="demo-signature">record(bytes32)</dd><dt>Action value</dt><dd>0 wei</dd><dt>Semantic source</dt><dd>LOCAL_POLICY_FIXTURE</dd></dl></details>
+    </section>
     <section>
       <div class="section-head"><div><p>OPERATIONS</p><h2>Packet lifecycle</h2></div><span class="status" id="connection-status">CONNECTING</span></div>
       <div class="packet-bar"><label for="job-select">Observed packet</label><select id="job-select" disabled><option>Waiting for coordinator</option></select><span id="refresh-time">Never refreshed</span></div>
@@ -36,5 +63,6 @@ mainnet ready     NO</pre></article></section>
   </main>
   <footer>GenLayer Sentinel · honest-by-default testnet engineering</footer>
   <script type="module" src="./src/app.js"></script>
+  <script type="module" src="/assets/demo.js"></script>
 </body>
 </html>

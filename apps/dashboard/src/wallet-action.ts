@@ -136,13 +136,19 @@ export class WalletActionClient {
     }catch{throw new WalletActionError("QUOTE_REVERTED")}
   }
 
-  async submit(config:PublicDemoConfig,session:WalletSession,quote:PreparedQuote):Promise<SourceSubmission>{
+  async submit(
+    config:PublicDemoConfig,
+    session:WalletSession,
+    quote:PreparedQuote,
+    onSubmitted?:(transactionHash:Hex)=>void
+  ):Promise<SourceSubmission>{
     await this.assertSession(config,session);this.assertQuote(config,session,quote);
     const data=oapp.encodeFunctionData("sendAction",[config.destinationEid,quote.action,config.options,{nativeFee:quote.nativeFee,lzTokenFee:quote.lzTokenFee}]);
     let rawHash:unknown;
     try{rawHash=await this.provider.request({method:"eth_sendTransaction",params:[{from:session.account,to:config.sourceOApp,data,value:toQuantity(quote.nativeFee)}]})}
     catch(error){if(providerCode(error)===4001)throw new WalletActionError("USER_REJECTED");throw new WalletActionError("INSUFFICIENT_LOCAL_FUNDS")}
     const transactionHash=safeHash(rawHash,"SOURCE_RECEIPT_UNAVAILABLE");
+    onSubmitted?.(transactionHash);
     let receipt:Receipt|undefined;
     for(let attempt=0;attempt<this.maxReceiptPolls;attempt++){
       let value:unknown;try{value=await this.provider.request({method:"eth_getTransactionReceipt",params:[transactionHash]})}catch{throw new WalletActionError("SOURCE_RECEIPT_UNAVAILABLE")}
