@@ -13,6 +13,7 @@ const envelope={chainId:421614n,adapter:a("1"),verificationTarget:a("2"),guid:h(
 const digest=executionDigest(envelope),wallets=[1,2,3,4,5].map(value=>new Wallet(`0x${value.toString(16).padStart(64,"0")}`)).sort((left,right)=>left.address.toLowerCase().localeCompare(right.address.toLowerCase())),authorized=wallets.map(wallet=>wallet.address.toLowerCase()),outsider=new Wallet(`0x${"9".padStart(64,"0")}`);
 const share=async(wallet,bound=digest,address=wallet.address.toLowerCase())=>({address,signature:await wallet.signMessage(getBytes(bound)),digest:bound});
 const shares=await Promise.all(wallets.slice(0,3).map(wallet=>share(wallet))),fourth=await share(wallets[3]),outsiderShare=await share(outsider),impostor={...outsiderShare,address:authorized[2]};
+const recoveryOperators=[a("a"),a("b"),a("c")],candidate=h("f"),audit={actionId:h("6"),kind:"DESTINATION_CONFIRM",deploymentDigest:h("7"),subject:envelope.guid,preconditionDigest:h("8"),candidateTransactionHash:candidate,operators:recoveryOperators,preparedAt:100,executeAfter:1000,expiresAt:3700,resultCode:"DESTINATION_CONFIRMED"};
 
 test("persists an immutable signing plan before attaching a durable quorum",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"sentinel-outbox-")),path=join(dir,"state.db");
@@ -81,4 +82,31 @@ test("rejects persisted records that violate their restored state invariants",as
   let store=new SqliteVerificationOutbox(path,authorized,3);await store.plan(envelope.guid,envelope,100);await store.recordQuorum(envelope.guid,shares,110);store.close();
   const db=new DatabaseSync(path),row=db.prepare("SELECT record_json FROM verification_outbox WHERE guid=?").get(envelope.guid),record=JSON.parse(row.record_json);record.shares=[];db.prepare("UPDATE verification_outbox SET record_json=? WHERE guid=?").run(JSON.stringify(record),envelope.guid);db.close();
   store=new SqliteVerificationOutbox(path,authorized,3);await assert.rejects(store.get(envelope.guid),/invariant/);store.close();rmSync(dir,{recursive:true,force:true});
+});
+
+test("atomically confirms an ambiguous transaction without the general transition map",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-outbox-")),store=new SqliteVerificationOutbox(join(dir,"state.db"),authorized,3);
+  await store.plan(envelope.guid,envelope,100);await store.recordQuorum(envelope.guid,shares,110);
+  await store.transition(envelope.guid,"READY",{state:"RECOVERY_REQUIRED",failureCode:"SUBMISSION_AMBIGUOUS",transactionHash:candidate,updatedAt:120});
+  const recovered=await store.recoverConfirmed(envelope.guid,digest,"SUBMISSION_AMBIGUOUS",candidate,15n,audit,1100);
+  assert.equal(recovered.record.state,"CONFIRMED");assert.equal(recovered.record.transactionHash,candidate);assert.equal(recovered.record.confirmations,15n);assert.equal(recovered.record.failureCode,undefined);
+  assert.deepEqual(recovered.record.envelope,envelope);assert.deepEqual(recovered.record.shares,shares);assert.deepEqual(await store.listRecoveryReceipts(),[recovered.receipt]);
+  assert.deepEqual(await store.recoverConfirmed(envelope.guid,digest,"SUBMISSION_AMBIGUOUS",candidate,15n,audit,1200),recovered);
+  store.close();rmSync(dir,{recursive:true,force:true});
+});
+
+test("leaves ambiguous records and the ledger unchanged when protected inputs drift",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-outbox-")),store=new SqliteVerificationOutbox(join(dir,"state.db"),authorized,3);
+  await store.plan(envelope.guid,envelope,100);await store.recordQuorum(envelope.guid,shares,110);
+  await store.transition(envelope.guid,"READY",{state:"RECOVERY_REQUIRED",failureCode:"SUBMISSION_AMBIGUOUS",transactionHash:candidate,updatedAt:120});
+  const failures=[
+    [h("9"),digest,"SUBMISSION_AMBIGUOUS",candidate,15n,audit,1100],
+    [envelope.guid,h("9"),"SUBMISSION_AMBIGUOUS",candidate,15n,audit,1100],
+    [envelope.guid,digest,"OTHER_FAILURE",candidate,15n,audit,1100],
+    [envelope.guid,digest,"SUBMISSION_AMBIGUOUS",h("9"),15n,audit,1100],
+    [envelope.guid,digest,"SUBMISSION_AMBIGUOUS",candidate,0n,audit,1100]
+  ];
+  for(const args of failures)await assert.rejects(store.recoverConfirmed(...args));
+  assert.equal((await store.get(envelope.guid)).state,"RECOVERY_REQUIRED");assert.equal((await store.listRecoveryReceipts()).length,0);
+  store.close();rmSync(dir,{recursive:true,force:true});
 });

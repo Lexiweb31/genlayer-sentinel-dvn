@@ -1,15 +1,17 @@
 import {DatabaseSync} from "node:sqlite";
 import {getBytes,verifyMessage} from "ethers";
 import type {Hex} from "../../../packages/core/src/types.js";
+import {appendRecoveryReceipt,getRecoveryReceipt as readRecoveryReceipt,initializeRecoveryAudit,listRecoveryReceipts as readRecoveryReceipts,type RecoveryAuditInput,type RecoveryReceipt,type RecoveryReceiptReader} from "./recovery-audit.js";
 import {executionDigest,type SignatureShare,type SigningEnvelope} from "./signing.js";
 
 export type OutboxState="SIGNING"|"READY"|"ATTEMPTING"|"SUBMITTED"|"CONFIRMED"|"FAILED"|"RECOVERY_REQUIRED";
 export interface OutboxRecord {guid:Hex;digest:Hex;envelope:SigningEnvelope;shares:SignatureShare[];state:OutboxState;transactionHash?:Hex;confirmations?:bigint;failureCode?:string;createdAt:number;updatedAt:number}
 export interface OutboxUpdate {state:OutboxState;transactionHash?:Hex;confirmations?:bigint;failureCode?:string;updatedAt:number}
-export interface VerificationOutboxStore {
+export interface VerificationOutboxStore extends RecoveryReceiptReader {
   plan(guid:Hex,envelope:SigningEnvelope,now:number):Promise<OutboxRecord>;
   recordQuorum(guid:Hex,shares:SignatureShare[],now:number):Promise<OutboxRecord>;
   transition(guid:Hex,expected:OutboxState,update:OutboxUpdate):Promise<OutboxRecord>;
+  recoverConfirmed(guid:Hex,expectedDigest:Hex,expectedFailureCode:string,transactionHash:Hex,confirmations:bigint,input:RecoveryAuditInput,appliedAt:number):Promise<{record:OutboxRecord;receipt:RecoveryReceipt}>;
   get(guid:Hex):Promise<OutboxRecord|undefined>;
   list():Promise<OutboxRecord[]>;
   close():void;
@@ -27,6 +29,7 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
     for(const value of authorized){const signer=normalizeAddress(value);if(signer<=prior)throw new Error("outbox authorized signers must be unique and sorted");prior=signer;this.allowedSigners.add(signer)}
     this.db=new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS verification_outbox(guid TEXT PRIMARY KEY,state TEXT NOT NULL,record_json TEXT NOT NULL,updated_at INTEGER NOT NULL);");
+    initializeRecoveryAudit(this.db);
   }
 
   async plan(guid:Hex,envelope:SigningEnvelope,now:number):Promise<OutboxRecord>{
@@ -75,6 +78,38 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
 
   async get(guid:Hex):Promise<OutboxRecord|undefined>{validateHash(guid,"GUID");const row=this.row(guid);return row?this.decodeRow(row):undefined}
   async list():Promise<OutboxRecord[]>{return(this.db.prepare("SELECT state,record_json FROM verification_outbox ORDER BY updated_at,guid").all() as Row[]).map(row=>this.decodeRow(row))}
+  async recoverConfirmed(guid:Hex,expectedDigest:Hex,expectedFailureCode:string,transactionHash:Hex,confirmations:bigint,input:RecoveryAuditInput,appliedAt:number):Promise<{record:OutboxRecord;receipt:RecoveryReceipt}>{
+    validateHash(guid,"GUID");validateHash(expectedDigest,"digest");validateHash(transactionHash,"transaction hash");validateTime(appliedAt);
+    if(!/^[A-Z][A-Z0-9_]{1,63}$/.test(expectedFailureCode))throw new Error("invalid recovery failure code");
+    if(confirmations<=0n)throw new Error("recovery confirmations must be positive");
+    const normalizedGuid=guid.toLowerCase() as Hex,normalizedTransaction=transactionHash.toLowerCase() as Hex;
+    if(input.kind!=="DESTINATION_CONFIRM"||input.resultCode!=="DESTINATION_CONFIRMED"||!same(input.subject,normalizedGuid)||!same(input.candidateTransactionHash,normalizedTransaction))throw new Error("recovery audit does not match outbox");
+    this.db.exec("BEGIN IMMEDIATE");
+    try{
+      const existing=readRecoveryReceipt(this.db,input.actionId);
+      if(existing){
+        const row=this.row(normalizedGuid);if(!row)throw new Error("unknown outbox GUID");
+        const record=this.decodeRow(row);
+        if(record.state!=="CONFIRMED"||!record.transactionHash||!same(record.transactionHash,normalizedTransaction)||record.confirmations!==confirmations)throw new Error("outbox recovery replay mismatch");
+        const receipt=appendRecoveryReceipt(this.db,input,appliedAt);this.db.exec("COMMIT");return{record,receipt};
+      }
+      const row=this.row(normalizedGuid);if(!row)throw new Error("unknown outbox GUID");
+      const current=this.decodeRow(row);
+      if(current.state!=="RECOVERY_REQUIRED")throw new Error("outbox state mismatch");
+      if(!same(current.digest,expectedDigest))throw new Error("outbox digest mismatch");
+      if(current.failureCode!==expectedFailureCode)throw new Error("outbox failure code mismatch");
+      if(current.transactionHash&&!same(current.transactionHash,normalizedTransaction))throw new Error("outbox transaction hash mismatch");
+      if(appliedAt<current.updatedAt)throw new Error("outbox timestamp regression");
+      const next:OutboxRecord={...current,state:"CONFIRMED",transactionHash:normalizedTransaction,confirmations,updatedAt:appliedAt};
+      delete next.failureCode;this.validateRecord(next);
+      const changed=this.db.prepare("UPDATE verification_outbox SET state='CONFIRMED',record_json=?,updated_at=? WHERE guid=? AND state='RECOVERY_REQUIRED'").run(encode(next),appliedAt,normalizedGuid);
+      if(changed.changes!==1)throw new Error("outbox state mismatch");
+      const receipt=appendRecoveryReceipt(this.db,input,appliedAt);
+      this.db.exec("COMMIT");return{record:next,receipt};
+    }catch(error){this.db.exec("ROLLBACK");throw error}
+  }
+  async listRecoveryReceipts():Promise<RecoveryReceipt[]>{return readRecoveryReceipts(this.db)}
+  async getRecoveryReceipt(actionId:Hex):Promise<RecoveryReceipt|undefined>{return readRecoveryReceipt(this.db,actionId)}
   close():void{this.db.close()}
 
   private row(guid:Hex):Row|undefined{return this.db.prepare("SELECT state,record_json FROM verification_outbox WHERE guid=?").get(guid) as Row|undefined}
