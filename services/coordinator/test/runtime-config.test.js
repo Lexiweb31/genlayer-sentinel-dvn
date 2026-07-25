@@ -11,6 +11,7 @@ const valid={
   destination:{rpcUrls:["https://dst-a.example/v1/key","https://dst-b.example/v1/key"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:"64",requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:[a("1"),a("2"),a("3"),a("4"),a("5")],quorum:3,signatureTtlSeconds:300},
   evidence:{uri:"https://governance.example/authorization",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},
   genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},
+  recovery:{operators:[a("6"),a("7"),a("8"),a("9"),a("a")],quorum:3,minimumDelaySeconds:900,maximumLifetimeSeconds:3600},
   storage:{sqlitePath:"/var/lib/sentinel/state.db"},
   runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},
   status:{host:"127.0.0.1",port:8787}
@@ -23,10 +24,27 @@ test("parses a pinned destination security manifest and redacts public RPC paths
   assert.equal(config.destination.quorum,3);
   assert.equal(config.runtime.pollIntervalMs,5000);
   assert.equal(config.runtime.maxIngestionAttempts,3);
+  assert.deepEqual(config.recovery,{operators:[a("6"),a("7"),a("8"),a("9"),a("a")],quorum:3,minimumDelaySeconds:900,maximumLifetimeSeconds:3600});
   assert.deepEqual(summary.pathway.rpcUrls,["https://rpc-a.example","https://rpc-b.example"]);
   assert.deepEqual(summary.destination.rpcUrls,["https://dst-a.example","https://dst-b.example"]);
   assert.equal(summary.destination.signatureTtlSeconds,300);
   assert.equal(summary.storage.sqlitePath,"[configured]");
+});
+
+test("rejects weak or signer-overlapping recovery policy",()=>{
+  const changes=[
+    input=>input.recovery.extra="unsafe",
+    input=>input.recovery.operators=input.recovery.operators.slice(0,4),
+    input=>input.recovery.operators=[a("6"),a("7"),a("8"),a("8"),a("a")],
+    input=>input.recovery.operators=[a("7"),a("6"),a("8"),a("9"),a("a")],
+    input=>input.recovery.operators[0]=input.destination.authorizedSigners[0],
+    input=>input.recovery.quorum=2,
+    input=>input.recovery.quorum=4,
+    input=>input.recovery.minimumDelaySeconds=899,
+    input=>input.recovery.maximumLifetimeSeconds=86401,
+    input=>input.recovery.maximumLifetimeSeconds=1199
+  ];
+  for(const change of changes){const input=structuredClone(valid);change(input);assert.throws(()=>parseRuntimeConfig(input),/recovery/i);}
 });
 
 test("rejects missing, unsafe, ambiguous and secret-bearing base runtime values",()=>{

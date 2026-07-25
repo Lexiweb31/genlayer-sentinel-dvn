@@ -42,12 +42,20 @@ export interface SourcePathConfig {
   rpcUrls:string[];
 }
 
+export interface RecoveryPolicyConfig {
+  operators:Hex[];
+  quorum:3;
+  minimumDelaySeconds:number;
+  maximumLifetimeSeconds:number;
+}
+
 export interface RuntimeConfig {
   mode:"TESTNET_PROTOTYPE";
   pathway:SourcePathConfig;
   destination:DestinationPathConfig;
   evidence:{uri:string;allowedHost:string;policy:string;ttlSeconds:number;maximumBytes:number};
   genlayer:{endpoint:string;policyContract:Hex};
+  recovery:RecoveryPolicyConfig;
   storage:{sqlitePath:string};
   runtime:{pollIntervalMs:number;maxIngestionAttempts:number};
   status:{host:string;port:number};
@@ -57,17 +65,20 @@ type RecordValue=Record<string,unknown>;
 
 export function parseRuntimeConfig(value:unknown):RuntimeConfig {
   const root=record(value,"config");
+  exactKeys(root,["mode","pathway","destination","evidence","genlayer","recovery","storage","runtime","status"],"config");
   if(root.mode!=="TESTNET_PROTOTYPE")throw new Error("mode must be TESTNET_PROTOTYPE");
   const pathway=record(root.pathway,"pathway");
   const destination=record(root.destination,"destination");
   const evidence=record(root.evidence,"evidence");
   const genlayer=record(root.genlayer,"genlayer");
+  const recovery=record(root.recovery,"recovery");
   const storage=record(root.storage,"storage");
   const runtime=record(root.runtime,"runtime");
   const status=record(root.status,"status");
 
   exactKeys(pathway,["name","sourceChainId","destinationChainId","srcEid","dstEid","endpoint","sendLibrary","sourceOApp","sourceOAppAddress","destinationOApp","sentinelDvn","executor","maxMessageSize","deadDvn","requiredDvns","optionalDvns","optionalDvnThreshold","startBlock","confirmations","rpcUrls"],"pathway");
   exactKeys(destination,["rpcUrls","chainId","srcEid","endpoint","receiveLibrary","oapp","adapter","useDefaultReceiveLibrary","confirmations","requiredDvns","optionalDvns","optionalDvnThreshold","authorizedSigners","quorum","signatureTtlSeconds"],"destination");
+  exactKeys(recovery,["operators","quorum","minimumDelaySeconds","maximumLifetimeSeconds"],"recovery");
 
   const rpcUrls=secureRpcUrls(pathway.rpcUrls,"pathway.rpcUrls");
   const destinationRpcUrls=secureRpcUrls(destination.rpcUrls,"destination.rpcUrls");
@@ -109,6 +120,15 @@ export function parseRuntimeConfig(value:unknown):RuntimeConfig {
   if(quorum!==3)throw new Error("destination signer quorum must be three");
   const signatureTtlSeconds=uint(destination.signatureTtlSeconds,"destination.signatureTtlSeconds");
   if(signatureTtlSeconds<30||signatureTtlSeconds>900)throw new Error("destination signature TTL must be between 30 and 900 seconds");
+  const recoveryOperators=sortedAddresses(recovery.operators,"recovery.operators");
+  if(recoveryOperators.length!==5)throw new Error("recovery must configure exactly five operators");
+  if(recoveryOperators.some(operator=>authorizedSigners.some(signer=>same(operator,signer))))throw new Error("recovery operators must be separate from destination signers");
+  const recoveryQuorum=uint(recovery.quorum,"recovery.quorum");
+  if(recoveryQuorum!==3)throw new Error("recovery quorum must be three");
+  const minimumDelaySeconds=uint(recovery.minimumDelaySeconds,"recovery.minimumDelaySeconds");
+  if(minimumDelaySeconds<900)throw new Error("recovery minimum delay must be at least 900 seconds");
+  const maximumLifetimeSeconds=uint(recovery.maximumLifetimeSeconds,"recovery.maximumLifetimeSeconds");
+  if(maximumLifetimeSeconds>86400||maximumLifetimeSeconds<minimumDelaySeconds+300)throw new Error("recovery maximum lifetime is invalid");
 
   const evidenceUrl=secureUrl(text(evidence.uri,"evidence.uri"),"evidence.uri");
   const allowedHost=hostname(text(evidence.allowedHost,"evidence.allowedHost"));
@@ -122,6 +142,7 @@ export function parseRuntimeConfig(value:unknown):RuntimeConfig {
     destination:{rpcUrls:destinationRpcUrls,chainId:destinationChain,srcEid:destinationSrcEid,endpoint:address(destination.endpoint,"destination.endpoint"),receiveLibrary:address(destination.receiveLibrary,"destination.receiveLibrary"),oapp:destinationOappAddress,adapter:destinationAdapter,useDefaultReceiveLibrary:false,confirmations:big(destination.confirmations,"destination.confirmations"),requiredDvns,optionalDvns,optionalDvnThreshold,authorizedSigners,quorum:3,signatureTtlSeconds},
     evidence:{uri:evidenceUrl.href,allowedHost,policy:text(evidence.policy,"evidence.policy"),ttlSeconds:uint(evidence.ttlSeconds,"evidence.ttlSeconds"),maximumBytes:uint(evidence.maximumBytes,"evidence.maximumBytes")},
     genlayer:{endpoint:secureUrl(text(genlayer.endpoint,"genlayer.endpoint"),"genlayer.endpoint").href,policyContract:address(genlayer.policyContract,"genlayer.policyContract")},
+    recovery:{operators:recoveryOperators,quorum:3,minimumDelaySeconds,maximumLifetimeSeconds},
     storage:{sqlitePath:absolutePath(storage.sqlitePath)},
     runtime:{pollIntervalMs:uint(runtime.pollIntervalMs,"runtime.pollIntervalMs"),maxIngestionAttempts:uint(runtime.maxIngestionAttempts,"runtime.maxIngestionAttempts")},
     status:{host,port:port(status.port)}
@@ -135,6 +156,7 @@ export function publicConfigSummary(config:RuntimeConfig):RecordValue {
     destination:{...config.destination,rpcUrls:config.destination.rpcUrls.map(url=>new URL(url).origin),confirmations:config.destination.confirmations.toString()},
     evidence:{uri:config.evidence.uri,allowedHost:config.evidence.allowedHost,ttlSeconds:config.evidence.ttlSeconds,maximumBytes:config.evidence.maximumBytes},
     genlayer:{endpoint:new URL(config.genlayer.endpoint).origin,policyContract:config.genlayer.policyContract},
+    recovery:config.recovery,
     storage:{sqlitePath:"[configured]"},
     runtime:config.runtime,
     status:config.status
