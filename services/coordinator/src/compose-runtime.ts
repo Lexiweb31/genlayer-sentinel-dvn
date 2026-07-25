@@ -2,6 +2,8 @@ import type {RuntimeConfig} from "./runtime-config.js";
 import {SqliteJobStore} from "./job-store.js";
 import {SqliteListenerStore} from "./listener-store.js";
 import {IndependentRpcPacketVerifier} from "./rpc-verifier.js";
+import {IndependentSourcePathVerifier} from "./source-path-verifier.js";
+import {SourceBoundPacketVerifier} from "./source-bound-packet-verifier.js";
 import {GenLayerRpcFinality,type GenLayerContractClient} from "./genlayer-finality.js";
 import {JsonRpcGenLayerStatusReader} from "./genlayer-status-reader.js";
 import {Coordinator} from "./coordinator.js";
@@ -46,7 +48,7 @@ export function composeRuntime(config:RuntimeConfig,capabilities:RuntimeCapabili
   const owned:Array<{close():void}>=[],acquire=<T extends{close():void}>(resource:T):T=>{owned.push(resource);return resource};
   try{
     const jobStore=acquire(stores.job(config.storage.sqlitePath)),listenerStore=acquire(stores.listener(config.storage.sqlitePath)),recoveryStore=acquire(stores.recovery(config.storage.sqlitePath)),outbox=acquire(stores.outbox(config.storage.sqlitePath,config.destination.authorizedSigners,config.destination.quorum));
-    const statusReader=new JsonRpcGenLayerStatusReader(config.genlayer.endpoint),finality=new GenLayerRpcFinality(capabilities.genlayer,statusReader,config.genlayer.policyContract),verifier=new IndependentRpcPacketVerifier(config.pathway.rpcUrls,config.pathway.endpoint,config.pathway.confirmations),coordinator=new Coordinator(verifier,finality,capabilities.signers,config.destination.quorum,config.pathway.confirmations,jobStore);
+    const statusReader=new JsonRpcGenLayerStatusReader(config.genlayer.endpoint),finality=new GenLayerRpcFinality(capabilities.genlayer,statusReader,config.genlayer.policyContract),verifier=new SourceBoundPacketVerifier(new IndependentRpcPacketVerifier(config.pathway.rpcUrls,config.pathway.endpoint,config.pathway.confirmations),new IndependentSourcePathVerifier(config.pathway)),coordinator=new Coordinator(verifier,finality,capabilities.signers,config.destination.quorum,config.pathway.confirmations,jobStore);
     const listener=new PacketFeeListener(new JsonRpcLogSource(config.pathway.rpcUrls[0]!),config.pathway.endpoint,config.pathway.sendLibrary,config.pathway.confirmations,config.pathway.startBlock,64n,listenerStore,config.pathway.name);
     const factory=new PolicyRequestFactory({srcEid:config.pathway.srcEid,dstEid:config.pathway.dstEid,sender:config.pathway.sourceOApp,receiver:config.pathway.destinationOApp,sendLibrary:config.pathway.sendLibrary,sentinelDvn:config.pathway.sentinelDvn,evidenceUri:config.evidence.uri,policy:config.evidence.policy,evidenceTtlSeconds:config.evidence.ttlSeconds,maximumEvidenceBytes:config.evidence.maximumBytes},new HttpsEvidenceSource([config.evidence.allowedHost]));
     const recovery=new RecoveryService(config.pathway.name,recoveryStore,listener),ingestion=new IngestionRunner(listener,coordinatorPacketHandler(factory,coordinator),recoveryFailurePolicy(config.pathway.name,recoveryStore,config.runtime.maxIngestionAttempts));

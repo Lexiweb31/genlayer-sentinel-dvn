@@ -7,6 +7,9 @@ export class SentinelJob {
   addVerification(v: Verification, minimum: bigint): void {
     if (this.snapshot.stage !== "DETECTED") throw new Error("verification stage closed");
     if (v.payloadHash !== this.snapshot.packet.payloadHash || v.blockHash !== this.snapshot.packet.blockHash) throw new Error("RPC disagreement");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(v.configurationDigest) || /^0x0{64}$/i.test(v.configurationDigest)) throw new Error("invalid source configuration digest");
+    const priorDigest=this.snapshot.verifications[0]?.configurationDigest;
+    if(priorDigest&&priorDigest.toLowerCase()!==v.configurationDigest.toLowerCase())throw new Error("source configuration digest disagreement");
     if (v.confirmations < minimum) throw new Error("insufficient confirmations");
     if (this.snapshot.verifications.some(x => x.provider === v.provider)) throw new Error("duplicate provider");
     this.snapshot.verifications.push(v);

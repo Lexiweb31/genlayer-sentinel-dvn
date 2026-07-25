@@ -6,9 +6,9 @@ const h = n => `0x${n.repeat(64)}`;
 const packet = {guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:h("2"),receiver:h("3"),message:"0x",payloadHash:h("4"),encodedPayloadHash:h("8"),txHash:h("5"),blockHash:h("6"),blockNumber:1n};
 test("requires two agreeing RPCs and finalized allow before quorum", () => {
   const j = new SentinelJob(packet);
-  j.addVerification({provider:"a",blockHash:h("6"),payloadHash:h("4"),confirmations:15n},15n);
+  j.addVerification({provider:"a",blockHash:h("6"),payloadHash:h("4"),configurationDigest:h("c"),confirmations:15n},15n);
   assert.throws(() => j.requestPolicy());
-  j.addVerification({provider:"b",blockHash:h("6"),payloadHash:h("4"),confirmations:15n},15n);
+  j.addVerification({provider:"b",blockHash:h("6"),payloadHash:h("4"),configurationDigest:h("c"),confirmations:15n},15n);
   j.requestPolicy();
   j.finalize({guid:h("1"),packetDigest:h("4"),evidenceDigest:h("7"),decision:"ALLOW",reasonCode:"AUTHORIZED",finalizedAt:10,policyVersion:"1"},11);
   j.addSigner("0xA",3); j.addSigner("0xB",3); j.addSigner("0xC",3);
@@ -17,10 +17,19 @@ test("requires two agreeing RPCs and finalized allow before quorum", () => {
 });
 test("fails closed on RPC disagreement and denied policy", () => {
   const j = new SentinelJob(packet);
-  assert.throws(() => j.addVerification({provider:"a",blockHash:h("9"),payloadHash:h("4"),confirmations:15n},15n));
+  assert.throws(() => j.addVerification({provider:"a",blockHash:h("9"),payloadHash:h("4"),configurationDigest:h("c"),confirmations:15n},15n));
   const k = new SentinelJob(packet);
-  for (const provider of ["a","b"]) k.addVerification({provider,blockHash:h("6"),payloadHash:h("4"),confirmations:15n},15n);
+  for (const provider of ["a","b"]) k.addVerification({provider,blockHash:h("6"),payloadHash:h("4"),configurationDigest:h("c"),confirmations:15n},15n);
   k.requestPolicy(); k.finalize({guid:h("1"),packetDigest:h("4"),evidenceDigest:h("7"),decision:"DENY",reasonCode:"NOT_AUTHORIZED",finalizedAt:10,policyVersion:"1"},11);
   assert.equal(k.snapshot.stage,"REJECTED"); assert.throws(() => k.addSigner("0xA",1));
   assert.throws(()=>k.markVerified()); assert.throws(()=>k.markExecuted());
+});
+test("requires a matching nonzero source configuration digest from every provider",()=>{
+  for(const configurationDigest of[undefined,h("0"),"0x1234"]){
+    const job=new SentinelJob(packet);
+    assert.throws(()=>job.addVerification({provider:"a",blockHash:h("6"),payloadHash:h("4"),configurationDigest,confirmations:15n},15n),/configuration digest/);
+  }
+  const job=new SentinelJob(packet);
+  job.addVerification({provider:"a",blockHash:h("6"),payloadHash:h("4"),configurationDigest:h("c"),confirmations:15n},15n);
+  assert.throws(()=>job.addVerification({provider:"b",blockHash:h("6"),payloadHash:h("4"),configurationDigest:h("d"),confirmations:15n},15n),/configuration digest/);
 });

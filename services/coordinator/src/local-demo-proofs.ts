@@ -62,7 +62,11 @@ export class LocalEdrPacketVerifier implements PacketVerifier {
     const latest=quantity(await this.rpc("eth_blockNumber",[]),"invalid local latest block");
     const confirmations=latest>=packet.blockNumber?latest-packet.blockNumber+1n:0n;
     if(confirmations<this.minimumConfirmations)throw new Error("insufficient local packet confirmations");
-    const proof={blockHash:packet.blockHash,payloadHash:packet.payloadHash,confirmations};
+    const configurationDigest=keccak256(actionCoder.encode(
+      ["string","uint256","address","uint32","uint32","bytes32","bytes32"],
+      ["LOCAL_EDR_FIXTURE_SOURCE_PATH",packet.blockNumber,this.endpoint,packet.srcEid,packet.dstEid,packet.sender,packet.receiver]
+    )) as Hex;
+    const proof={blockHash:packet.blockHash,payloadHash:packet.payloadHash,configurationDigest,confirmations};
     return[
       {provider:"LOCAL_EDR_FIXTURE_PACKET",...proof},
       {provider:"LOCAL_EDR_FIXTURE_RECEIPT",...proof}
