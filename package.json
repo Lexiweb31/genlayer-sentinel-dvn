@@ -18,6 +18,7 @@
     "build:dashboard": "node scripts/build-dashboard.mjs",
     "check:dashboard": "node --check apps/dashboard/src/app.js && node --check apps/dashboard/src/timeline.js && node --check dist/apps/dashboard/demo.js && node scripts/check-dashboard.mjs",
     "preflight": "npm run build && node dist/services/coordinator/src/preflight.js",
+    "demo:local": "npm run build && node dist/services/coordinator/src/local-demo-cli.js",
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
     "test": "npm run build && node --test apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
