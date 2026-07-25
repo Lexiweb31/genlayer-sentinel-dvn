@@ -45,8 +45,10 @@ export class Coordinator {
     try{for(const address of normalized)job.addSigner(address,this.quorum);if((job.snapshot.stage as string)!=="QUORUM_REACHED")throw new Error("durable quorum incomplete");await this.persist(guid,this.requestIds.get(guid))}
     catch(error){job.snapshot.stage=priorStage;job.snapshot.signers=priorSigners;throw error}
   }
-  async markVerified(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");job.markVerified();await this.persist(guid,this.requestIds.get(guid))}
-  async markExecuted(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");job.markExecuted();await this.persist(guid,this.requestIds.get(guid))}
-  async confirmExecution(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");if(job.snapshot.stage==="EXECUTED")return;if(job.snapshot.stage==="QUORUM_REACHED")job.markVerified();if(job.snapshot.stage!=="VERIFIED")throw new Error("job is not ready for destination confirmation");job.markExecuted();await this.persist(guid,this.requestIds.get(guid))}
+  async markVerified(guid:string):Promise<void>{await this.persistStageMutation(guid,job=>job.markVerified())}
+  async markExecuted(guid:string):Promise<void>{await this.persistStageMutation(guid,job=>job.markExecuted())}
+  async assertDeliveryReady(guid:string,addresses:Hex[]):Promise<void>{const job=this.jobs.get(guid);if(!job||job.snapshot.stage!=="QUORUM_REACHED")throw new Error("coordinator quorum is not durable");const normalized=addresses.map(value=>value.toLowerCase());if(JSON.stringify(job.snapshot.signers)!==JSON.stringify(normalized))throw new Error("coordinator quorum does not match delivery shares")}
+  async confirmExecution(guid:string):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");if(job.snapshot.stage==="EXECUTED")return;await this.persistStageMutation(guid,value=>{if(value.snapshot.stage==="QUORUM_REACHED")value.markVerified();if(value.snapshot.stage!=="VERIFIED")throw new Error("job is not ready for destination confirmation");value.markExecuted()})}
+  private async persistStageMutation(guid:string,mutate:(job:SentinelJob)=>void):Promise<void>{const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");const prior=job.snapshot.stage;try{mutate(job);await this.persist(guid,this.requestIds.get(guid))}catch(error){job.snapshot.stage=prior;throw error}}
   private async persist(guid:string,requestId?:string,updatedAt=Math.floor(Date.now()/1000)):Promise<void>{if(!this.store)return;const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");await this.store.save({guid,requestId,request:this.requests.get(guid),snapshot:job.snapshot,updatedAt})}
 }

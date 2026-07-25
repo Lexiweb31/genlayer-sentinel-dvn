@@ -13,10 +13,10 @@
   "scripts": {
     "compile:contracts": "node scripts/compile-contracts.mjs",
     "check:ic": "python3 scripts/check-intelligent-contract.py",
-    "check:dashboard": "node --check apps/dashboard/src/app.js && node scripts/check-dashboard.mjs",
+    "check:dashboard": "node --check apps/dashboard/src/app.js && node --check apps/dashboard/src/timeline.js && node scripts/check-dashboard.mjs",
     "preflight": "npm run build && node dist/services/coordinator/src/preflight.js",
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run check:dashboard",
-    "test": "npm run build && node --test packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
+    "test": "npm run build && node --test apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm test"
   },

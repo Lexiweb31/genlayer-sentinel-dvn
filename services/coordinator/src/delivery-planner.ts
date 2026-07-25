@@ -18,11 +18,15 @@ export class DeliveryPlanner {
   async reconcile():Promise<void>{
     const records=new Map((await this.outbox.list()).map(record=>[record.guid.toLowerCase(),record]));
     for(const[guid,job]of this.sortedJobs()){
-      const record=records.get(guid.toLowerCase());
+      let record=records.get(guid.toLowerCase());
       if(record){this.assertBinding(guid,job.snapshot.result,record);records.delete(guid.toLowerCase())}
-      const stage=job.snapshot.stage;
+      let stage=job.snapshot.stage;
       if(stage==="REJECTED"&&record)throw new Error("rejected job has a delivery record");
+      if(stage==="POLICY_FINALIZED"&&record?.state==="READY"){
+        const now=this.clock();if(record.envelope.expiry<=BigInt(now))record=await this.outbox.transition(record.guid,"READY",{state:"FAILED",failureCode:"SIGNING_EXPIRED",updatedAt:now});else{await this.coordinator.recordQuorum(guid,shareAddresses(record));stage=job.snapshot.stage}
+      }
       if(stage==="QUORUM_REACHED"&&(!record||record.state==="SIGNING"||record.shares.length!==this.authorizedQuorum()))throw new Error("quorum job has no durable shares");
+      if((stage==="QUORUM_REACHED"||stage==="VERIFIED"||stage==="EXECUTED")&&record&&JSON.stringify(job.snapshot.signers)!==JSON.stringify(shareAddresses(record)))throw new Error("coordinator and outbox signer quorum mismatch");
       if(stage==="POLICY_FINALIZED"&&record&&!(["SIGNING","READY","FAILED"] as string[]).includes(record.state))throw new Error("policy job has impossible delivery state");
       if((["DETECTED","CONFIRMED","POLICY_PENDING"] as string[]).includes(stage)&&record)throw new Error("pre-finality job has a delivery record");
       if((["VERIFIED","EXECUTED"] as string[]).includes(stage)&&record?.state!=="CONFIRMED")throw new Error("executed job lacks confirmed delivery");
@@ -45,9 +49,11 @@ export class DeliveryPlanner {
     const now=this.clock();let record=await this.outbox.get(guid as Hex);
     if(!record){const path=await this.path.verify(),envelope=this.intents.create(request,result,path,now);record=await this.outbox.plan(guid as Hex,envelope,now)}
     this.assertBinding(guid,result,record);
+    if((record.state==="SIGNING"||record.state==="READY")&&record.envelope.expiry<=BigInt(now)){await this.outbox.transition(guid as Hex,record.state,{state:"FAILED",failureCode:"SIGNING_EXPIRED",updatedAt:now});return}
     if(record.state==="SIGNING"){
-      if(record.envelope.expiry<=BigInt(now)){await this.outbox.transition(guid as Hex,"SIGNING",{state:"FAILED",failureCode:"SIGNING_EXPIRED",updatedAt:now});return}
-      const shares=await this.coordinator.collectAuthorization(guid,record.envelope,this.authorized);record=await this.outbox.recordQuorum(guid as Hex,shares,now);
+      const shares=await this.coordinator.collectAuthorization(guid,record.envelope,this.authorized),completedAt=this.clock();
+      if(record.envelope.expiry<=BigInt(completedAt)){await this.outbox.transition(guid as Hex,"SIGNING",{state:"FAILED",failureCode:"SIGNING_EXPIRED",updatedAt:completedAt});return}
+      record=await this.outbox.recordQuorum(guid as Hex,shares,completedAt);
     }
     if(record.state==="READY")await this.coordinator.recordQuorum(guid,record.shares.map(share=>share.address));
     else if(record.state!=="FAILED")throw new Error("policy job has impossible delivery state");
@@ -61,3 +67,4 @@ export class DeliveryPlanner {
 }
 
 function same(left:string,right:string):boolean{return left.toLowerCase()===right.toLowerCase()}
+function shareAddresses(record:OutboxRecord):Hex[]{return record.shares.map(share=>share.address)}

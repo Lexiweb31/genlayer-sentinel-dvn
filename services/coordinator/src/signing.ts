@@ -32,7 +32,10 @@ export class IsolatedSignerService {
 export async function collectQuorum(e:SigningEnvelope,result:PolicyResult,services:SignerService[],authorized:Hex[],quorum:number):Promise<SignatureShare[]>{
   if(quorum<1||quorum>authorized.length) throw new Error("invalid quorum");
   const allowed=new Set(authorized.map(x=>x.toLowerCase())); const settled=await Promise.allSettled(services.map(x=>x.sign(e,result))); const unique=new Map<string,SignatureShare>(); const digest=executionDigest(e);
-  for(const item of settled){if(item.status!=="fulfilled")continue;const share=item.value;const a=share.address.toLowerCase();if(!allowed.has(a)||share.digest.toLowerCase()!==digest.toLowerCase()||unique.has(a))continue;unique.set(a,share);}
+  for(let index=0;index<settled.length;index++){
+    const item=settled[index];if(item?.status!=="fulfilled")continue;
+    try{const share=item.value,a=share.address.toLowerCase(),serviceAddress=services[index]!.address.toLowerCase();if(a!==serviceAddress||!allowed.has(a)||share.digest.toLowerCase()!==digest.toLowerCase()||unique.has(a))continue;if(verifyMessage(getBytes(digest),share.signature).toLowerCase()!==a)continue;unique.set(a,share)}catch{continue}
+  }
   if(unique.size<quorum) throw new Error("signer quorum not reached");
   return [...unique.values()].sort((a,b)=>a.address.toLowerCase().localeCompare(b.address.toLowerCase())).slice(0,quorum);
 }

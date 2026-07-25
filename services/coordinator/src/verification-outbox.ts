@@ -1,4 +1,5 @@
 import {DatabaseSync} from "node:sqlite";
+import {getBytes,verifyMessage} from "ethers";
 import type {Hex} from "../../../packages/core/src/types.js";
 import {executionDigest,type SignatureShare,type SigningEnvelope} from "./signing.js";
 
@@ -14,7 +15,7 @@ export interface VerificationOutboxStore {
   close():void;
 }
 
-const allowed:Record<OutboxState,OutboxState[]>={SIGNING:["FAILED"],READY:["ATTEMPTING","CONFIRMED","FAILED","RECOVERY_REQUIRED"],ATTEMPTING:["SUBMITTED","CONFIRMED","RECOVERY_REQUIRED"],SUBMITTED:["CONFIRMED","FAILED"],CONFIRMED:[],FAILED:[],RECOVERY_REQUIRED:[]};
+const allowed:Record<OutboxState,OutboxState[]>={SIGNING:["FAILED"],READY:["ATTEMPTING","FAILED","RECOVERY_REQUIRED"],ATTEMPTING:["SUBMITTED","RECOVERY_REQUIRED"],SUBMITTED:["CONFIRMED","FAILED"],CONFIRMED:[],FAILED:[],RECOVERY_REQUIRED:[]};
 const states=new Set<OutboxState>(["SIGNING","READY","ATTEMPTING","SUBMITTED","CONFIRMED","FAILED","RECOVERY_REQUIRED"]);
 
 export class SqliteVerificationOutbox implements VerificationOutboxStore {
@@ -30,6 +31,7 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
 
   async plan(guid:Hex,envelope:SigningEnvelope,now:number):Promise<OutboxRecord>{
     validateTime(now);const normalized=planPayload(guid,envelope),record:OutboxRecord={...normalized,shares:[],state:"SIGNING",createdAt:now,updatedAt:now};
+    this.validateRecord(record);
     this.db.exec("BEGIN IMMEDIATE");
     try{
       const row=this.row(guid);
@@ -49,6 +51,7 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
         if(encode(current.shares)!==encode(validated))throw new Error("outbox quorum conflict");
         this.db.exec("COMMIT");return current;
       }
+      if(BigInt(now)>=current.envelope.expiry)throw new Error("outbox signing authorization expired");
       const next:OutboxRecord={...current,shares:validated,state:"READY",updatedAt:now};this.validateRecord(next);
       this.db.prepare("UPDATE verification_outbox SET state=?,record_json=?,updated_at=? WHERE guid=? AND state=?").run("READY",encode(next),now,guid,"SIGNING");
       this.db.exec("COMMIT");return next;
@@ -61,6 +64,7 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
     try{
       const row=this.row(guid);if(!row)throw new Error("unknown outbox GUID");
       const current=this.decodeRow(row);if(row.state!==expected||current.state!==expected)throw new Error("outbox state mismatch");
+      if(update.updatedAt<current.updatedAt)throw new Error("outbox timestamp regression");
       if(!allowed[expected].includes(update.state))throw new Error("invalid outbox transition");
       if(expected==="SIGNING"&&(update.state!=="FAILED"||update.failureCode!=="SIGNING_EXPIRED"))throw new Error("invalid signing failure transition");
       const next:OutboxRecord={...current,...update};this.validateRecord(next);
@@ -78,7 +82,14 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
   private validateShares(digest:Hex,shares:SignatureShare[]):SignatureShare[]{
     if(shares.length!==this.quorum)throw new Error("outbox requires exact quorum shares");
     let prior="";const result:SignatureShare[]=[];
-    for(const share of shares){const address=normalizeAddress(share.address);if(address<=prior||!this.allowedSigners.has(address))throw new Error("outbox shares must be authorized, unique and sorted");if(share.digest.toLowerCase()!==digest.toLowerCase())throw new Error("outbox share digest mismatch");if(!/^0x[0-9a-fA-F]{130}$/.test(share.signature))throw new Error("invalid outbox signature");prior=address;result.push({...share,address:address as Hex})}
+    for(const share of shares){
+      const address=normalizeAddress(share.address);if(address<=prior||!this.allowedSigners.has(address))throw new Error("outbox shares must be authorized, unique and sorted");
+      if(share.digest.toLowerCase()!==digest.toLowerCase())throw new Error("outbox share digest mismatch");
+      if(!/^0x[0-9a-fA-F]{130}$/.test(share.signature))throw new Error("invalid outbox signature");
+      let recovered:string;try{recovered=verifyMessage(getBytes(digest),share.signature).toLowerCase()}catch{throw new Error("invalid outbox signature")}
+      if(recovered!==address)throw new Error("outbox signature identity mismatch");
+      prior=address;result.push({...share,address:address as Hex});
+    }
     return result;
   }
   private validateRecord(record:OutboxRecord):void{
@@ -88,10 +99,12 @@ export class SqliteVerificationOutbox implements VerificationOutboxStore {
     if(record.state==="SIGNING"){if(record.shares.length!==0)throw new Error()}
     else if(record.state==="FAILED"){if(record.shares.length!==0&&record.shares.length!==this.quorum)throw new Error();if(record.shares.length)this.validateShares(record.digest,record.shares)}
     else this.validateShares(record.digest,record.shares);
-    if(record.state==="SUBMITTED"&&!record.transactionHash)throw new Error();
     if(record.transactionHash)validateHash(record.transactionHash,"transaction hash");
-    if(record.state==="CONFIRMED"&&(!record.confirmations||record.confirmations<=0n))throw new Error();
-    if(record.state==="FAILED"&&!record.failureCode)throw new Error();
+    const hasTransaction=record.transactionHash!==undefined,hasConfirmations=record.confirmations!==undefined,hasFailure=record.failureCode!==undefined;
+    if(record.state==="SIGNING"||record.state==="READY"||record.state==="ATTEMPTING"){if(hasTransaction||hasConfirmations||hasFailure)throw new Error()}
+    else if(record.state==="SUBMITTED"){if(!hasTransaction||hasConfirmations||hasFailure)throw new Error()}
+    else if(record.state==="CONFIRMED"){if(!hasTransaction||!hasConfirmations||record.confirmations!<=0n||hasFailure)throw new Error()}
+    else if(record.state==="FAILED"||record.state==="RECOVERY_REQUIRED"){if(hasConfirmations||!hasFailure)throw new Error()}
     if(record.failureCode&&!/^[A-Z][A-Z0-9_]{1,63}$/.test(record.failureCode))throw new Error();
   }
 }

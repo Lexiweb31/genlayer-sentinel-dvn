@@ -4,6 +4,9 @@ import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {composeRuntime} from "../../../dist/services/coordinator/src/compose-runtime.js";
+import {SqliteJobStore} from "../../../dist/services/coordinator/src/job-store.js";
+import {SqliteListenerStore} from "../../../dist/services/coordinator/src/listener-store.js";
+import {SqliteRecoveryStore} from "../../../dist/services/coordinator/src/recovery-store.js";
 
 const a=n=>`0x${n.repeat(40)}`,h=n=>`0x${n.repeat(64)}`,b=n=>`0x${"0".repeat(24)}${n.repeat(40)}`;
 const authorized=[a("1"),a("2"),a("3"),a("4"),a("5")];
@@ -21,3 +24,10 @@ test("composes the complete loopback runtime without eager account, signer, or n
 });
 
 test("rejects capability signer identities that do not exactly match the manifest",()=>{const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),caps=capabilities();try{assert.throws(()=>composeRuntime(config(join(dir,"state.db")),{...caps.value,signers:caps.value.signers.slice(0,4)},resolve("apps/dashboard")),/signer identities/)}finally{rmSync(dir,{recursive:true,force:true})}});
+
+test("closes every acquired store in reverse order when composition fails",()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),path=join(dir,"state.db"),caps=capabilities(),closed=[];
+  const tracked=(name,store)=>{const close=store.close.bind(store);store.close=()=>{closed.push(name);close()};return store};
+  const stores={job:value=>tracked("job",new SqliteJobStore(value)),listener:value=>tracked("listener",new SqliteListenerStore(value)),recovery:value=>tracked("recovery",new SqliteRecoveryStore(value)),outbox:()=>{throw new Error("outbox construction failed")}};
+  try{assert.throws(()=>composeRuntime(config(path),caps.value,resolve("apps/dashboard"),console.error,undefined,stores),/outbox construction failed/);assert.deepEqual(closed,["recovery","listener","job"])}finally{rmSync(dir,{recursive:true,force:true})}
+});
