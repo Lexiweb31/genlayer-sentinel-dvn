@@ -1,5 +1,5 @@
 export type DemoPhase=
-  |"DISABLED"|"WALLET_REQUIRED"|"WALLET_FAILED"|"WRONG_CHAIN"|"WRONG_OWNER"
+  |"DISABLED"|"WALLET_REQUIRED"|"WALLET_CONNECTING"|"WALLET_FAILED"|"WRONG_CHAIN"|"WRONG_OWNER"
   |"READY"|"QUOTING"|"QUOTE_FAILED"
   |"QUOTED"|"WALLET_CONFIRMATION"|"USER_REJECTED"|"SOURCE_REVERTED"
   |"SOURCE_FAILED"|"SUBMITTED"|"COORDINATOR_PENDING"|"POLICY_REJECTED"
@@ -17,6 +17,7 @@ export interface DemoState {
 
 export type DemoEvent=
   |{type:"CAPABILITY_AVAILABLE"}
+  |{type:"WALLET_CONNECT_REQUESTED"}
   |{type:"WALLET_READY";account:string}
   |{type:"WALLET_FAILED";code:string}
   |{type:"INPUT_CHANGED"}
@@ -25,6 +26,7 @@ export type DemoEvent=
   |{type:"QUOTE_FAILED";code:string}
   |{type:"SEND_REQUESTED"}
   |{type:"SOURCE_SUBMITTED";transactionHash:string}
+  |{type:"SOURCE_PREFLIGHT_FAILED";code:string}
   |{type:"SOURCE_FAILED";code:string}
   |{type:"GUID_OBSERVED";transactionHash:string;guid:string}
   |{type:"COORDINATOR_STAGE";stage:string}
@@ -43,14 +45,19 @@ const pendingStages=new Set([
 export function initialDemoState(phase:DemoPhase="DISABLED"):DemoState{return{phase}}
 
 export function reduceDemoState(state:DemoState,event:DemoEvent):DemoState {
-  if(event.type==="INVALIDATED")return initialDemoState("WALLET_REQUIRED");
+  if(event.type==="INVALIDATED"){
+    if(state.phase==="WALLET_CONFIRMATION"||state.transactionHash)return state;
+    return initialDemoState("WALLET_REQUIRED");
+  }
   if(state.phase==="DISABLED"&&event.type==="CAPABILITY_AVAILABLE")
     return initialDemoState("WALLET_REQUIRED");
-  if(state.phase==="WALLET_REQUIRED"&&event.type==="WALLET_READY"&&validAddress(event.account))
+  if(state.phase==="WALLET_REQUIRED"&&event.type==="WALLET_CONNECT_REQUESTED")
+    return initialDemoState("WALLET_CONNECTING");
+  if(state.phase==="WALLET_CONNECTING"&&event.type==="WALLET_READY"&&validAddress(event.account))
     return{phase:"READY",account:event.account.toLowerCase()};
-  if(state.phase==="WALLET_REQUIRED"&&event.type==="WALLET_FAILED"&&validWalletFailureCode(event.code))
+  if(state.phase==="WALLET_CONNECTING"&&event.type==="WALLET_FAILED"&&validWalletFailureCode(event.code))
     return{phase:event.code==="WRONG_CHAIN"||event.code==="WRONG_OWNER"?event.code:"WALLET_FAILED",errorCode:event.code};
-  if((state.phase==="READY"||state.phase==="QUOTED"||state.phase==="QUOTE_FAILED")&&
+  if((state.phase==="READY"||state.phase==="QUOTING"||state.phase==="QUOTED"||state.phase==="QUOTE_FAILED")&&
     event.type==="INPUT_CHANGED"&&state.account)
     return{phase:"READY",account:state.account};
   if(state.phase==="READY"&&event.type==="QUOTE_REQUESTED"&&state.account)
@@ -61,6 +68,9 @@ export function reduceDemoState(state:DemoState,event:DemoEvent):DemoState {
     return{phase:"QUOTE_FAILED",account:state.account,errorCode:event.code};
   if(state.phase==="QUOTED"&&event.type==="SEND_REQUESTED"&&state.account&&state.nativeFee)
     return{...state,phase:"WALLET_CONFIRMATION"};
+  if(state.phase==="WALLET_CONFIRMATION"&&event.type==="SOURCE_PREFLIGHT_FAILED"&&
+    (event.code==="WRONG_CHAIN"||event.code==="WRONG_OWNER"||event.code==="ACCOUNT_UNAVAILABLE"))
+    return{phase:event.code==="ACCOUNT_UNAVAILABLE"?"WALLET_FAILED":event.code,errorCode:event.code};
   if(state.phase==="WALLET_CONFIRMATION"&&event.type==="SOURCE_SUBMITTED"&&validHash(event.transactionHash))
     return{...state,phase:"SUBMITTED",transactionHash:event.transactionHash.toLowerCase()};
   if(state.phase==="WALLET_CONFIRMATION"&&event.type==="SOURCE_FAILED"&&validSourceFailureCode(event.code))
@@ -79,6 +89,8 @@ export function reduceDemoState(state:DemoState,event:DemoEvent):DemoState {
   }
   if(state.phase==="COORDINATOR_PENDING"&&event.type==="COORDINATOR_INCIDENT"&&validCode(event.code))
     return{...state,phase:"SENTINEL_INCIDENT",errorCode:event.code};
+  if(state.phase==="SENTINEL_INCIDENT"&&event.type==="COORDINATOR_STAGE"&&event.stage==="EXECUTED")
+    return{...state,phase:"SENTINEL_EXECUTED",coordinatorStage:"EXECUTED",errorCode:undefined};
   throw new Error("invalid demo transition");
 }
 

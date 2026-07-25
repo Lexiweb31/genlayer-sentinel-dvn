@@ -11,4 +11,5 @@ test("places delivery failures at the phase where they occurred",()=>{
   assert.equal(deliveryTimelineIndex({state:"FAILED",failureCode:"EVENT_MISMATCH",transactionHash:"0x01"}),7);
   assert.equal(deliveryTimelineIndex({state:"FAILED",failureCode:"OTHER_FAILURE"}),6);
   assert.equal(deliveryTimelineIndex({state:"RECOVERY_REQUIRED",failureCode:"SUBMISSION_AMBIGUOUS"}),6);
+  assert.equal(deliveryTimelineIndex({state:"CONFIRMED",executionFailureCode:"LOCAL_EXECUTION_RECOVERY_REQUIRED"}),8);
 });

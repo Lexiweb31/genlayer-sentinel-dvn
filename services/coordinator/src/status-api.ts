@@ -4,7 +4,8 @@ import type {Coordinator} from "./coordinator.js";
 import type{DeadLetterReader}from"./recovery-service.js";
 import type{OutboxRecord}from"./verification-outbox.js";
 import{publicDemoCapability,type DemoCapability}from"./demo-capability.js";
-export interface DeliveryReader{list():Promise<OutboxRecord[]>;}
+export interface DeliveryStatusRecord extends OutboxRecord {executionFailureCode?:string;}
+export interface DeliveryReader{list():Promise<DeliveryStatusRecord[]>;}
 export interface RuntimePresentation{presentationMode:"LOCAL_TEST"|"EXTERNAL_INJECTED";}
 const localPresentation:RuntimePresentation={presentationMode:"LOCAL_TEST"};
 
@@ -15,7 +16,7 @@ export async function statusResponse(coordinator:Coordinator,method:string,path:
   if(url.pathname==="/api/demo/config")return demo?{status:200,body:json(publicDemoCapability(demo))}:{status:404,body:json({error:"demo capability unavailable"})};
   if(url.pathname==="/api/jobs")return{status:200,body:json([...coordinator.jobs.values()].map(j=>j.snapshot))};
   if(url.pathname==="/api/dead-letters"){const records=deadLetters?await deadLetters.listDead():[];return{status:200,body:json(records.map(record=>({transactionHash:record.transactionHash,blockNumber:record.blockNumber,attempts:record.attempts,errorCode:record.errorCode,firstFailedAt:record.firstFailedAt,lastFailedAt:record.lastFailedAt})))}};
-  if(url.pathname==="/api/deliveries"){const records=deliveries?await deliveries.list():[];return{status:200,body:json(records.map(record=>({guid:record.guid,digest:record.digest,state:record.state,transactionHash:record.transactionHash,confirmations:record.confirmations,failureCode:record.failureCode,createdAt:record.createdAt,updatedAt:record.updatedAt})))}};
+  if(url.pathname==="/api/deliveries"){const records=deliveries?await deliveries.list():[];return{status:200,body:json(records.map(record=>({guid:record.guid,digest:record.digest,state:record.state,transactionHash:record.transactionHash,confirmations:record.confirmations,failureCode:record.failureCode,executionFailureCode:record.executionFailureCode,createdAt:record.createdAt,updatedAt:record.updatedAt})))}};
   const match=url.pathname.match(/^\/api\/jobs\/(0x[0-9a-fA-F]{64})$/);if(match){const job=coordinator.jobs.get(match[1]!);return job?{status:200,body:json(job.snapshot)}:{status:404,body:json({error:"job not found"})}}
   return{status:404,body:json({error:"not found"})};
 }

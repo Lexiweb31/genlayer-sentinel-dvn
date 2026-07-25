@@ -43,13 +43,15 @@ let session:WalletSession|undefined;
 let prepared:PreparedQuote|undefined;
 let cleanupProvider:()=>void=()=>{};
 let pollHandle:number|undefined;
+let quoteGeneration=0;
 
 elements.connect.addEventListener("click",()=>void connectWallet());
 elements.quote.addEventListener("click",()=>void quoteAction());
 elements.send.addEventListener("click",()=>void sendAction());
 elements.input.addEventListener("input",()=>{
+  quoteGeneration++;
   prepared=undefined;
-  if(state.phase==="READY"||state.phase==="QUOTED"||state.phase==="QUOTE_FAILED")
+  if(state.phase==="READY"||state.phase==="QUOTING"||state.phase==="QUOTED"||state.phase==="QUOTE_FAILED")
     transition({type:"INPUT_CHANGED"});
   else render();
 });
@@ -73,8 +75,10 @@ async function loadCapability():Promise<void>{
 }
 
 async function connectWallet():Promise<void>{
-  if(!config)return;
+  if(!config||state.phase==="WALLET_CONNECTING"||state.phase==="WALLET_CONFIRMATION"||state.transactionHash)return;
+  quoteGeneration++;
   if(state.phase!=="WALLET_REQUIRED")transition({type:"INVALIDATED"});
+  transition({type:"WALLET_CONNECT_REQUESTED"});
   const provider=(window as unknown as{ethereum?:Eip1193Provider}).ethereum;
   if(!provider){transition({type:"WALLET_FAILED",code:"WALLET_UNAVAILABLE"});return}
   try{
@@ -82,6 +86,7 @@ async function connectWallet():Promise<void>{
     session=await client.connect(config);
     cleanupProvider();
     cleanupProvider=subscribeInvalidation(provider,()=>{
+      quoteGeneration++;
       session=undefined;prepared=undefined;transition({type:"INVALIDATED"});
     });
     transition({type:"WALLET_READY",account:session.account});
@@ -90,14 +95,22 @@ async function connectWallet():Promise<void>{
 
 async function quoteAction():Promise<void>{
   if(!config||!client||!session||state.phase!=="READY")return;
+  const generation=++quoteGeneration,quotedSession=session,recordLabel=elements.input.value;
   transition({type:"QUOTE_REQUESTED"});
   try{
-    prepared=await client.quote(config,session,elements.input.value);
+    const result=await client.quote(config,quotedSession,recordLabel);
+    if(!quoteIsCurrent(generation,quotedSession,recordLabel))return;
+    prepared=result;
     transition({type:"QUOTE_READY",nativeFee:prepared.nativeFee.toString()});
   }catch(error){
+    if(!quoteIsCurrent(generation,quotedSession,recordLabel))return;
     prepared=undefined;
     transition({type:"QUOTE_FAILED",code:error instanceof WalletActionError?error.code:"QUOTE_REVERTED"});
   }
+}
+
+function quoteIsCurrent(generation:number,quotedSession:WalletSession,recordLabel:string):boolean{
+  return generation===quoteGeneration&&state.phase==="QUOTING"&&session===quotedSession&&elements.input.value===recordLabel;
 }
 
 async function sendAction():Promise<void>{
@@ -113,8 +126,7 @@ async function sendAction():Promise<void>{
   }catch(error){
     const code=error instanceof WalletActionError?error.code:"SOURCE_RECEIPT_UNAVAILABLE";
     if(code==="WRONG_CHAIN"||code==="WRONG_OWNER"||code==="ACCOUNT_UNAVAILABLE"){
-      session=undefined;prepared=undefined;transition({type:"INVALIDATED"});
-      setMessage(codeMessage(code),true);
+      session=undefined;prepared=undefined;transition({type:"SOURCE_PREFLIGHT_FAILED",code});
       return;
     }
     transition({type:"SOURCE_FAILED",code});
@@ -134,13 +146,16 @@ async function pollCoordinator(guid:string):Promise<void>{
     if(!response.ok)throw new Error();
     const job=await response.json() as unknown;
     const stage=boundJobStage(job,guid);
-    transition({type:"COORDINATOR_STAGE",stage});
+    if(state.phase!=="SENTINEL_INCIDENT"||stage==="EXECUTED")transition({type:"COORDINATOR_STAGE",stage});
     if(isTerminal(state.phase))return;
     const deliveriesResponse=await fetch("/api/deliveries",{headers:{accept:"application/json"},cache:"no-store"});
     if(!deliveriesResponse.ok)throw new Error();
     const deliveries=await deliveriesResponse.json() as unknown;
     const incident=deliveryIncident(deliveries,guid);
-    if(incident){transition({type:"COORDINATOR_INCIDENT",code:incident});return}
+    if(incident){
+      if(state.phase!=="SENTINEL_INCIDENT")transition({type:"COORDINATOR_INCIDENT",code:incident});
+      scheduleCoordinatorPoll(guid,1000);return;
+    }
     scheduleCoordinatorPoll(guid,1000);
   }catch{
     setMessage("Coordinator status is temporarily unavailable. The source transaction will not be resent.",true);
@@ -154,10 +169,11 @@ function transition(event:DemoEvent):void{
 }
 
 function render():void{
+  const sourceActionLocked=state.phase==="WALLET_CONFIRMATION"||Boolean(state.transactionHash);
   elements.status.textContent=state.phase.replaceAll("_"," ");
   elements.status.className=`status ${isSuccess(state.phase)?"live":isFailure(state.phase)?"bad":""}`;
-  elements.connect.disabled=!config||state.phase==="WALLET_CONFIRMATION"||state.phase==="SUBMITTED"||state.phase==="COORDINATOR_PENDING";
-  elements.input.disabled=!config||state.phase==="WALLET_CONFIRMATION"||state.phase==="SUBMITTED"||state.phase==="COORDINATOR_PENDING";
+  elements.connect.disabled=!config||state.phase==="WALLET_CONNECTING"||sourceActionLocked;
+  elements.input.disabled=!config||sourceActionLocked;
   elements.quote.disabled=state.phase!=="READY";
   elements.send.disabled=state.phase!=="QUOTED";
   elements.account.textContent=state.account??"Not connected";
@@ -175,15 +191,16 @@ function phaseMessage(value:DemoState):string{
   switch(value.phase){
     case"DISABLED":return"The wallet action is disabled.";
     case"WALLET_REQUIRED":return"Connect wallet to verify local chain 31337 and the source OApp owner.";
+    case"WALLET_CONNECTING":return"Waiting for the wallet account, local chain, and source OApp owner checks.";
     case"READY":return"Wallet verified. Quote the immutable action before submitting.";
     case"QUOTING":return"Reading the LayerZero native fee from the source OApp.";
     case"QUOTED":return"Fee quoted. Review the fixed action boundary before wallet confirmation.";
     case"WALLET_CONFIRMATION":return"Confirm once in your wallet. Sentinel never receives the wallet key.";
     case"SUBMITTED":return"Source transaction submitted. Waiting for a successful mined receipt.";
     case"COORDINATOR_PENDING":return"Packet emitted; Sentinel decision pending";
-    case"POLICY_REJECTED":return"Fixture policy finalized DENY. No signer quorum or destination submission is authorized.";
-    case"SENTINEL_EXECUTED":return"Coordinator confirms signer quorum, LayerZero verification, and destination OApp execution.";
-    case"SENTINEL_INCIDENT":return"Coordinator reports a destination delivery incident. Operator recovery is required.";
+    case"POLICY_REJECTED":return"Fixture policy finalized DENY. No signer quorum or destination submission is authorized. Start a fresh harness for another action.";
+    case"SENTINEL_EXECUTED":return"Coordinator confirms signer quorum, DVN adapter verification, and destination OApp execution. Start a fresh harness for another action.";
+    case"SENTINEL_INCIDENT":return"Coordinator reports a destination delivery incident. Operator recovery is required; this action cannot be resent.";
     default:return"Local demo state requires attention.";
   }
 }
@@ -235,15 +252,17 @@ function deliveryIncident(value:unknown,guid:string):string|undefined{
   if(!Array.isArray(value))throw new Error();
   const record=value.find(item=>item&&typeof item==="object"&&!Array.isArray(item)&&
     typeof(item as{guid?:unknown}).guid==="string"&&
-    ((item as{guid:string}).guid.toLowerCase()===guid.toLowerCase())) as{state?:unknown;failureCode?:unknown}|undefined;
-  if(!record||record.state!=="FAILED"&&record.state!=="RECOVERY_REQUIRED")return undefined;
+    ((item as{guid:string}).guid.toLowerCase()===guid.toLowerCase())) as{state?:unknown;failureCode?:unknown;executionFailureCode?:unknown}|undefined;
+  if(!record)return undefined;
+  if(typeof record.executionFailureCode==="string"&&/^[A-Z][A-Z0-9_]{1,63}$/.test(record.executionFailureCode))return record.executionFailureCode;
+  if(record.state!=="FAILED"&&record.state!=="RECOVERY_REQUIRED")return undefined;
   return typeof record.failureCode==="string"&&/^[A-Z][A-Z0-9_]{1,63}$/.test(record.failureCode)?record.failureCode:"DESTINATION_DELIVERY_FAILED";
 }
 
 function walletCode(error:unknown):string{
   return error instanceof WalletActionError?error.code:"WALLET_UNAVAILABLE";
 }
-function isTerminal(phase:string):boolean{return phase==="POLICY_REJECTED"||phase==="SENTINEL_EXECUTED"||phase==="SENTINEL_INCIDENT"}
+function isTerminal(phase:string):boolean{return phase==="POLICY_REJECTED"||phase==="SENTINEL_EXECUTED"}
 function isSuccess(phase:string):boolean{return phase==="READY"||phase==="QUOTED"||phase==="SENTINEL_EXECUTED"}
 function isFailure(phase:string):boolean{return phase==="WALLET_FAILED"||phase==="WRONG_CHAIN"||phase==="WRONG_OWNER"||phase==="QUOTE_FAILED"||phase==="USER_REJECTED"||phase==="SOURCE_REVERTED"||phase==="SOURCE_FAILED"||phase==="POLICY_REJECTED"||phase==="SENTINEL_INCIDENT"}
 function required<T extends HTMLElement>(id:string):T{

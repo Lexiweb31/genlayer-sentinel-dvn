@@ -177,10 +177,33 @@ export interface LocalOAppExecutionConfig {
   actionTarget:Hex;
 }
 
+export interface LocalExecutionAttemptStore {
+  reserve(guid:Hex):Promise<boolean>;
+  recordIncident?(guid:Hex,code:string):Promise<void>;
+  incident?(guid:Hex):Promise<string|undefined>;
+  resolveIncident?(guid:Hex):Promise<void>;
+}
+
+class MemoryExecutionAttemptStore implements LocalExecutionAttemptStore {
+  private attempted=new Set<string>();
+  private incidents=new Map<string,string>();
+  async reserve(guid:Hex):Promise<boolean>{
+    if(this.attempted.has(guid))return false;
+    this.attempted.add(guid);return true;
+  }
+  async recordIncident(guid:Hex,code:string):Promise<void>{this.incidents.set(guid,code)}
+  async incident(guid:Hex):Promise<string|undefined>{return this.incidents.get(guid)}
+  async resolveIncident(guid:Hex):Promise<void>{this.incidents.delete(guid)}
+}
+
 export class LocalOAppExecutionConfirmer implements ExecutionConfirmer {
   private config:LocalOAppExecutionConfig;
-  private attempted=new Set<string>();
-  constructor(private coordinator:Coordinator,private rpc:LocalDemoRpc,config:LocalOAppExecutionConfig){
+  constructor(
+    private coordinator:Coordinator,
+    private rpc:LocalDemoRpc,
+    config:LocalOAppExecutionConfig,
+    private attempts:LocalExecutionAttemptStore=new MemoryExecutionAttemptStore()
+  ){
     exactKeys(config as unknown as Record<string,unknown>,["from","endpoint","oapp","actionTarget"],"unknown execution configuration field");
     this.config={
       from:address(config.from,"invalid local execution sender"),
@@ -205,8 +228,7 @@ export class LocalOAppExecutionConfirmer implements ExecutionConfirmer {
     if(peer!==request.packet.sender.toLowerCase())throw new Error("local OApp delivery binding mismatch");
     let executed=await this.executed(normalizedGuid);
     if(!executed){
-      if(this.attempted.has(normalizedGuid))throw new Error("local OApp delivery recovery required");
-      this.attempted.add(normalizedGuid);
+      if(!await this.attempts.reserve(normalizedGuid))return await this.recoveryRequired(normalizedGuid);
       const data=endpointInterface.encodeFunctionData("deliver",[
         this.config.oapp,
         {srcEid:request.packet.srcEid,sender:request.packet.sender,nonce:request.packet.nonce},
@@ -215,27 +237,33 @@ export class LocalOAppExecutionConfirmer implements ExecutionConfirmer {
       ]);
       let transactionHash:Hex;
       try{transactionHash=hash(await this.rpc("eth_sendTransaction",[{from:this.config.from,to:this.config.endpoint,data}]),"invalid local delivery transaction hash")}
-      catch{throw new Error("local OApp delivery recovery required")}
+      catch{return await this.recoveryRequired(normalizedGuid)}
       let receipt:RpcReceipt|null;
       try{receipt=parseReceipt(await this.rpc("eth_getTransactionReceipt",[transactionHash]))}
-      catch{throw new Error("local OApp delivery recovery required")}
-      if(!receipt)throw new Error("local OApp delivery recovery required");
-      if(receipt.status!=="0x1")throw new Error("local OApp delivery failed");
-      if(!same(receipt.transactionHash,transactionHash))throw new Error("local OApp delivery binding mismatch");
+      catch{return await this.recoveryRequired(normalizedGuid)}
+      if(!receipt)return await this.recoveryRequired(normalizedGuid);
+      if(receipt.status!=="0x1")return await this.recoveryRequired(normalizedGuid);
+      if(!same(receipt.transactionHash,transactionHash))return await this.recoveryRequired(normalizedGuid);
       const actionEvents=receipt.logs.filter(log=>same(log.address,this.config.oapp)&&log.topics[0]?.toLowerCase()===oappInterface.getEvent("ActionExecuted")!.topicHash.toLowerCase());
-      if(actionEvents.length!==1)throw new Error("local OApp delivery binding mismatch");
+      if(actionEvents.length!==1)return await this.recoveryRequired(normalizedGuid);
       try{
         const event=oappInterface.parseLog({topics:actionEvents[0]!.topics,data:actionEvents[0]!.data});
         if(!event||!same(event.args.authorizationId,action.authorizationId)||!same(event.args.guid,normalizedGuid)||
           !same(event.args.target,this.config.actionTarget)||BigInt(event.args.value)!==0n)throw new Error();
-      }catch{throw new Error("local OApp delivery binding mismatch")}
+      }catch{return await this.recoveryRequired(normalizedGuid)}
       executed=await this.executed(normalizedGuid);
-      if(!executed)throw new Error("local OApp delivery binding mismatch");
+      if(!executed)return await this.recoveryRequired(normalizedGuid);
     }
     const expectedArgument=actionInterface.decodeFunctionData("record",action.data)[0];
     const [recorded]=decodeCall(actionInterface,"recorded",await call(this.rpc,this.config.actionTarget,actionInterface.encodeFunctionData("recorded"),"latest"));
-    if(!same(recorded,expectedArgument))throw new Error("local OApp delivery binding mismatch");
+    if(!same(recorded,expectedArgument))return await this.recoveryRequired(normalizedGuid);
+    if(await this.attempts.incident?.(normalizedGuid))await this.attempts.resolveIncident?.(normalizedGuid);
     await this.coordinator.confirmExecution(normalizedGuid);
+  }
+
+  private async recoveryRequired(guid:Hex):Promise<never>{
+    await this.attempts.recordIncident?.(guid,"LOCAL_EXECUTION_RECOVERY_REQUIRED");
+    throw new Error("local OApp delivery recovery required");
   }
 
   private boundAction(guid:Hex,request:PolicyRequest):{authorizationId:Hex;target:Hex;value:bigint;data:Hex}{

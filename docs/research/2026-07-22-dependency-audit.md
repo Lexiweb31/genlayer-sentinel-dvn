@@ -2,6 +2,16 @@
 
 Status: registry metadata audited; GenLayerJS removed from the runtime boundary; archived Ganache replaced by an exact test-only Hardhat EDR runner; no automated advisory remediation run.
 
+## 2026-07-25 lock refresh
+
+Version `0.23.0` adds pinned esbuild `0.28.1` as a development-only, self-hosted wallet-bundle builder and does not add a production dependency. Fresh commands after the lock change report:
+
+- `npm ls --omit=dev --depth=2`: exit zero; only Sentinel's ethers 6 runtime subtree.
+- `npm audit --omit=dev`: 0 vulnerabilities.
+- `npm audit`: 19 vulnerabilities (13 low, 2 moderate, 4 high, 0 critical), on the same Hardhat/`adm-zip`, solc/`tmp`, and LayerZero ethers 5/`elliptic`/`ws` development paths described below.
+
+No automated fix was applied. The wallet milestone changes the test-only `MockEndpointV2` behavior needed to emit realistic local packet/fee evidence, so the old test-artifact hash table below remains dated version `0.21.0` evidence rather than a current all-artifact equality claim. Production Solidity sources, the strict independent verifiers, and the production composition root remain unchanged from base commit `0a60310`.
+
 ## Published-version comparison
 
 Exact versions remain mandatory. Registry `latest` is evidence for triage, not permission to upgrade.

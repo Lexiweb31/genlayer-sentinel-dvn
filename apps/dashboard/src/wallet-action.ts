@@ -114,7 +114,7 @@ export class WalletActionClient {
 
   async connect(config:PublicDemoConfig):Promise<WalletSession>{
     let raw:unknown;try{raw=await this.provider.request({method:"eth_requestAccounts"})}catch{throw new WalletActionError("ACCOUNT_UNAVAILABLE")}
-    if(!Array.isArray(raw)||raw.length!==1)throw new WalletActionError("ACCOUNT_UNAVAILABLE");
+    if(!Array.isArray(raw)||raw.length===0)throw new WalletActionError("ACCOUNT_UNAVAILABLE");
     const account=safeAddress(raw[0],"ACCOUNT_UNAVAILABLE");
     await this.assertChain(config);
     await this.assertOwner(config,account);

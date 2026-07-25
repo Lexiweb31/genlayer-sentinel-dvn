@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {Wallet,parseEther} from "ethers";
-import {startLocalDemo} from "../../../dist/services/coordinator/src/local-demo-harness.js";
+import {startLocalDemo,startLocalEvm} from "../../../dist/services/coordinator/src/local-demo-harness.js";
 import {parseLocalDemoArgs} from "../../../dist/services/coordinator/src/local-demo-cli.js";
 
 test("rejects unsafe or incomplete options before starting local infrastructure",async()=>{
@@ -43,6 +43,17 @@ test("starts an isolated loopback app with wallet ownership, public capability a
   await session.stop();await session.stop();stopped=true;
   await assert.rejects(session.tickOnce(),/stopping or stopped/);
   await assert.rejects(fetch(`${session.appUrl}/health`));
+});
+
+test("rejects an owner controlled by the harness unlocked account set",async()=>{
+  const probe=await startLocalEvm(20);
+  const owner=await probe.signers[19].getAddress();
+  await probe.close();
+  const outcome=await startLocalDemo({owner,appHost:"127.0.0.1",appPort:0,pollIntervalMs:25}).then(
+    async session=>{await session.stop();return undefined},
+    error=>error
+  );
+  assert.match(String(outcome?.message),/owner must not be a local unlocked account/);
 });
 
 test("parses only the narrow CLI surface and rejects ambiguous arguments",()=>{

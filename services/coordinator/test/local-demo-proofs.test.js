@@ -178,3 +178,29 @@ test("refuses malformed coordinator delivery bindings before broadcasting",async
     assert.equal(sends,0);
   }
 });
+
+test("shares a durable executor reservation across confirmer restarts so an ambiguous delivery is never resent",async t=>{
+  const f=await fixture(t),evidenceDigest=hash("7");
+  const decodedAction=JSON.stringify({authorizationId:f.action.authorizationId,target:f.action.target.toLowerCase(),value:"0",selector:f.action.data.slice(0,10),calldata:f.action.data});
+  const request={packet:f.packet,evidence:{uri:"https://governance.fixture.invalid/authorization",digest:evidenceDigest,observedAt:1,validUntil:9999999999},decodedAction,policy:"exact authorization required"};
+  const result={guid:f.packet.guid,packetDigest:f.packet.payloadHash,evidenceDigest,decision:"ALLOW",reasonCode:"LOCAL_FIXTURE_ALLOW",finalizedAt:1,policyVersion:"local-demo-v1"};
+  const coordinator=new Coordinator({verify:async()=>[]},{submit:async()=>"",finalized:async()=>undefined},[],3);
+  coordinator.requests.set(f.packet.guid,request);
+  coordinator.jobs.set(f.packet.guid,SentinelJob.restore({packet:f.packet,stage:"QUORUM_REACHED",verifications:[],signers:f.signerRecords.slice(0,3).map(value=>value.address),result}));
+  let reserved=false,sends=0,incident;
+  const attempts={
+    async reserve(guid){assert.equal(guid,f.packet.guid);if(reserved)return false;reserved=true;return true},
+    async recordIncident(guid,code){assert.equal(guid,f.packet.guid);incident=code}
+  };
+  const fakeTransaction=hash("e");
+  const rpc=async(method,params)=>{
+    if(method==="eth_sendTransaction"){sends++;return fakeTransaction}
+    if(method==="eth_getTransactionReceipt"&&params[0]===fakeTransaction)return null;
+    return f.rpc(method,params);
+  };
+  const config={from:await f.signers[11].getAddress(),endpoint:await f.epB.getAddress(),oapp:await f.destination.getAddress(),actionTarget:await f.target.getAddress()};
+  await assert.rejects(new LocalOAppExecutionConfirmer(coordinator,rpc,config,attempts).confirmExecution(f.packet.guid),/recovery required/);
+  await assert.rejects(new LocalOAppExecutionConfirmer(coordinator,rpc,config,attempts).confirmExecution(f.packet.guid),/recovery required/);
+  assert.equal(sends,1);
+  assert.equal(incident,"LOCAL_EXECUTION_RECOVERY_REQUIRED");
+});

@@ -38,6 +38,7 @@ import {
   LocalOAppExecutionConfirmer,
   type LocalDemoRpc
 } from "./local-demo-proofs.js";
+import {LocalExecutionDeliveryReader,SqliteLocalExecutionAttempts} from "./local-demo-execution-store.js";
 import {PolicyRequestFactory} from "./request-factory.js";
 import {RecoveryService,recoveryFailurePolicy} from "./recovery-service.js";
 import {SqliteRecoveryStore} from "./recovery-store.js";
@@ -123,6 +124,12 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
   try{
     const evm=await startLocalEvm(12);register(()=>evm.close());
     const rpc:LocalDemoRpc=(method,params)=>evm.provider.send(method,params);
+    const rawUnlockedAccounts=await rpc("eth_accounts",[]);
+    if(!Array.isArray(rawUnlockedAccounts)||rawUnlockedAccounts.length===0||
+      rawUnlockedAccounts.some(value=>typeof value!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(value)||/^0x0{40}$/i.test(value)))
+      throw new Error("local unlocked account discovery failed");
+    const unlockedAccounts=new Set(rawUnlockedAccounts.map(value=>(value as string).toLowerCase()));
+    if(unlockedAccounts.has(options.owner))throw new Error("local demo owner must not be a local unlocked account");
     await rpc("hardhat_setBalance",[options.owner,toQuantity(parseEther("100"))]);
     const [deployer,sourceConfigurator,destinationOwner,targetOwner]=evm.signers;
     const sourceEndpoint=await deploy("MockEndpointV2",deployer!,sourceEid);
@@ -186,6 +193,7 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
         const listenerStore=new SqliteListenerStore(databasePath);acquire(()=>listenerStore.close());
         const recoveryStore=new SqliteRecoveryStore(databasePath);acquire(()=>recoveryStore.close());
         const outbox=new SqliteVerificationOutbox(databasePath,authorizedSigners,3);acquire(()=>outbox.close());
+        const executionAttempts=new SqliteLocalExecutionAttempts(databasePath);acquire(()=>executionAttempts.close());
         const finality=new LocalDemoFinality(authority);
         let coordinator:Coordinator;
         const signerServices=signerRecords.map(record=>new IsolatedSignerService(
@@ -230,12 +238,13 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
         };
         const execution=new LocalOAppExecutionConfirmer(coordinator,rpc,{
           from:deliverySender,endpoint:destinationEndpointAddress,oapp:destinationAddress,actionTarget:targetAddress
-        });
+        },executionAttempts);
         const destinationWorker=new DestinationWorker(
           outbox,submitter,new LocalEdrDestinationVerifier(rpc,adapterAddress,1n),pathVerifier,execution,()=>{}
         );
         await coordinator.restore();await planner.reconcile();
-        const server=createDashboardServer(coordinator,resolve("apps/dashboard"),recovery,outbox,{presentationMode:"LOCAL_TEST"},capability);
+        const deliveries=new LocalExecutionDeliveryReader(outbox,executionAttempts);
+        const server=createDashboardServer(coordinator,resolve("apps/dashboard"),recovery,deliveries,{presentationMode:"LOCAL_TEST"},capability);
         acquire(()=>closeServer(server));
         await listen(server,appPort,options.appHost);
         const addressInfo=server.address();

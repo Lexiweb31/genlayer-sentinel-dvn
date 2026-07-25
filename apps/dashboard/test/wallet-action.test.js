@@ -45,6 +45,7 @@ class RecordingProvider {
   listeners=new Map();
   chainId="0x7a69";
   account=owner;
+  accounts;
   oappOwner=owner;
   onQuote;
   onSend;
@@ -79,7 +80,7 @@ class RecordingProvider {
 
   async request({method,params=[]}){
     this.calls.push({method,params});
-    if(method==="eth_requestAccounts")return[this.account];
+    if(method==="eth_requestAccounts")return this.accounts??[this.account];
     if(method==="eth_chainId")return this.chainId;
     if(method==="eth_call"){
       const data=params[0].data;
@@ -125,6 +126,13 @@ test("validates public config, wallet chain and on-chain OApp owner before quoti
   assert.ok(provider.calls.findIndex(call=>call.method==="eth_call")<provider.calls.findIndex(call=>call===quoteCall));
 });
 
+test("binds the selected first account when a wallet exposes multiple permitted accounts",async()=>{
+  const provider=new RecordingProvider();
+  provider.accounts=[owner,"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"];
+  const session=await new WalletActionClient(provider).connect(parsePublicDemoConfig(config));
+  assert.deepEqual(session,{account:owner,chainId:31337n});
+});
+
 test("submits once and extracts one bound ActionSent GUID from the successful receipt",async()=>{
   const provider=new RecordingProvider(),client=new WalletActionClient(provider,{pollIntervalMs:0,maxReceiptPolls:3}),parsed=parsePublicDemoConfig(config),session=await client.connect(parsed),quote=await client.quote(parsed,session,"approved");
   const submitted=[];
@@ -146,6 +154,17 @@ test("submits once and extracts one bound ActionSent GUID from the successful re
   assert.equal(decoded[1].data,quote.action.data);
   assert.equal(decoded[3].nativeFee,1000000000000n);
   assert.equal(decoded[3].lzTokenFee,0n);
+});
+
+test("fails a changed-chain submit preflight before any wallet transaction request",async()=>{
+  const provider=new RecordingProvider(),client=new WalletActionClient(provider),parsed=parsePublicDemoConfig(config);
+  const session=await client.connect(parsed),quote=await client.quote(parsed,session,"approved");
+  provider.chainId="0x1";
+  await assert.rejects(
+    client.submit(parsed,session,quote),
+    error=>error instanceof WalletActionError&&error.code==="WRONG_CHAIN"
+  );
+  assert.equal(provider.calls.some(call=>call.method==="eth_sendTransaction"),false);
 });
 
 test("fails closed with stable codes for untrusted config, wallet and receipt states",async()=>{

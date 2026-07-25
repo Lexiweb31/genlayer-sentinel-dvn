@@ -13,7 +13,7 @@
 <body>
   <header><div class="mark">S</div><div><strong>GenLayer Sentinel</strong><span>Policy firewall for LayerZero</span></div><b id="runtime-mode">CHECKING MODE</b></header>
   <main>
-    <section class="hero"><p>ETHEREUM SEPOLIA → ARBITRUM SEPOLIA</p><h1>Every high-value message must explain itself.</h1><p class="lede">Sentinel independently proves the packet, asks decentralized semantic consensus whether governance authorized the action, then requires isolated signer quorum.</p><div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div></section>
+    <section class="hero"><p>POLICY-AWARE DVN PROTOTYPE · PATHWAY FROM COORDINATOR EVIDENCE</p><h1>Every high-value message must explain itself.</h1><p class="lede">Sentinel binds deterministic packet evidence, waits for a finalized semantic policy result, then requires the configured signer quorum. Runtime labels distinguish local fixtures from independently operated production infrastructure.</p><div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div></section>
     <section class="demo-workspace" id="demo-workspace" aria-labelledby="demo-title">
       <div class="section-head"><div><p>LOCAL TEST · FIXTURE POLICY</p><h2 id="demo-title">Send a governed treasury action</h2></div><span class="status" id="demo-status">CHECKING CAPABILITY</span></div>
       <div class="demo-warning"><strong>Local proof path only.</strong> Your wallet sends a real transaction to locally deployed OApp bytecode. The semantic result is an explicitly labeled fixture—not live GenLayer consensus or testnet approval.</div>
@@ -49,15 +49,16 @@
     <section class="delivery"><div class="section-head"><div><p>DESTINATION DELIVERY</p><h2>Verification outbox</h2></div><span class="status" id="delivery-status">CONNECTING</span></div><p class="recovery-note">Submission is crash-safe and read-only here. Ambiguous broadcasts stop in recovery-required state and are never automatically rebroadcast.</p><div id="deliveries" class="deliveries"><p class="empty">Loading destination delivery state.</p></div></section>
     <section class="inspector" id="inspector" hidden>
       <article><p>CANONICAL PACKET</p><h2>Deterministic identity</h2><dl id="packet-details"></dl></article>
-      <article><p>INDEPENDENT RPC</p><h2>Inclusion &amp; confirmations</h2><div id="verification-details" class="cards"></div></article>
-      <article><p>GENLAYER</p><h2>Semantic decision</h2><dl id="policy-details"></dl></article>
+      <article><p>PACKET PROOFS</p><h2>Inclusion &amp; confirmations</h2><div id="verification-details" class="cards"></div></article>
+      <article><p>SEMANTIC ENGINE</p><h2>Finalized policy decision</h2><dl id="policy-details"></dl></article>
       <article><p>SIGNER GATE</p><h2>Quorum progress</h2><div id="signer-details"></div></article>
     </section>
-    <section class="split"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>3-of-5 isolated operators; any smaller local setup must be explicitly identified</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
+    <section class="split"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>Intended production design: 3-of-5 isolated operators. Local mode uses five in-process fixture identities.</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
 
 deployment        NOT DEPLOYED
-dashboard mode    READ ONLY / LIVE API
-genlayer finality SDK PINNED / NOT LIVE
+operations API    READ ONLY / LIVE DATA
+wallet action     LOCAL CAPABILITY ONLY
+genlayer finality NOT LIVE
 gasolina async    CONFIRMATION NEEDED
 mainnet ready     NO</pre></article></section>
   </main>
