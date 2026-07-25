@@ -1,6 +1,7 @@
 import {isIP} from "node:net";
 import {AbiCoder,Interface,keccak256,toQuantity} from "ethers";
 import type {Hex,PolicyRequest} from "../../../packages/core/src/types.js";
+import{safeJsonRpc}from"./json-rpc.js";
 import type {SourcePathConfig} from "./runtime-config.js";
 
 export type SourcePathRpc=(url:string,method:string,params:unknown[])=>Promise<unknown>;
@@ -60,7 +61,7 @@ class RpcUnavailable extends Error {}
 
 export class IndependentSourcePathVerifier implements SourcePathVerifier {
   private urls:string[];
-  constructor(private config:SourcePathConfig,private rpc:SourcePathRpc=jsonRpc){
+  constructor(private config:SourcePathConfig,private rpc:SourcePathRpc=safeJsonRpc){
     if(config.rpcUrls.length<2)throw new Error("at least two source RPCs required");
     this.urls=config.rpcUrls.map(safeUrl);
     if(new Set(this.urls.map(value=>new URL(value).origin)).size!==this.urls.length)throw new Error("source RPC origins must be independent");
@@ -182,13 +183,6 @@ export class IndependentSourcePathVerifier implements SourcePathVerifier {
   }
 }
 
-async function jsonRpc(url:string,method:string,params:unknown[]):Promise<unknown>{
-  const response=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),redirect:"error",signal:AbortSignal.timeout(10_000)});
-  if(!response.ok)throw new Error();
-  const body=await response.json() as {result?:unknown;error?:unknown};
-  if(body.error||!("result" in body))throw new Error();
-  return body.result;
-}
 function quantity(value:unknown):bigint {if(typeof value!=="string"||!/^0x[0-9a-fA-F]+$/.test(value))throw new Error();return BigInt(value)}
 function hash(value:unknown):Hex {if(typeof value!=="string"||!/^0x[0-9a-fA-F]{64}$/.test(value)||/^0x0{64}$/i.test(value))throw new Error();return value.toLowerCase() as Hex}
 function bytes32(value:unknown):Hex {if(typeof value!=="string"||!/^0x[0-9a-fA-F]{64}$/.test(value)||/^0x0{64}$/i.test(value))throw new Error();return value.toLowerCase() as Hex}
