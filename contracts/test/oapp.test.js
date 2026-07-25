@@ -18,6 +18,8 @@ async function fixture(t) {
   t.after(close);
   const epA = await deploy("MockEndpointV2", s[0], 40161);
   const epB = await deploy("MockEndpointV2", s[1], 40231);
+  await (await epA.setOptionalDvn(await s[5].getAddress())).wait();
+  await (await epB.setOptionalDvn(await s[5].getAddress())).wait();
   const a = await deploy("TreasuryPolicyOApp", s[2], await epA.getAddress(), await s[2].getAddress());
   const b = await deploy("TreasuryPolicyOApp", s[3], await epB.getAddress(), await s[3].getAddress());
   const target = await deploy("ActionTarget", s[4]);
@@ -43,6 +45,16 @@ test("quotes, sends, decodes PacketSent, and executes through the trusted peer",
     .map(log => { try { return epA.interface.parseLog(log); } catch { return null; } })
     .find(log => log?.name === "PacketSent");
   assert.ok(sent);
+  const feeEvent = receipt.logs
+    .map(log => { try { return epA.interface.parseLog(log); } catch { return null; } })
+    .find(log => log?.name === "DVNFeePaid");
+  assert.ok(feeEvent);
+  assert.deepEqual([...feeEvent.args.requiredDVNs], []);
+  assert.deepEqual(
+    [...feeEvent.args.optionalDVNs].map(value => value.toLowerCase()),
+    [(await s[5].getAddress()).toLowerCase()]
+  );
+  assert.deepEqual([...feeEvent.args.fees], [1000000000000n]);
   const actionEvent = receipt.logs
     .map(log => { try { return a.interface.parseLog(log); } catch { return null; } })
     .find(log => log?.name === "ActionSent");
