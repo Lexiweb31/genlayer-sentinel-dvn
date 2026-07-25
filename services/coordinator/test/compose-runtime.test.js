@@ -7,10 +7,12 @@ import {composeRuntime} from "../../../dist/services/coordinator/src/compose-run
 import {SqliteJobStore} from "../../../dist/services/coordinator/src/job-store.js";
 import {SqliteListenerStore} from "../../../dist/services/coordinator/src/listener-store.js";
 import {SqliteRecoveryStore} from "../../../dist/services/coordinator/src/recovery-store.js";
+import {SqliteRuntimeLease} from "../../../dist/services/coordinator/src/runtime-lease.js";
+import {SqliteVerificationOutbox} from "../../../dist/services/coordinator/src/verification-outbox.js";
 
 const a=n=>`0x${n.repeat(40)}`,h=n=>`0x${n.repeat(64)}`,b=n=>`0x${"0".repeat(24)}${n.repeat(40)}`;
 const authorized=[a("1"),a("2"),a("3"),a("4"),a("5")];
-function config(path){return{mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:b("3"),sourceOAppAddress:a("3"),destinationOApp:b("4"),sentinelDvn:a("5"),executor:a("6"),maxMessageSize:10000,deadDvn:a("d"),requiredDvns:[a("a")],optionalDvns:[a("5"),a("b")],optionalDvnThreshold:1,startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},destination:{rpcUrls:["https://dst-a.example","https://dst-b.example"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:64n,requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:authorized,quorum:3,signatureTtlSeconds:300},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},storage:{sqlitePath:path},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}}}
+function config(path){return{mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:b("3"),sourceOAppAddress:a("3"),destinationOApp:b("4"),sentinelDvn:a("5"),executor:a("6"),maxMessageSize:10000,deadDvn:a("d"),requiredDvns:[a("a")],optionalDvns:[a("5"),a("b")],optionalDvnThreshold:1,startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},destination:{rpcUrls:["https://dst-a.example","https://dst-b.example"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:64n,requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:authorized,quorum:3,signatureTtlSeconds:300},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},recovery:{operators:[a("6"),a("7"),a("8"),a("9"),a("c")],quorum:3,minimumDelaySeconds:900,maximumLifetimeSeconds:3600},storage:{sqlitePath:path},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}}}
 function capabilities(){let signerCalls=0,destinationCalls=0,genlayerCalls=0;const value={genlayer:{writeContract:async()=>{genlayerCalls++;return h("7")},getTransaction:async()=>({}),readContract:async()=>""},sourceRpc:async()=>{throw new Error("source RPC fixture invoked")},signers:authorized.map(address=>({address,sign:async()=>{signerCalls++;throw new Error("unexpected signer call")}})),destinationSubmitter:{used:async()=>{destinationCalls++;return false},submitVerification:async()=>{destinationCalls++;return h("8")}},destinationRpc:async()=>{destinationCalls++;throw new Error("unexpected destination RPC")},presentationMode:"LOCAL_TEST"};return{value,signerCalls:()=>signerCalls,destinationCalls:()=>destinationCalls,genlayerCalls:()=>genlayerCalls}}
 
 test("composes the complete loopback runtime without eager account, signer, or network work",async()=>{
@@ -42,4 +44,25 @@ test("closes every acquired store in reverse order when composition fails",()=>{
   const tracked=(name,store)=>{const close=store.close.bind(store);store.close=()=>{closed.push(name);close()};return store};
   const stores={job:value=>tracked("job",new SqliteJobStore(value)),listener:value=>tracked("listener",new SqliteListenerStore(value)),recovery:value=>tracked("recovery",new SqliteRecoveryStore(value)),outbox:()=>{throw new Error("outbox construction failed")}};
   try{assert.throws(()=>composeRuntime(config(path),caps.value,resolve("apps/dashboard"),console.error,undefined,stores),/outbox construction failed/);assert.deepEqual(closed,["recovery","listener","job"])}finally{rmSync(dir,{recursive:true,force:true})}
+});
+
+test("binds HTTP before claiming the runtime lease and releases it before store close",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),path=join(dir,"state.db"),caps=capabilities(),calls=[];
+  const lease={claimRuntime:async()=>calls.push("claim"),heartbeatRuntime:async()=>calls.push("heartbeat"),releaseRuntime:async()=>calls.push("release"),assertReleased:async()=>{},acquireRecovery:async()=>{},releaseRecovery:async()=>{},close:()=>calls.push("close-lease")};
+  const stores={job:value=>new SqliteJobStore(value),listener:value=>new SqliteListenerStore(value),recovery:value=>new SqliteRecoveryStore(value),outbox:(value,signers,quorum)=>new SqliteVerificationOutbox(value,signers,quorum),lease:()=>lease};
+  const socket={listen:async()=>calls.push("listen"),close:async()=>calls.push("close-http")};
+  try{
+    const value=composeRuntime(config(path),caps.value,resolve("apps/dashboard"),console.error,socket,stores);
+    assert.deepEqual(calls,[]);
+    await value.runtime.start();assert.deepEqual(calls.slice(0,2),["listen","claim"]);
+    await value.runtime.stop();assert.deepEqual(calls.slice(-3),["close-http","release","close-lease"]);
+  }finally{rmSync(dir,{recursive:true,force:true})}
+});
+
+test("fails startup closed when another live runtime owns the durable lease",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),path=join(dir,"state.db"),caps=capabilities(),owner=new SqliteRuntimeLease(path,60),socketCalls=[];
+  await owner.claimRuntime("other-runtime",Math.floor(Date.now()/1000),false);
+  const value=composeRuntime(config(path),caps.value,resolve("apps/dashboard"),console.error,{listen:async()=>socketCalls.push("listen"),close:async()=>socketCalls.push("close")});
+  try{await assert.rejects(value.runtime.start(),/runtime active/);assert.deepEqual(socketCalls,["listen","close"]);await assert.rejects(value.outbox.list())}
+  finally{await owner.releaseRuntime("other-runtime",Math.floor(Date.now()/1000));owner.close();rmSync(dir,{recursive:true,force:true})}
 });
