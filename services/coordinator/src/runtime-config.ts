@@ -19,9 +19,32 @@ export interface DestinationPathConfig {
   signatureTtlSeconds:number;
 }
 
+export interface SourcePathConfig {
+  name:string;
+  sourceChainId:number;
+  destinationChainId:number;
+  srcEid:number;
+  dstEid:number;
+  endpoint:Hex;
+  sendLibrary:Hex;
+  sourceOApp:Hex;
+  sourceOAppAddress:Hex;
+  destinationOApp:Hex;
+  sentinelDvn:Hex;
+  executor:Hex;
+  maxMessageSize:number;
+  deadDvn:Hex;
+  requiredDvns:Hex[];
+  optionalDvns:Hex[];
+  optionalDvnThreshold:number;
+  startBlock:bigint;
+  confirmations:bigint;
+  rpcUrls:string[];
+}
+
 export interface RuntimeConfig {
   mode:"TESTNET_PROTOTYPE";
-  pathway:{name:string;sourceChainId:number;destinationChainId:number;srcEid:number;dstEid:number;endpoint:Hex;sendLibrary:Hex;sourceOApp:Hex;destinationOApp:Hex;sentinelDvn:Hex;startBlock:bigint;confirmations:bigint;rpcUrls:string[]};
+  pathway:SourcePathConfig;
   destination:DestinationPathConfig;
   evidence:{uri:string;allowedHost:string;policy:string;ttlSeconds:number;maximumBytes:number};
   genlayer:{endpoint:string;policyContract:Hex};
@@ -43,6 +66,7 @@ export function parseRuntimeConfig(value:unknown):RuntimeConfig {
   const runtime=record(root.runtime,"runtime");
   const status=record(root.status,"status");
 
+  exactKeys(pathway,["name","sourceChainId","destinationChainId","srcEid","dstEid","endpoint","sendLibrary","sourceOApp","sourceOAppAddress","destinationOApp","sentinelDvn","executor","maxMessageSize","deadDvn","requiredDvns","optionalDvns","optionalDvnThreshold","startBlock","confirmations","rpcUrls"],"pathway");
   exactKeys(destination,["rpcUrls","chainId","srcEid","endpoint","receiveLibrary","oapp","adapter","useDefaultReceiveLibrary","confirmations","requiredDvns","optionalDvns","optionalDvnThreshold","authorizedSigners","quorum","signatureTtlSeconds"],"destination");
 
   const rpcUrls=secureRpcUrls(pathway.rpcUrls,"pathway.rpcUrls");
@@ -50,10 +74,23 @@ export function parseRuntimeConfig(value:unknown):RuntimeConfig {
   const sourceChainId=uint(pathway.sourceChainId,"pathway.sourceChainId");
   const destinationChainId=uint(pathway.destinationChainId,"pathway.destinationChainId");
   const srcEid=uint(pathway.srcEid,"pathway.srcEid");
+  const sourceOApp=bytes32(pathway.sourceOApp,"pathway.sourceOApp");
+  const sourceOAppAddress=address(pathway.sourceOAppAddress,"pathway.sourceOAppAddress");
+  const paddedSourceOApp=`0x${"0".repeat(24)}${sourceOAppAddress.slice(2)}`.toLowerCase();
+  if(paddedSourceOApp!==sourceOApp.toLowerCase())throw new Error("source OApp binding mismatch");
   const destinationOApp=bytes32(pathway.destinationOApp,"pathway.destinationOApp");
   const destinationOappAddress=address(destination.oapp,"destination.oapp");
   const paddedOapp=`0x${"0".repeat(24)}${destinationOappAddress.slice(2)}`.toLowerCase();
   if(paddedOapp!==destinationOApp.toLowerCase())throw new Error("destination OApp binding mismatch");
+  const sentinelDvn=address(pathway.sentinelDvn,"pathway.sentinelDvn");
+  const deadDvn=address(pathway.deadDvn,"pathway.deadDvn");
+  const sourceRequiredDvns=sortedAddresses(pathway.requiredDvns,"pathway.requiredDvns");
+  const sourceOptionalDvns=sortedAddresses(pathway.optionalDvns,"pathway.optionalDvns");
+  if(sourceRequiredDvns.some(value=>same(value,sentinelDvn)))throw new Error("Sentinel must not be a required source DVN");
+  if(!sourceOptionalDvns.some(value=>same(value,sentinelDvn)))throw new Error("Sentinel must be an optional source DVN");
+  if([...sourceRequiredDvns,...sourceOptionalDvns].some(value=>same(value,deadDvn)))throw new Error("source DVNs must not include the Dead DVN");
+  const sourceOptionalDvnThreshold=uint(pathway.optionalDvnThreshold,"pathway.optionalDvnThreshold");
+  if(sourceOptionalDvnThreshold>sourceOptionalDvns.length)throw new Error("source optional DVN threshold is invalid");
 
   const destinationChain=uint(destination.chainId,"destination.chainId");
   const destinationSrcEid=uint(destination.srcEid,"destination.srcEid");
@@ -81,7 +118,7 @@ export function parseRuntimeConfig(value:unknown):RuntimeConfig {
 
   return {
     mode:"TESTNET_PROTOTYPE",
-    pathway:{name:text(pathway.name,"pathway.name"),sourceChainId,destinationChainId,srcEid,dstEid:uint(pathway.dstEid,"pathway.dstEid"),endpoint:address(pathway.endpoint,"pathway.endpoint"),sendLibrary:address(pathway.sendLibrary,"pathway.sendLibrary"),sourceOApp:bytes32(pathway.sourceOApp,"pathway.sourceOApp"),destinationOApp,sentinelDvn:address(pathway.sentinelDvn,"pathway.sentinelDvn"),startBlock:big(pathway.startBlock,"pathway.startBlock",true),confirmations:big(pathway.confirmations,"pathway.confirmations"),rpcUrls},
+    pathway:{name:text(pathway.name,"pathway.name"),sourceChainId,destinationChainId,srcEid,dstEid:uint(pathway.dstEid,"pathway.dstEid"),endpoint:address(pathway.endpoint,"pathway.endpoint"),sendLibrary:address(pathway.sendLibrary,"pathway.sendLibrary"),sourceOApp,sourceOAppAddress,destinationOApp,sentinelDvn,executor:address(pathway.executor,"pathway.executor"),maxMessageSize:uint(pathway.maxMessageSize,"pathway.maxMessageSize"),deadDvn,requiredDvns:sourceRequiredDvns,optionalDvns:sourceOptionalDvns,optionalDvnThreshold:sourceOptionalDvnThreshold,startBlock:big(pathway.startBlock,"pathway.startBlock",true),confirmations:big(pathway.confirmations,"pathway.confirmations"),rpcUrls},
     destination:{rpcUrls:destinationRpcUrls,chainId:destinationChain,srcEid:destinationSrcEid,endpoint:address(destination.endpoint,"destination.endpoint"),receiveLibrary:address(destination.receiveLibrary,"destination.receiveLibrary"),oapp:destinationOappAddress,adapter:destinationAdapter,useDefaultReceiveLibrary:false,confirmations:big(destination.confirmations,"destination.confirmations"),requiredDvns,optionalDvns,optionalDvnThreshold,authorizedSigners,quorum:3,signatureTtlSeconds},
     evidence:{uri:evidenceUrl.href,allowedHost,policy:text(evidence.policy,"evidence.policy"),ttlSeconds:uint(evidence.ttlSeconds,"evidence.ttlSeconds"),maximumBytes:uint(evidence.maximumBytes,"evidence.maximumBytes")},
     genlayer:{endpoint:secureUrl(text(genlayer.endpoint,"genlayer.endpoint"),"genlayer.endpoint").href,policyContract:address(genlayer.policyContract,"genlayer.policyContract")},

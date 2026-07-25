@@ -11,8 +11,18 @@
     "endpoint": "0x1111111111111111111111111111111111111111",
     "sendLibrary": "0x2222222222222222222222222222222222222222",
     "sourceOApp": "0x0000000000000000000000003333333333333333333333333333333333333333",
+    "sourceOAppAddress": "0x3333333333333333333333333333333333333333",
     "destinationOApp": "0x0000000000000000000000004444444444444444444444444444444444444444",
     "sentinelDvn": "0x5555555555555555555555555555555555555555",
+    "executor": "0x718B92b5CB0a5552039B593faF724D182A881eDA",
+    "maxMessageSize": 10000,
+    "deadDvn": "0x8b450b0acF56E1B0e25C581bB04FBAbeeb0644b8",
+    "requiredDvns": ["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    "optionalDvns": [
+      "0x5555555555555555555555555555555555555555",
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "optionalDvnThreshold": 1,
     "startBlock": "1",
     "confirmations": "15",
     "rpcUrls": ["https://rpc-a.invalid/path", "https://rpc-b.invalid/path"]

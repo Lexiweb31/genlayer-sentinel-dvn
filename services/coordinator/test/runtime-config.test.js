@@ -7,7 +7,7 @@ const h=n=>`0x${n.repeat(64)}`;
 const b=n=>`0x${"0".repeat(24)}${n.repeat(40)}`;
 const valid={
   mode:"TESTNET_PROTOTYPE",
-  pathway:{name:"sepolia-arbitrum-sepolia",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:h("3"),destinationOApp:b("4"),sentinelDvn:a("5"),startBlock:"123",confirmations:"15",rpcUrls:["https://rpc-a.example/v1/key","https://rpc-b.example/v1/key"]},
+  pathway:{name:"sepolia-arbitrum-sepolia",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:b("3"),sourceOAppAddress:a("3"),destinationOApp:b("4"),sentinelDvn:a("5"),executor:a("6"),maxMessageSize:10000,deadDvn:a("d"),requiredDvns:[a("a")],optionalDvns:[a("5"),a("b")],optionalDvnThreshold:1,startBlock:"123",confirmations:"15",rpcUrls:["https://rpc-a.example/v1/key","https://rpc-b.example/v1/key"]},
   destination:{rpcUrls:["https://dst-a.example/v1/key","https://dst-b.example/v1/key"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:"64",requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:[a("1"),a("2"),a("3"),a("4"),a("5")],quorum:3,signatureTtlSeconds:300},
   evidence:{uri:"https://governance.example/authorization",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},
   genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},
@@ -32,6 +32,7 @@ test("parses a pinned destination security manifest and redacts public RPC paths
 test("rejects missing, unsafe, ambiguous and secret-bearing base runtime values",()=>{
   const changes=[
     input=>input.mode="PRODUCTION",
+    input=>input.pathway.extra="unsafe",
     input=>input.pathway.rpcUrls=["https://same.example/a","https://same.example/b"],
     input=>input.pathway.rpcUrls=["https://user:secret@rpc-a.example","https://rpc-b.example"],
     input=>input.evidence.allowedHost="evil.example",
@@ -40,7 +41,19 @@ test("rejects missing, unsafe, ambiguous and secret-bearing base runtime values"
     input=>input.runtime.maxIngestionAttempts=0,
     input=>input.status.host="0.0.0.0",
     input=>input.pathway.confirmations="0",
-    input=>input.pathway.endpoint=a("0")
+    input=>input.pathway.endpoint=a("0"),
+    input=>input.pathway.sourceOAppAddress=a("c"),
+    input=>input.pathway.executor=a("0"),
+    input=>input.pathway.maxMessageSize=0,
+    input=>input.pathway.requiredDvns=[],
+    input=>input.pathway.requiredDvns=[a("5")],
+    input=>input.pathway.optionalDvns=[a("b")],
+    input=>input.pathway.requiredDvns=[a("d")],
+    input=>input.pathway.optionalDvns=[a("5"),a("d")],
+    input=>input.pathway.requiredDvns=[a("a"),a("a")],
+    input=>input.pathway.optionalDvns=[a("b"),a("5")],
+    input=>input.pathway.optionalDvnThreshold=0,
+    input=>input.pathway.optionalDvnThreshold=3
   ];
   for(const change of changes){const input=structuredClone(valid);change(input);assert.throws(()=>parseRuntimeConfig(input));}
 });
