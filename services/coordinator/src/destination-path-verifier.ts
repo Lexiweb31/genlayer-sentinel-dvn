@@ -26,12 +26,13 @@ export interface VerifiedDestinationPath {
 export interface DestinationPathVerifier {verify():Promise<VerifiedDestinationPath>}
 
 interface Head {url:string;chainId:bigint;blockNumber:bigint}
-interface Observation {receiveLibrary:Hex;isDefault:boolean;supported:boolean;confirmations:bigint;requiredDvns:Hex[];optionalDvns:Hex[];optionalDvnThreshold:number;verificationTarget:Hex;quorum:bigint;signersAuthorized:boolean[]}
+interface Observation {receiveLibrary:Hex;isDefault:boolean;supported:boolean;confirmations:bigint;requiredDvns:Hex[];optionalDvns:Hex[];optionalDvnThreshold:number;appConfirmations:bigint;appRequiredDvnCount:number;appOptionalDvnCount:number;appRequiredDvns:Hex[];appOptionalDvns:Hex[];appOptionalDvnThreshold:number;verificationTarget:Hex;quorum:bigint;signersAuthorized:boolean[]}
 
 const endpointInterface=new Interface(["function getReceiveLibrary(address receiver,uint32 srcEid) view returns(address lib,bool isDefault)"]);
 const receiveInterface=new Interface([
   "function isSupportedEid(uint32 eid) view returns(bool)",
-  "function getUlnConfig(address oapp,uint32 remoteEid) view returns(tuple(uint64 confirmations,uint8 requiredDVNCount,uint8 optionalDVNCount,uint8 optionalDVNThreshold,address[] requiredDVNs,address[] optionalDVNs))"
+  "function getUlnConfig(address oapp,uint32 remoteEid) view returns(tuple(uint64 confirmations,uint8 requiredDVNCount,uint8 optionalDVNCount,uint8 optionalDVNThreshold,address[] requiredDVNs,address[] optionalDVNs))",
+  "function getAppUlnConfig(address oapp,uint32 remoteEid) view returns(tuple(uint64 confirmations,uint8 requiredDVNCount,uint8 optionalDVNCount,uint8 optionalDVNThreshold,address[] requiredDVNs,address[] optionalDVNs))"
 ]);
 const adapterInterface=new Interface(["function verificationTarget() view returns(address)","function quorum() view returns(uint256)","function signer(address) view returns(bool)"]);
 const coder=AbiCoder.defaultAbiCoder();
@@ -100,6 +101,9 @@ export class IndependentDestinationPathVerifier implements DestinationPathVerifi
       const [uln]=receiveInterface.decodeFunctionResult("getUlnConfig",configRaw);
       const requiredDvns=(uln.requiredDVNs as string[]).map(normalizeAddress),optionalDvns=(uln.optionalDVNs as string[]).map(normalizeAddress);
       if(Number(uln.requiredDVNCount)!==requiredDvns.length||Number(uln.optionalDVNCount)!==optionalDvns.length)throw new Error();
+      const appConfigRaw=await this.call(url,this.config.receiveLibrary,receiveInterface.encodeFunctionData("getAppUlnConfig",[this.config.oapp,this.config.srcEid]),blockTag);
+      const [appUln]=receiveInterface.decodeFunctionResult("getAppUlnConfig",appConfigRaw);
+      const appRequiredDvns=(appUln.requiredDVNs as string[]).map(normalizeAddress),appOptionalDvns=(appUln.optionalDVNs as string[]).map(normalizeAddress);
       const targetRaw=await this.call(url,this.config.adapter,adapterInterface.encodeFunctionData("verificationTarget"),blockTag);
       const [verificationTarget]=adapterInterface.decodeFunctionResult("verificationTarget",targetRaw);
       const quorumRaw=await this.call(url,this.config.adapter,adapterInterface.encodeFunctionData("quorum"),blockTag);
@@ -108,7 +112,7 @@ export class IndependentDestinationPathVerifier implements DestinationPathVerifi
         const raw=await this.call(url,this.config.adapter,adapterInterface.encodeFunctionData("signer",[signer]),blockTag);
         return Boolean(adapterInterface.decodeFunctionResult("signer",raw)[0]);
       }));
-      return{receiveLibrary:normalizeAddress(String(receiveLibrary)),isDefault:Boolean(isDefault),supported:Boolean(supported),confirmations:BigInt(uln.confirmations),requiredDvns,optionalDvns,optionalDvnThreshold:Number(uln.optionalDVNThreshold),verificationTarget:normalizeAddress(String(verificationTarget)),quorum:BigInt(quorum),signersAuthorized};
+      return{receiveLibrary:normalizeAddress(String(receiveLibrary)),isDefault:Boolean(isDefault),supported:Boolean(supported),confirmations:BigInt(uln.confirmations),requiredDvns,optionalDvns,optionalDvnThreshold:Number(uln.optionalDVNThreshold),appConfirmations:BigInt(appUln.confirmations),appRequiredDvnCount:Number(appUln.requiredDVNCount),appOptionalDvnCount:Number(appUln.optionalDVNCount),appRequiredDvns,appOptionalDvns,appOptionalDvnThreshold:Number(appUln.optionalDVNThreshold),verificationTarget:normalizeAddress(String(verificationTarget)),quorum:BigInt(quorum),signersAuthorized};
     }catch{throw new RpcUnavailable()}
   }
 
@@ -116,7 +120,7 @@ export class IndependentDestinationPathVerifier implements DestinationPathVerifi
 
   private assertPinned(chainId:bigint,value:Observation):void{
     const expectedRequired=this.config.requiredDvns.map(normalizeAddress),expectedOptional=this.config.optionalDvns.map(normalizeAddress);
-    if(chainId!==BigInt(this.config.chainId)||value.isDefault||!value.supported||value.receiveLibrary!==normalizeAddress(this.config.receiveLibrary)||value.confirmations!==this.config.confirmations||stable(value.requiredDvns)!==stable(expectedRequired)||stable(value.optionalDvns)!==stable(expectedOptional)||value.optionalDvnThreshold!==this.config.optionalDvnThreshold||value.verificationTarget!==normalizeAddress(this.config.receiveLibrary)||value.quorum!==BigInt(this.config.quorum)||value.signersAuthorized.some(authorized=>!authorized))throw new Error("destination pathway configuration drift");
+    if(chainId!==BigInt(this.config.chainId)||value.isDefault||!value.supported||value.receiveLibrary!==normalizeAddress(this.config.receiveLibrary)||value.confirmations!==this.config.confirmations||stable(value.requiredDvns)!==stable(expectedRequired)||stable(value.optionalDvns)!==stable(expectedOptional)||value.optionalDvnThreshold!==this.config.optionalDvnThreshold||value.appConfirmations!==this.config.confirmations||value.appRequiredDvnCount!==expectedRequired.length||value.appOptionalDvnCount!==expectedOptional.length||stable(value.appRequiredDvns)!==stable(expectedRequired)||stable(value.appOptionalDvns)!==stable(expectedOptional)||value.appOptionalDvnThreshold!==this.config.optionalDvnThreshold||value.verificationTarget!==normalizeAddress(this.config.receiveLibrary)||value.quorum!==BigInt(this.config.quorum)||value.signersAuthorized.some(authorized=>!authorized))throw new Error("destination pathway configuration drift");
   }
 }
 
