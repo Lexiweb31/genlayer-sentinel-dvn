@@ -1,5 +1,7 @@
 # Official-source feasibility and deployment audit — 2026-07-22
 
+Superseded for current metadata by [`2026-07-25-official-recheck.md`](2026-07-25-official-recheck.md). Retained as dated audit history.
+
 Status: contract metadata audited; pathway not deployed or validated; no funds or external resources used.
 
 ## Outcome

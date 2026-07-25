@@ -8,3 +8,7 @@ export function deliveryTimelineIndex(delivery){
   }
   return deliveryStage[delivery?.state];
 }
+
+export function verificationSummary(verification,shorten){
+  return `Block ${shorten(verification.blockHash)} · payload ${shorten(verification.payloadHash)} · source config ${shorten(verification.configurationDigest)}`;
+}

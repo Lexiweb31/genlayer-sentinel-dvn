@@ -10,8 +10,8 @@ import {SqliteRecoveryStore} from "../../../dist/services/coordinator/src/recove
 
 const a=n=>`0x${n.repeat(40)}`,h=n=>`0x${n.repeat(64)}`,b=n=>`0x${"0".repeat(24)}${n.repeat(40)}`;
 const authorized=[a("1"),a("2"),a("3"),a("4"),a("5")];
-function config(path){return{mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:h("3"),destinationOApp:b("4"),sentinelDvn:a("5"),startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},destination:{rpcUrls:["https://dst-a.example","https://dst-b.example"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:64n,requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:authorized,quorum:3,signatureTtlSeconds:300},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},storage:{sqlitePath:path},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}}}
-function capabilities(){let signerCalls=0,destinationCalls=0;const value={genlayer:{writeContract:async()=>h("7"),getTransaction:async()=>({}),readContract:async()=>""},signers:authorized.map(address=>({address,sign:async()=>{signerCalls++;throw new Error("unexpected signer call")}})),destinationSubmitter:{used:async()=>{destinationCalls++;return false},submitVerification:async()=>{destinationCalls++;return h("8")}},destinationRpc:async()=>{destinationCalls++;throw new Error("unexpected destination RPC")},presentationMode:"LOCAL_TEST"};return{value,signerCalls:()=>signerCalls,destinationCalls:()=>destinationCalls}}
+function config(path){return{mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:b("3"),sourceOAppAddress:a("3"),destinationOApp:b("4"),sentinelDvn:a("5"),executor:a("6"),maxMessageSize:10000,deadDvn:a("d"),requiredDvns:[a("a")],optionalDvns:[a("5"),a("b")],optionalDvnThreshold:1,startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},destination:{rpcUrls:["https://dst-a.example","https://dst-b.example"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:64n,requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:authorized,quorum:3,signatureTtlSeconds:300},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},storage:{sqlitePath:path},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}}}
+function capabilities(){let signerCalls=0,destinationCalls=0,genlayerCalls=0;const value={genlayer:{writeContract:async()=>{genlayerCalls++;return h("7")},getTransaction:async()=>({}),readContract:async()=>""},sourceRpc:async()=>{throw new Error("source RPC fixture invoked")},signers:authorized.map(address=>({address,sign:async()=>{signerCalls++;throw new Error("unexpected signer call")}})),destinationSubmitter:{used:async()=>{destinationCalls++;return false},submitVerification:async()=>{destinationCalls++;return h("8")}},destinationRpc:async()=>{destinationCalls++;throw new Error("unexpected destination RPC")},presentationMode:"LOCAL_TEST"};return{value,signerCalls:()=>signerCalls,destinationCalls:()=>destinationCalls,genlayerCalls:()=>genlayerCalls}}
 
 test("composes the complete loopback runtime without eager account, signer, or network work",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),socketCalls=[],caps=capabilities(),originalFetch=globalThis.fetch;let genlayerFetches=0;globalThis.fetch=async()=>{genlayerFetches++;throw new Error("unexpected network call")};
@@ -24,6 +24,18 @@ test("composes the complete loopback runtime without eager account, signer, or n
 });
 
 test("rejects capability signer identities that do not exactly match the manifest",()=>{const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),caps=capabilities();try{assert.throws(()=>composeRuntime(config(join(dir,"state.db")),{...caps.value,signers:caps.value.signers.slice(0,4)},resolve("apps/dashboard")),/signer identities/)}finally{rmSync(dir,{recursive:true,force:true})}});
+
+test("uses the injected source transport and blocks GenLayer submission when deterministic source proof fails",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),caps=capabilities(),originalFetch=globalThis.fetch;
+  globalThis.fetch=async()=>{throw new Error("default source transport used")};
+  const value=composeRuntime(config(join(dir,"state.db")),caps.value,resolve("apps/dashboard"));
+  const packet={guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:b("3"),receiver:b("4"),message:"0x",payloadHash:h("2"),encodedPayloadHash:h("3"),txHash:h("4"),blockHash:h("5"),blockNumber:10n};
+  const request={packet,evidence:{uri:"https://governance.example/auth",digest:h("6"),observedAt:9,validUntil:100},decodedAction:"{}",policy:"exact authorization"};
+  try{
+    await assert.rejects(value.coordinator.detect(request,10),/source RPC fixture invoked|source pathway RPC unavailable/);
+    assert.equal(caps.genlayerCalls(),0);
+  }finally{globalThis.fetch=originalFetch;await value.runtime.stop();rmSync(dir,{recursive:true,force:true})}
+});
 
 test("closes every acquired store in reverse order when composition fails",()=>{
   const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),path=join(dir,"state.db"),caps=capabilities(),closed=[];

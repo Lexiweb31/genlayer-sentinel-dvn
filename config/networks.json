@@ -1,7 +1,7 @@
 {
-  "auditDate": "2026-07-22",
+  "auditDate": "2026-07-25",
   "status": "AUDITED_CONTRACT_METADATA_NOT_PATHWAY_VALIDATED",
-  "auditEvidence": "docs/research/2026-07-22-official-audit.md",
+  "auditEvidence": "docs/research/2026-07-25-official-recheck.md",
   "pathway": {
     "ethereum-sepolia": {
       "chainId": 11155111,
