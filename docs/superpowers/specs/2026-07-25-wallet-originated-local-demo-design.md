@@ -79,6 +79,7 @@ export interface DemoCapability {
   authorizedTarget: string;
   actionSelector: string;
   actionSignature: "record(bytes32)";
+  approvedRecordLabel: string;
   approvedArgument: string;
   approvedAuthorizationId: string;
   options: string;
@@ -132,7 +133,7 @@ The client:
 8. accepts exactly one matching `ActionSent` log from the configured OApp;
 9. returns the transaction hash, GUID, and source block.
 
-The browser bundle is built from the repository-pinned `ethers` runtime dependency. No CDN, remote script, dynamic import, or inline script is allowed. The existing self-only content security policy remains in force.
+`scripts/build-dashboard.mjs` uses the directly pinned `esbuild` development dependency to bundle the wallet entry and repository-pinned `ethers` runtime dependency into `dist/apps/dashboard/demo.js`. The dashboard server exposes exactly that generated asset at `/assets/demo.js`; arbitrary `dist` and `node_modules` paths remain inaccessible. No CDN, remote script, dynamic import, or inline script is allowed. The existing self-only content security policy remains in force.
 
 ### Action workspace
 
@@ -147,7 +148,7 @@ The workspace shows:
 
 The workspace does not display “approved” before coordinator finality. A mined source transaction is labeled “Packet emitted; Sentinel decision pending.”
 
-The record-value input is hashed to the `bytes32` argument. Every attempt uses the same `approvedAuthorizationId`. The approved example uses `approvedArgument`; any other value still emits a valid OApp packet to the same authorized target and authorization ID, then is denied by the semantic fixture because its calldata does not match the authoritative record. This proves the semantic gate checks meaning rather than merely recognizing an authorization identifier.
+The record-label input is hashed to the `bytes32` argument. Every attempt uses the same `approvedAuthorizationId`. The approved example pre-fills `approvedRecordLabel`, whose hash must equal `approvedArgument`; any other label still emits a valid OApp packet to the same authorized target and authorization ID, then is denied by the semantic fixture because its calldata does not match the authoritative record. This proves the semantic gate checks meaning rather than merely recognizing an authorization identifier.
 
 ### `LocalDemoHarness`
 
@@ -175,6 +176,14 @@ The fixture implements the existing policy/finality interfaces. It binds decisio
 - Malformed, stale, or inconsistently bound evidence: fail closed without a signable result.
 
 The fixture creates real durable coordinator state but is presented everywhere as `LOCAL_POLICY_FIXTURE`, never as GenLayer validator consensus.
+
+### Local deterministic proof adapters
+
+Production validators correctly require independently operated public HTTPS RPC origins. The isolated EDR chain cannot honestly provide that independence, so the harness uses local-only proof adapters instead of weakening production URL validation.
+
+The local packet adapter performs two distinct checks against actual EDR state—source receipt/event binding and canonical packet/block binding—and records provider labels that explicitly contain `LOCAL_EDR_FIXTURE`. The local destination adapter verifies the real transaction receipt, adapter `Verified` event, confirmation depth, and `used(digest)` state from EDR. The local path adapter reads the deployed Endpoint, OApp, adapter, signer, and threshold configuration used by the harness. The dashboard labels these as fixture proofs and never calls them independent providers.
+
+These adapters are accepted only by `LocalDemoHarness`; `composeRuntime` and all external injected configuration rules remain unchanged.
 
 ## Data Flow
 
