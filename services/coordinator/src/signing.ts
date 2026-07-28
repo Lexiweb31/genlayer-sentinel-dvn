@@ -3,9 +3,11 @@ import type {Hex,PolicyResult} from "../../../packages/core/src/types.js";
 
 export interface SigningEnvelope {chainId:bigint;adapter:Hex;verificationTarget:Hex;guid:Hex;packetDigest:Hex;evidenceDigest:Hex;callData:Hex;expiry:bigint;}
 export interface SignatureShare {address:Hex;signature:Hex;digest:Hex;}
-export interface FinalityAttestor {assertFinalized(result:PolicyResult):Promise<void>;}
+export interface GenLayerAuthorizationWitness {transactionId:Hex;evidenceUri:string;decodedAction:string;policy:string;}
+export interface SigningAuthorization {witness:GenLayerAuthorizationWitness;result:PolicyResult;}
+export interface FinalityAttestor {assertFinalized(envelope:SigningEnvelope,authorization:SigningAuthorization):Promise<void>;}
 export interface DigestSigner {address:Hex;signMessageDigest(digest:Hex):Promise<Hex>;}
-export interface SignerService{address:Hex;sign(e:SigningEnvelope,result:PolicyResult):Promise<SignatureShare>;}
+export interface SignerService{address:Hex;sign(e:SigningEnvelope,authorization:SigningAuthorization):Promise<SignatureShare>;}
 
 export function executionDigest(e:SigningEnvelope):Hex {
   const encoded=AbiCoder.defaultAbiCoder().encode(["uint256","address","address","bytes32","bytes32","bytes32","bytes32","uint64"],[e.chainId,e.adapter,e.verificationTarget,e.guid,e.packetDigest,e.evidenceDigest,keccak256(e.callData),e.expiry]);
@@ -16,22 +18,23 @@ export function executionDigest(e:SigningEnvelope):Hex {
 export class IsolatedSignerService {
   constructor(private key:DigestSigner,private finality:FinalityAttestor,private allowed:{chainId:bigint;adapter:Hex;verificationTarget:Hex;maxTtlSeconds:bigint},private clock=()=>BigInt(Math.floor(Date.now()/1000))){}
   get address():Hex{return this.key.address;}
-  async sign(e:SigningEnvelope,result:PolicyResult):Promise<SignatureShare>{
+  async sign(e:SigningEnvelope,authorization:SigningAuthorization):Promise<SignatureShare>{
+    const result=authorization.result;
     const now=this.clock();
     if(result.decision!=="ALLOW") throw new Error("signer refuses non-ALLOW decision");
     if(e.guid.toLowerCase()!==result.guid.toLowerCase()||e.packetDigest.toLowerCase()!==result.packetDigest.toLowerCase()||e.evidenceDigest.toLowerCase()!==result.evidenceDigest.toLowerCase()) throw new Error("signing envelope decision binding mismatch");
     if(e.chainId!==this.allowed.chainId||e.adapter.toLowerCase()!==this.allowed.adapter.toLowerCase()||e.verificationTarget.toLowerCase()!==this.allowed.verificationTarget.toLowerCase()) throw new Error("signing domain not authorized");
     if(e.expiry<=now||e.expiry-now>this.allowed.maxTtlSeconds) throw new Error("signature expiry outside policy");
-    await this.finality.assertFinalized(result);
+    await this.finality.assertFinalized(e,authorization);
     const digest=executionDigest(e); const signature=await this.key.signMessageDigest(digest);
     if(verifyMessage(getBytes(digest),signature).toLowerCase()!==this.key.address.toLowerCase()) throw new Error("signer returned invalid signature");
     return {address:this.key.address,signature,digest};
   }
 }
 
-export async function collectQuorum(e:SigningEnvelope,result:PolicyResult,services:SignerService[],authorized:Hex[],quorum:number):Promise<SignatureShare[]>{
+export async function collectQuorum(e:SigningEnvelope,authorization:SigningAuthorization,services:SignerService[],authorized:Hex[],quorum:number):Promise<SignatureShare[]>{
   if(quorum<1||quorum>authorized.length) throw new Error("invalid quorum");
-  const allowed=new Set(authorized.map(x=>x.toLowerCase())); const settled=await Promise.allSettled(services.map(x=>x.sign(e,result))); const unique=new Map<string,SignatureShare>(); const digest=executionDigest(e);
+  const allowed=new Set(authorized.map(x=>x.toLowerCase())); const settled=await Promise.allSettled(services.map(x=>x.sign(e,authorization))); const unique=new Map<string,SignatureShare>(); const digest=executionDigest(e);
   for(let index=0;index<settled.length;index++){
     const item=settled[index];if(item?.status!=="fulfilled")continue;
     try{const share=item.value,a=share.address.toLowerCase(),serviceAddress=services[index]!.address.toLowerCase();if(a!==serviceAddress||!allowed.has(a)||share.digest.toLowerCase()!==digest.toLowerCase()||unique.has(a))continue;if(verifyMessage(getBytes(digest),share.signature).toLowerCase()!==a)continue;unique.set(a,share)}catch{continue}
