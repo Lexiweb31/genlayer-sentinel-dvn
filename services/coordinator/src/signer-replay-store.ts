@@ -1,11 +1,194 @@
-import{DatabaseSync}from"node:sqlite";
-export type ReservationDisposition="RESERVED"|"DUPLICATE"|"CONFLICT";
-export interface SignerReplayStore{reserve(coordinatorId:string,requestId:string,guid:string,digest:string,requestExpiresAt:number,now:number):Promise<ReservationDisposition>;close():void;}
-export class SqliteSignerReplayStore implements SignerReplayStore{
- private db:DatabaseSync;
- constructor(path:string){this.db=new DatabaseSync(path);this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS signer_guid_bindings(coordinator_id TEXT NOT NULL,guid TEXT NOT NULL,digest TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(coordinator_id,guid)); CREATE TABLE IF NOT EXISTS signer_request_reservations(coordinator_id TEXT NOT NULL,request_id TEXT NOT NULL,guid TEXT NOT NULL,digest TEXT NOT NULL,expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(coordinator_id,request_id));")}
- async reserve(coordinatorId:string,requestId:string,guid:string,digest:string,requestExpiresAt:number,now:number):Promise<ReservationDisposition>{validateId(coordinatorId);for(const[value,name]of[[requestId,"request ID"],[guid,"GUID"],[digest,"digest"]]as const)validateHash(value,name);if(!Number.isSafeInteger(now)||now<0||!Number.isSafeInteger(requestExpiresAt)||requestExpiresAt<=now)throw new Error("invalid reservation timestamps");this.db.exec("BEGIN IMMEDIATE");try{const duplicate=this.db.prepare("SELECT 1 FROM signer_request_reservations WHERE coordinator_id=? AND request_id=?").get(coordinatorId,requestId);if(duplicate){this.db.exec("COMMIT");return"DUPLICATE"}const binding=this.db.prepare("SELECT digest FROM signer_guid_bindings WHERE coordinator_id=? AND guid=?").get(coordinatorId,guid)as{digest:string}|undefined;if(binding&&binding.digest!==digest){this.db.exec("COMMIT");return"CONFLICT"}if(!binding)this.db.prepare("INSERT INTO signer_guid_bindings(coordinator_id,guid,digest,created_at) VALUES(?,?,?,?)").run(coordinatorId,guid,digest,now);this.db.prepare("INSERT INTO signer_request_reservations(coordinator_id,request_id,guid,digest,expires_at,created_at) VALUES(?,?,?,?,?,?)").run(coordinatorId,requestId,guid,digest,requestExpiresAt,now);this.db.exec("COMMIT");return"RESERVED"}catch(error){this.db.exec("ROLLBACK");throw error}}
- close():void{this.db.close()}
+import { DatabaseSync } from "node:sqlite";
+
+export type ReservationDisposition = "RESERVED" | "DUPLICATE" | "CONFLICT";
+
+export interface SignerReplayStore {
+  reserve(
+    coordinatorId: string,
+    requestId: string,
+    guid: string,
+    digest: string,
+    authorizationDigest: string,
+    requestExpiresAt: number,
+    now: number,
+  ): Promise<ReservationDisposition>;
+  close(): void;
 }
-function validateId(value:string):void{if(!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value))throw new Error("invalid coordinator ID")}
-function validateHash(value:string,name:string):void{if(!/^0x[0-9a-f]{64}$/.test(value))throw new Error(`invalid ${name}`)}
+
+export class SqliteSignerReplayStore implements SignerReplayStore {
+  private db: DatabaseSync;
+
+  constructor(path: string) {
+    this.db = new DatabaseSync(path);
+    try {
+      this.initialize();
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
+  }
+
+  async reserve(
+    coordinatorId: string,
+    requestId: string,
+    guid: string,
+    digest: string,
+    authorizationDigest: string,
+    requestExpiresAt: number,
+    now: number,
+  ): Promise<ReservationDisposition> {
+    validateId(coordinatorId);
+    for (const [value, name] of [
+      [requestId, "request ID"],
+      [guid, "GUID"],
+      [digest, "digest"],
+      [authorizationDigest, "authorization digest"],
+    ] as const) {
+      validateHash(value, name);
+    }
+    if (
+      !Number.isSafeInteger(now) ||
+      now < 0 ||
+      !Number.isSafeInteger(requestExpiresAt) ||
+      requestExpiresAt <= now
+    ) {
+      throw new Error("invalid reservation timestamps");
+    }
+
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const duplicate = this.db
+        .prepare(
+          "SELECT 1 FROM signer_request_reservations WHERE coordinator_id=? AND request_id=?",
+        )
+        .get(coordinatorId, requestId);
+      if (duplicate) {
+        this.db.exec("COMMIT");
+        return "DUPLICATE";
+      }
+
+      const binding = this.db
+        .prepare(
+          "SELECT digest,authorization_digest FROM signer_guid_bindings WHERE coordinator_id=? AND guid=?",
+        )
+        .get(coordinatorId, guid) as
+        | { digest: string; authorization_digest: string }
+        | undefined;
+      if (
+        binding &&
+        (binding.digest !== digest ||
+          binding.authorization_digest !== authorizationDigest)
+      ) {
+        this.db.exec("COMMIT");
+        return "CONFLICT";
+      }
+      if (!binding) {
+        this.db
+          .prepare(
+            "INSERT INTO signer_guid_bindings(coordinator_id,guid,digest,authorization_digest,created_at) VALUES(?,?,?,?,?)",
+          )
+          .run(coordinatorId, guid, digest, authorizationDigest, now);
+      }
+      this.db
+        .prepare(
+          "INSERT INTO signer_request_reservations(coordinator_id,request_id,guid,digest,expires_at,created_at) VALUES(?,?,?,?,?,?)",
+        )
+        .run(
+          coordinatorId,
+          requestId,
+          guid,
+          digest,
+          requestExpiresAt,
+          now,
+        );
+      this.db.exec("COMMIT");
+      return "RESERVED";
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  private initialize(): void {
+    this.db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS signer_request_reservations(
+        coordinator_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        guid TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY(coordinator_id,request_id)
+      );
+    `);
+
+    const bindingTable = this.db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='signer_guid_bindings'",
+      )
+      .get();
+    if (!bindingTable) {
+      if (this.rowCount("signer_request_reservations") !== 0) {
+        throw legacyMigrationError();
+      }
+      this.db.exec(`
+        CREATE TABLE signer_guid_bindings(
+          coordinator_id TEXT NOT NULL,
+          guid TEXT NOT NULL,
+          digest TEXT NOT NULL,
+          authorization_digest TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY(coordinator_id,guid)
+        );
+      `);
+      return;
+    }
+
+    const columns = this.db.prepare("PRAGMA table_info(signer_guid_bindings)").all() as
+      Array<{ name: string }>;
+    if (columns.some((column) => column.name === "authorization_digest")) return;
+    if (
+      this.rowCount("signer_guid_bindings") !== 0 ||
+      this.rowCount("signer_request_reservations") !== 0
+    ) {
+      throw legacyMigrationError();
+    }
+
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(
+        "ALTER TABLE signer_guid_bindings ADD COLUMN authorization_digest TEXT NOT NULL DEFAULT ''",
+      );
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  private rowCount(table: string): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as {
+      count: number | bigint;
+    };
+    return Number(row.count);
+  }
+}
+
+function legacyMigrationError(): Error {
+  return new Error("legacy signer replay state requires operator migration");
+}
+
+function validateId(value: string): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value)) {
+    throw new Error("invalid coordinator ID");
+  }
+}
+
+function validateHash(value: string, name: string): void {
+  if (!/^0x[0-9a-f]{64}$/.test(value)) throw new Error(`invalid ${name}`);
+}
