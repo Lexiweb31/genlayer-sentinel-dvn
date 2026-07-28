@@ -1,7 +1,6 @@
 import fs from "node:fs";
-import path from "node:path";
-import process from "node:process";
 import {
+  intelligentContractToolInvocation,
   pythonEnvironment,
   pythonPaths,
   repositoryRoot,
@@ -17,11 +16,5 @@ if(!fs.existsSync(paths.venvPython)){
 }
 
 const env=pythonEnvironment(paths);
-if(mode==="lint"){
-  const linter=path.join(paths.venvBin,process.platform==="win32"?"genvm-lint.exe":"genvm-lint");
-  await runFile(linter,["check","intelligent-contract/sentinel_policy.py",...extra],{env});
-}else if(mode==="test"){
-  await runFile(paths.venvPython,["-m","pytest","intelligent-contract/tests","-q",...extra],{env});
-}else{
-  throw new Error("expected lint or test");
-}
+const invocation=intelligentContractToolInvocation(mode,extra,paths);
+await runFile(invocation.command,invocation.args,{env});

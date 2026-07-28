@@ -6,6 +6,7 @@ import {
   pythonPaths,
   findPython312,
   pythonEnvironment,
+  intelligentContractToolInvocation,
 } from "../intelligent-contract-python.mjs";
 
 test("rejects an interpreter below Python 3.12",()=>{
@@ -71,4 +72,24 @@ test("does not forward ambient credentials into GenLayer tooling",()=>{
     PYTHONDONTWRITEBYTECODE:"1",
     PYTHONNOUSERSITE:"1",
   });
+});
+
+test("loads only the direct pytest plugin and disables the Studio plugin",()=>{
+  const paths=pythonPaths("/sentinel","darwin");
+  assert.deepEqual(intelligentContractToolInvocation("test",["-k","record"],paths,"darwin"),{
+    command:paths.venvPython,
+    args:[
+      "-m","pytest",
+      "-p","no:gltest",
+      "-W","error",
+      "intelligent-contract/tests",
+      "-q",
+      "-k","record",
+    ],
+  });
+  assert.deepEqual(intelligentContractToolInvocation("lint",[],paths,"darwin"),{
+    command:path.join(paths.venvBin,"genvm-lint"),
+    args:["check","intelligent-contract/sentinel_policy.py"],
+  });
+  assert.throws(()=>intelligentContractToolInvocation("studio",[],paths,"darwin"),/expected lint or test/);
 });

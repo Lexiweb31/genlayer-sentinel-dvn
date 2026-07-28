@@ -38,6 +38,29 @@ export function pythonEnvironment(paths,ambient=process.env){
   return env;
 }
 
+export function intelligentContractToolInvocation(mode,extra,paths,platform=process.platform){
+  if(mode==="lint"){
+    return{
+      command:path.join(paths.venvBin,platform==="win32"?"genvm-lint.exe":"genvm-lint"),
+      args:["check","intelligent-contract/sentinel_policy.py",...extra],
+    };
+  }
+  if(mode==="test"){
+    return{
+      command:paths.venvPython,
+      args:[
+        "-m","pytest",
+        "-p","no:gltest",
+        "-W","error",
+        "intelligent-contract/tests",
+        "-q",
+        ...extra,
+      ],
+    };
+  }
+  throw new Error("expected lint or test");
+}
+
 export async function findPython312(executor=async(command,args)=>execFile(command,args,{encoding:"utf8"})){
   for(const command of ["python3.12","python3"]){
     try{
