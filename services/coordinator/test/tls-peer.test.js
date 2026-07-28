@@ -35,12 +35,22 @@ test("hashes the certificate SPKI to the independent OpenSSL vector", () => {
   }
 });
 
-test("rejects absent, empty, or malformed DER certificates", () => {
-  for (const value of [undefined, Buffer.alloc(0), Buffer.from("not DER")]) {
-    assert.throws(
-      () => certificateSpkiSha256(value),
-      /^Error: invalid peer certificate$/,
-    );
+test("rejects absent, empty, PEM, or malformed DER certificates", () => {
+  const fixture = createMutualTlsCertificateFixture();
+  try {
+    for (const value of [
+      undefined,
+      Buffer.alloc(0),
+      fixture.signerCert,
+      Buffer.from("not DER"),
+    ]) {
+      assert.throws(
+        () => certificateSpkiSha256(value),
+        /^Error: invalid peer certificate$/,
+      );
+    }
+  } finally {
+    fixture.cleanup();
   }
 });
 
