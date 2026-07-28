@@ -402,6 +402,7 @@ function signerUrl(value: string): URL {
     logical.username.length > 0 ||
     logical.password.length > 0 ||
     logical.hash.length > 0 ||
+    hasRawUserinfo(value) ||
     hasExplicitPort(value) ||
     !hasExactRawPath(value) ||
     logical.hostname.length === 0 ||
@@ -415,6 +416,18 @@ function signerUrl(value: string): URL {
     throw new Error("invalid signer endpoint");
   }
   return logical;
+}
+
+function hasRawUserinfo(value: string): boolean {
+  const scheme = value.indexOf("://");
+  if (scheme < 0) return false;
+  const authorityStart = scheme + 3;
+  let authorityEnd = value.length;
+  for (const delimiter of ["/", "?", "#"]) {
+    const found = value.indexOf(delimiter, authorityStart);
+    if (found >= 0 && found < authorityEnd) authorityEnd = found;
+  }
+  return value.slice(authorityStart, authorityEnd).includes("@");
 }
 
 function hasExplicitPort(value: string): boolean {

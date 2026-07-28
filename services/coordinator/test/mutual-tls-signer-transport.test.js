@@ -503,6 +503,8 @@ test("rejects unsafe configuration and endpoints and snapshots caller-owned opti
     "http://signer.example/v2/sign",
     "https://user@signer.example/v2/sign",
     "https://user:pass@signer.example/v2/sign",
+    "https://@signer.example/v2/sign",
+    "https://:@signer.example/v2/sign",
     "https://signer.example/v2/sign#fragment",
     "https://signer.example/v2/sign#",
     "https://signer.example:443/v2/sign",
