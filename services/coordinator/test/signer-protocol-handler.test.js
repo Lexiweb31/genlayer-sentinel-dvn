@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Wallet, getBytes, verifyMessage } from "ethers";
 import {
   IsolatedSignerService,
@@ -13,6 +16,9 @@ import {
 import {
   SignerProtocolHandler,
 } from "../../../dist/services/coordinator/src/signer-protocol-handler.js";
+import {
+  SqliteSignerReplayStore,
+} from "../../../dist/services/coordinator/src/signer-replay-store.js";
 
 const h = (n) => `0x${n.repeat(64)}`;
 const a = (n) => `0x${n.repeat(40)}`;
@@ -171,4 +177,75 @@ test("rejects malformed requests before replay reservation or signing", async ()
   assert.equal(JSON.parse(reply.body).error.code, "INVALID_REQUEST");
   assert.deepEqual(reserveCalls, []);
   assert.deepEqual(finalityCalls, []);
+});
+
+test("rejects a changed authorization after durable replay-store reopen", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "sentinel-signer-handler-"));
+  const path = join(dir, "replay.db");
+  const wallet = Wallet.createRandom();
+  let finalityCalls = 0;
+  let keyCalls = 0;
+  const signer = new IsolatedSignerService(
+    {
+      address: wallet.address,
+      signMessageDigest: async (digest) => {
+        keyCalls++;
+        return wallet.signMessage(getBytes(digest));
+      },
+    },
+    {
+      assertFinalized: async () => {
+        finalityCalls++;
+      },
+    },
+    {
+      chainId: 421614n,
+      adapter,
+      verificationTarget: target,
+      maxTtlSeconds: 120n,
+    },
+    () => 100n,
+  );
+  const createHandler = (store) =>
+    new SignerProtocolHandler(
+      signer,
+      store,
+      {
+        coordinatorId: "coordinator-west",
+        coordinatorSpkiSha256: peer,
+        maxRequestTtlSeconds: 60,
+      },
+      () => 100,
+    );
+
+  let store = new SqliteSignerReplayStore(path);
+  try {
+    const accepted = await createHandler(store).handle(
+      peer,
+      encodeSignerRequest(request),
+    );
+    assert.equal(accepted.status, 200);
+    store.close();
+
+    store = new SqliteSignerReplayStore(path);
+    const changed = {
+      ...request,
+      requestId: h("b"),
+      authorization: {
+        ...authorization,
+        witness: { ...authorization.witness, policy: "changed policy" },
+      },
+    };
+    const refused = await createHandler(store).handle(
+      peer,
+      encodeSignerRequest(changed),
+    );
+    assert.equal(refused.status, 409);
+    assert.equal(JSON.parse(refused.body).error.code, "CONFLICTING_REQUEST");
+    assert.equal(finalityCalls, 1);
+    assert.equal(keyCalls, 1);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

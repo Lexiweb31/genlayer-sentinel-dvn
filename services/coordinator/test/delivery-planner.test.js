@@ -23,12 +23,26 @@ function policy(index=1,decision="ALLOW"){
 }
 
 function setup(t,{online=true,onSign,refuseGuid,clock=()=>1000}={}){
-  const dir=mkdtempSync(join(tmpdir(),"sentinel-planner-")),outbox=new SqliteVerificationOutbox(join(dir,"state.db"),authorized,3),state={online},signers=wallets.map((wallet,index)=>({address:authorized[index],sign:async envelope=>{await onSign?.(envelope);if(!state.online||envelope.guid===refuseGuid)throw new Error("signer offline");const digest=executionDigest(envelope);return{address:authorized[index],digest,signature:await wallet.signMessage(getBytes(digest))}}})),coordinator=new Coordinator({verify:async()=>[]},{submit:async()=>"",finalized:async()=>undefined},signers,3),reports=[],pathVerifier={verify:async()=>path},planner=new DeliveryPlanner(coordinator,outbox,pathVerifier,new Uln302IntentFactory(300),authorized,error=>reports.push(error),clock);
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-planner-")),outbox=new SqliteVerificationOutbox(join(dir,"state.db"),authorized,3),state={online};
+  let coordinator;
+  const signers=wallets.map((wallet,index)=>({
+    address:authorized[index],
+    sign:async(envelope,authorization)=>{
+      await onSign?.(envelope,authorization);
+      const request=coordinator.requests.get(envelope.guid),requestId=coordinator.requestIds.get(envelope.guid);
+      if(!request||!requestId||authorization.witness.transactionId!==requestId||authorization.witness.evidenceUri!==request.evidence.uri||authorization.witness.decodedAction!==request.decodedAction||authorization.witness.policy!==request.policy)throw new Error("signer finality fixture mismatch");
+      if(!state.online||envelope.guid===refuseGuid)throw new Error("signer offline");
+      const digest=executionDigest(envelope);
+      return{address:authorized[index],digest,signature:await wallet.signMessage(getBytes(digest))};
+    },
+  }));
+  coordinator=new Coordinator({verify:async()=>[]},{submit:async()=>"",finalized:async()=>undefined},signers,3);
+  const reports=[],pathVerifier={verify:async()=>path},planner=new DeliveryPlanner(coordinator,outbox,pathVerifier,new Uln302IntentFactory(300),authorized,error=>reports.push(error),clock);
   t.after(()=>{outbox.close();rmSync(dir,{recursive:true,force:true})});
   return{dir,outbox,state,coordinator,reports,pathVerifier,planner};
 }
 
-function seed(coordinator,value){coordinator.jobs.set(value.request.packet.guid,SentinelJob.restore({packet:value.request.packet,stage:value.result.decision==="ALLOW"?"POLICY_FINALIZED":"REJECTED",verifications:[],signers:[],result:value.result}));coordinator.requests.set(value.request.packet.guid,value.request)}
+function seed(coordinator,value){coordinator.jobs.set(value.request.packet.guid,SentinelJob.restore({packet:value.request.packet,stage:value.result.decision==="ALLOW"?"POLICY_FINALIZED":"REJECTED",verifications:[],signers:[],result:value.result}));coordinator.requests.set(value.request.packet.guid,value.request);coordinator.requestIds.set(value.request.packet.guid,h("9"))}
 async function signShares(envelope){const digest=executionDigest(envelope);return Promise.all(wallets.slice(0,3).map(async(wallet,index)=>({address:authorized[index],digest,signature:await wallet.signMessage(getBytes(digest))})))}
 
 test("persists SIGNING before signer contact and advances only after durable READY",async t=>{

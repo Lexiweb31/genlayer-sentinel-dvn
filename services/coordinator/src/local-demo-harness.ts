@@ -198,11 +198,11 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
         let coordinator:Coordinator;
         const signerServices=signerRecords.map(record=>new IsolatedSignerService(
           {address:record.address,signMessageDigest:async digest=>{metrics.signerCalls++;return await record.signer.signMessage(getBytes(digest)) as Hex}},
-          {assertFinalized:async result=>{
-            const requestId=coordinator?.requestIds.get(result.guid);
-            if(!requestId)throw new Error("local signer finality binding unavailable");
-            const finalized=await finality.finalized(requestId);
-            if(!finalized||policyBinding(finalized)!==policyBinding(result))throw new Error("local signer finality binding mismatch");
+          {assertFinalized:async(_envelope,authorization)=>{
+            const expected=coordinator?.requestIds.get(authorization.result.guid);
+            if(!expected||authorization.witness.transactionId!==expected)throw new Error("local signer finality binding unavailable");
+            const finalized=await finality.finalized(authorization.witness.transactionId);
+            if(!finalized||policyBinding(finalized)!==policyBinding(authorization.result))throw new Error("local signer finality binding mismatch");
           }},
           {chainId:31337n,adapter:adapterAddress,verificationTarget:verificationTargetAddress,maxTtlSeconds:120n}
         ));
