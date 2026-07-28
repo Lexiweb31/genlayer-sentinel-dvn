@@ -69,6 +69,8 @@ test("does not forward ambient credentials into GenLayer tooling",()=>{
     TMPDIR:"/private/tmp",
     LANG:"en_US.UTF-8",
     XDG_CACHE_HOME:paths.cacheRoot,
+    GENLAYER_SENTINEL_GENVM_CACHE:path.join(paths.cacheRoot,"gltest-direct"),
+    GENVM_VERSION:"v0.2.16",
     PYTHONDONTWRITEBYTECODE:"1",
     PYTHONNOUSERSITE:"1",
   });
@@ -88,8 +90,13 @@ test("loads only the direct pytest plugin and disables the Studio plugin",()=>{
     ],
   });
   assert.deepEqual(intelligentContractToolInvocation("lint",[],paths,"darwin"),{
-    command:path.join(paths.venvBin,"genvm-lint"),
-    args:["check","intelligent-contract/sentinel_policy.py"],
+    command:paths.venvPython,
+    args:[
+      "scripts/genlayer-tool.py",
+      "lint",
+      "check",
+      "intelligent-contract/sentinel_policy.py",
+    ],
   });
   assert.throws(()=>intelligentContractToolInvocation("studio",[],paths,"darwin"),/expected lint or test/);
 });

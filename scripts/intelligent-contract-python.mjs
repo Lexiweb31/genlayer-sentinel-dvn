@@ -33,6 +33,8 @@ export function pythonEnvironment(paths,ambient=process.env){
     if(typeof ambient[name]==="string"&&ambient[name]!=="")env[name]=ambient[name];
   }
   env.XDG_CACHE_HOME=paths.cacheRoot;
+  env.GENLAYER_SENTINEL_GENVM_CACHE=path.join(paths.cacheRoot,"gltest-direct");
+  env.GENVM_VERSION="v0.2.16";
   env.PYTHONDONTWRITEBYTECODE="1";
   env.PYTHONNOUSERSITE="1";
   return env;
@@ -41,8 +43,14 @@ export function pythonEnvironment(paths,ambient=process.env){
 export function intelligentContractToolInvocation(mode,extra,paths,platform=process.platform){
   if(mode==="lint"){
     return{
-      command:path.join(paths.venvBin,platform==="win32"?"genvm-lint.exe":"genvm-lint"),
-      args:["check","intelligent-contract/sentinel_policy.py",...extra],
+      command:paths.venvPython,
+      args:[
+        "scripts/genlayer-tool.py",
+        "lint",
+        "check",
+        "intelligent-contract/sentinel_policy.py",
+        ...extra,
+      ],
     };
   }
   if(mode==="test"){

@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import process from "node:process";
 import {
   findPython312,
   pythonEnvironment,
@@ -22,8 +21,21 @@ if(!fs.existsSync(paths.venvPython)){
 
 const env=pythonEnvironment(paths);
 await runFile(paths.venvPython,["-m","pip","install","--require-hashes","-r",lock],{env});
-const linter=path.join(paths.venvBin,process.platform==="win32"?"genvm-lint.exe":"genvm-lint");
-await runFile(linter,["check","intelligent-contract/sentinel_policy.py"],{env});
+await runFile(paths.venvPython,["scripts/genlayer-tool.py","prepare"],{env});
+await runFile(paths.venvPython,[
+  "scripts/genlayer-tool.py",
+  "lint",
+  "check",
+  "intelligent-contract/sentinel_policy.py",
+],{env});
 await runFile(paths.venvPython,["--version"],{env});
-await runFile(paths.venvPython,["-m","pip","show","genlayer-test","genvm-linter","pytest"],{env});
+await runFile(paths.venvPython,[
+  "-m",
+  "pip",
+  "show",
+  "cloudpickle",
+  "genlayer-test",
+  "genvm-linter",
+  "pytest",
+],{env});
 console.log(`GenLayer SDK cache: ${path.relative(repositoryRoot,paths.cacheRoot)}`);
