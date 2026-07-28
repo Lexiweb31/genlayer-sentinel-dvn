@@ -32,8 +32,10 @@ export class Coordinator {
   }
   async pollPending(now=Math.floor(Date.now()/1000)):Promise<number>{const pending=[...this.jobs.entries()].filter(([,job])=>job.snapshot.stage==="POLICY_PENDING");for(const[guid]of pending){const requestId=this.requestIds.get(guid);if(!requestId)throw new Error("pending job has no GenLayer request ID");await this.poll(guid,requestId,now)}return pending.length}
   async collectAuthorization(guid:string,envelope:SigningEnvelope,authorized:Hex[]):Promise<SignatureShare[]>{
-    const job=this.jobs.get(guid);if(!job||job.snapshot.stage!=="POLICY_FINALIZED"||!job.snapshot.result)throw new Error("job is not ready for signing");
-    return collectQuorum(envelope,job.snapshot.result,this.signers,authorized,this.quorum);
+    const job=this.jobs.get(guid);if(!job||job.snapshot.stage!=="POLICY_FINALIZED")throw new Error("job is not ready for signing");
+    const requestId=this.requestIds.get(guid),request=this.requests.get(guid),result=job.snapshot.result;
+    if(!requestId||!/^0x[0-9a-f]{64}$/.test(requestId)||!request||!result||request.packet.guid.toLowerCase()!==guid.toLowerCase()||result.guid.toLowerCase()!==guid.toLowerCase()||request.packet.payloadHash.toLowerCase()!==result.packetDigest.toLowerCase()||request.evidence.digest.toLowerCase()!==result.evidenceDigest.toLowerCase())throw new Error("durable signer authorization is unavailable");
+    return collectQuorum(envelope,{witness:{transactionId:requestId as Hex,evidenceUri:request.evidence.uri,decodedAction:request.decodedAction,policy:request.policy},result},this.signers,authorized,this.quorum);
   }
   async recordQuorum(guid:string,addresses:Hex[]):Promise<void>{
     const job=this.jobs.get(guid);if(!job)throw new Error("unknown GUID");
