@@ -377,6 +377,23 @@ test("refuses wrong methods, paths, media types, encodings, and duplicate header
       ),
     );
     assertTransportRefusal(duplicate, 415);
+    const afterCapDuplicate = parseRawResponse(
+      await rawExchange(
+        address,
+        certificates,
+        `POST /v2/sign HTTP/1.1\r\n` +
+          `Host: signer.example\r\n` +
+          `Content-Type: application/json\r\n` +
+          `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+          `Connection: close\r\n` +
+          Array.from(
+            { length: 28 },
+            (_, index) => `X-Fill-${index}: filler\r\n`,
+          ).join("") +
+          `Content-Type: application/json\r\n\r\n${body}`,
+      ),
+    );
+    assertTransportRefusal(afterCapDuplicate, 415);
     assert.equal(fixture.handlerCalls.length, 0);
     assert.equal(fixture.replayCalls.length, 0);
     assert.equal(fixture.finalityCalls.length, 0);
@@ -590,6 +607,40 @@ test("validates lifecycle configuration and drains active work through one perma
     );
   }
 
+  const mutableOptions = daemonOptions(certificates, {
+    identity: {
+      key: Buffer.from(certificates.signerKey),
+      cert: Buffer.from(certificates.signerCert),
+      ca: [Buffer.from(certificates.caCert)],
+    },
+  });
+  const snapshottedFixture = handlerFixture(expectedPeerPin);
+  const snapshottedDaemon = new MutualTlsSignerDaemon(
+    snapshottedFixture.handler,
+    mutableOptions,
+  );
+  mutableOptions.identity.key.fill(0);
+  mutableOptions.identity.cert.fill(0);
+  mutableOptions.identity.ca[0].fill(0);
+  mutableOptions.identity.ca.push(certificates.rogueCaCert);
+  mutableOptions.identity = { key: "", cert: "", ca: "" };
+  mutableOptions.host = "";
+  mutableOptions.port = 65_536;
+  mutableOptions.requestTimeoutMs = 99;
+  mutableOptions.headersTimeoutMs = 30_001;
+  mutableOptions.keepAliveTimeoutMs = 99;
+  try {
+    const snapshottedAddress = await snapshottedDaemon.start();
+    const snapshottedResponse = await post(
+      snapshottedAddress,
+      certificates,
+      encodeSignerRequest(signerRequest),
+    );
+    assert.equal(snapshottedResponse.status, 200);
+  } finally {
+    await snapshottedDaemon.stop();
+  }
+
   const daemon = new MutualTlsSignerDaemon(fixture.handler, valid);
   try {
     const address = await daemon.start();
@@ -668,6 +719,68 @@ test("validates lifecycle configuration and drains active work through one perma
   await abortedStop;
   await droppedResponse;
 
+  let expiryEntered;
+  const expiryEnteredPromise = new Promise((resolve) => {
+    expiryEntered = resolve;
+  });
+  let releaseExpiry;
+  const releaseExpiryPromise = new Promise((resolve) => {
+    releaseExpiry = resolve;
+  });
+  const expiryFixture = handlerFixture(expectedPeerPin);
+  expiryFixture.handler.handle = async () => {
+    expiryEntered();
+    await releaseExpiryPromise;
+    return { status: 200, body: "{}" };
+  };
+  const expiryDaemon = new MutualTlsSignerDaemon(
+    expiryFixture.handler,
+    daemonOptions(certificates, {
+      requestTimeoutMs: 100,
+      headersTimeoutMs: 100,
+      keepAliveTimeoutMs: 100,
+    }),
+  );
+  const expiryAddress = await expiryDaemon.start();
+  const expiredResponse = post(
+    expiryAddress,
+    certificates,
+    encodeSignerRequest(signerRequest),
+  ).catch((error) => error);
+  await expiryEnteredPromise;
+  const drainStarted = Date.now();
+  let expiryStopResolved = false;
+  const expiryStop = expiryDaemon.stop().then(() => {
+    expiryStopResolved = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(expiryStopResolved, false);
+  await expiryStop;
+  const drainElapsed = Date.now() - drainStarted;
+  assert.ok(drainElapsed >= 50 && drainElapsed < 750);
+  assert.equal(expiryDaemon.sockets.size, 0);
+  assert.ok((await expiredResponse) instanceof Error);
+  releaseExpiry();
+  await waitFor(() => expiryDaemon.activeRequests.size === 0);
+
+  const errorDaemon = new MutualTlsSignerDaemon(
+    handlerFixture(expectedPeerPin).handler,
+    valid,
+  );
+  await errorDaemon.start();
+  try {
+    assert.doesNotThrow(() => {
+      errorDaemon.server.emit("error", new Error("FIXTURE_TOKEN"));
+    });
+    await errorDaemon.stop();
+    await assert.rejects(
+      errorDaemon.start(),
+      /signer daemon unavailable/,
+    );
+  } finally {
+    await errorDaemon.stop();
+  }
+
   const neverStarted = new MutualTlsSignerDaemon(
     handlerFixture(expectedPeerPin).handler,
     valid,
@@ -701,11 +814,20 @@ test("preserves valid handler refusals and sanitizes invalid replies and excepti
       { status: 500, body: `FIXTURE_TOKEN${"x".repeat(16_385)}` },
       { status: 199, body: "FIXTURE_TOKEN" },
       { status: 500, body: 123 },
+      { status: 204, body: "FIXTURE_TOKEN" },
+      { status: 304, body: "FIXTURE_TOKEN" },
     ]) {
       fixture.handler.handle = async () => reply;
       const invalid = await post(address, certificates, body);
       assertTransportRefusal(invalid, 500);
       assert.doesNotMatch(invalid.body, /FIXTURE_TOKEN/);
+    }
+
+    for (const status of [204, 304]) {
+      fixture.handler.handle = async () => ({ status, body: "" });
+      const empty = await post(address, certificates, body);
+      assert.equal(empty.status, status);
+      assert.equal(empty.body, "");
     }
 
     fixture.handler.handle = async () => {

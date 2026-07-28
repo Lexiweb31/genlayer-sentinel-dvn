@@ -63,12 +63,14 @@ export class MutualTlsSignerDaemon {
   private startPromise?: Promise<SignerDaemonAddress>;
   private stopPromise?: Promise<void>;
   private drainCheck?: () => void;
+  private readonly options: MutualTlsSignerDaemonOptions;
 
   constructor(
     private readonly handler: SignerProtocolHandler,
-    private readonly options: MutualTlsSignerDaemonOptions,
+    options: MutualTlsSignerDaemonOptions,
   ) {
     validateOptions(options);
+    this.options = snapshotOptions(options);
   }
 
   start(): Promise<SignerDaemonAddress> {
@@ -101,7 +103,7 @@ export class MutualTlsSignerDaemon {
       server.requestTimeout = this.options.requestTimeoutMs;
       server.headersTimeout = this.options.headersTimeoutMs;
       server.keepAliveTimeout = this.options.keepAliveTimeoutMs;
-      server.maxHeadersCount = MAX_HEADERS_COUNT;
+      server.maxHeadersCount = MAX_HEADERS_COUNT + 1;
       server.on("connection", (socket) => {
         const acceptedSocket = socket as Socket;
         this.sockets.add(acceptedSocket);
@@ -123,16 +125,25 @@ export class MutualTlsSignerDaemon {
             : CLIENT_ERROR_RESPONSE,
         );
       });
+      let rejectStart: (() => void) | undefined;
+      server.on("error", () => {
+        if (this.state === "starting") {
+          rejectStart?.();
+          return;
+        }
+        if (this.state === "running") {
+          void this.stop();
+        }
+      });
       this.startPromise = new Promise<SignerDaemonAddress>((resolve, reject) => {
-        const failed = () => reject(new Error("signer daemon unavailable"));
-        server.once("error", failed);
+        rejectStart = () => reject(new Error("signer daemon unavailable"));
         server.listen(
           {
             host: this.options.host,
             port: this.options.port,
           },
           () => {
-            server.off("error", failed);
+            rejectStart = undefined;
             const address = server.address();
             if (!address || typeof address === "string") {
               reject(new Error("signer daemon unavailable"));
@@ -221,6 +232,10 @@ export class MutualTlsSignerDaemon {
       }
       if (request.url !== "/v2/sign") {
         this.transportFailure(response, 404);
+        return;
+      }
+      if (request.rawHeaders.length / 2 > MAX_HEADERS_COUNT) {
+        this.transportFailure(response, 415);
         return;
       }
       const contentType = singleHeader(request, "content-type");
@@ -393,6 +408,29 @@ function validateOptions(options: MutualTlsSignerDaemonOptions): void {
   }
 }
 
+function snapshotOptions(
+  options: MutualTlsSignerDaemonOptions,
+): MutualTlsSignerDaemonOptions {
+  return {
+    identity: {
+      key: snapshotCapability(options.identity.key),
+      cert: snapshotCapability(options.identity.cert),
+      ca: Array.isArray(options.identity.ca)
+        ? options.identity.ca.map(snapshotCapability)
+        : snapshotCapability(options.identity.ca),
+    },
+    host: options.host,
+    port: options.port,
+    requestTimeoutMs: options.requestTimeoutMs,
+    headersTimeoutMs: options.headersTimeoutMs,
+    keepAliveTimeoutMs: options.keepAliveTimeoutMs,
+  };
+}
+
+function snapshotCapability(value: Buffer | string): Buffer | string {
+  return Buffer.isBuffer(value) ? Buffer.from(value) : value;
+}
+
 function boundedInteger(
   value: number,
   minimum: number,
@@ -437,13 +475,6 @@ function singleHeader(
   | { kind: "absent" }
   | { kind: "multiple" }
   | { kind: "value"; value: string } {
-  const distinct = request.headersDistinct[name];
-  if (distinct) {
-    if (distinct.length !== 1 || typeof distinct[0] !== "string") {
-      return { kind: "multiple" };
-    }
-    return { kind: "value", value: distinct[0] };
-  }
   const values: string[] = [];
   for (let index = 0; index < request.rawHeaders.length; index += 2) {
     if (request.rawHeaders[index]?.toLowerCase() !== name) continue;
@@ -451,7 +482,14 @@ function singleHeader(
     if (typeof value !== "string") return { kind: "multiple" };
     values.push(value);
   }
-  if (values.length === 0) return { kind: "absent" };
+  if (values.length === 0) {
+    const distinct = request.headersDistinct[name];
+    if (!distinct) return { kind: "absent" };
+    if (distinct.length !== 1 || typeof distinct[0] !== "string") {
+      return { kind: "multiple" };
+    }
+    return { kind: "value", value: distinct[0] };
+  }
   if (values.length !== 1) return { kind: "multiple" };
   return { kind: "value", value: values[0]! };
 }
@@ -518,6 +556,10 @@ function validReply(
     Number(reply.status) >= 200 &&
     Number(reply.status) <= 599 &&
     typeof reply.body === "string" &&
+    !(
+      (reply.status === 204 || reply.status === 304) &&
+      reply.body.length !== 0
+    ) &&
     Buffer.byteLength(reply.body, "utf8") <= MAX_RESPONSE_BYTES
   );
 }
