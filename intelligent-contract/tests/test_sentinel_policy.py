@@ -50,6 +50,21 @@ def evaluate_request(contract):
     return contract.get_record_details(GUID)
 
 
+def mock_direct_eq_comparative(direct_vm):
+    def comparative_hook(_vm, request):
+        template = request.get("ExecPromptTemplate")
+        if template is None or template.get("template") != "EqComparative":
+            return None
+        return {
+            "ok": (
+                template.get("leader_answer")
+                == template.get("validator_answer")
+            )
+        }
+
+    direct_vm._gl_call_hook = comparative_hook
+
+
 def test_uses_repository_local_sdk_cache():
     configured = Path(os.environ["GENLAYER_SENTINEL_GENVM_CACHE"]).resolve()
     assert sdk_loader.CACHE_DIR.resolve() == configured
@@ -326,3 +341,65 @@ def test_prompt_injection_is_json_escaped_untrusted_data(
         POLICY,
     )
     assert record_field(contract.get_record_details(GUID), "decision") == "DENY"
+
+
+def test_validator_agrees_on_same_decision_and_authorization(
+    direct_vm, direct_deploy, direct_alice
+):
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 7")
+    evaluate_request(deploy(direct_vm, direct_deploy, direct_alice))
+    direct_vm.clear_mocks()
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 7")
+    mock_direct_eq_comparative(direct_vm)
+    assert direct_vm.run_validator() is True
+
+
+def test_validator_rejects_changed_decision_or_authorization(
+    direct_vm, direct_deploy, direct_alice
+):
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 7")
+    evaluate_request(deploy(direct_vm, direct_deploy, direct_alice))
+    direct_vm.clear_mocks()
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "DENY proposal 7")
+    mock_direct_eq_comparative(direct_vm)
+    assert direct_vm.run_validator() is False
+
+
+def test_validator_rejects_changed_authorization_with_same_decision(
+    direct_vm, direct_deploy, direct_alice
+):
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 7")
+    evaluate_request(deploy(direct_vm, direct_deploy, direct_alice))
+    direct_vm.clear_mocks()
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 8")
+    mock_direct_eq_comparative(direct_vm)
+    assert direct_vm.run_validator() is False
+
+
+def test_validator_rejects_renderer_variance(
+    direct_vm, direct_deploy, direct_alice
+):
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 7")
+    evaluate_request(deploy(direct_vm, direct_deploy, direct_alice))
+    direct_vm.clear_mocks()
+    mock_evidence(direct_vm, "changed evidence")
+    mock_direct_eq_comparative(direct_vm)
+    assert direct_vm.run_validator() is False
+
+
+def test_request_binding_matches_cross_language_vector(
+    direct_vm, direct_deploy, direct_alice
+):
+    mock_evidence(direct_vm)
+    direct_vm.mock_llm(r".*", "ALLOW proposal 7")
+    record = evaluate_request(deploy(direct_vm, direct_deploy, direct_alice))
+    assert record_field(record, "request_binding_digest") == (
+        "0xe8539dc6d81fbd8491d86ca707cccc0d0e3a91629565eda34e7e1b5a85693b42"
+    )

@@ -32,12 +32,30 @@ const request={
   policy:"authorization required",
 };
 const binding="0xff5fc20f93d80fcfdac310a2ce93ccd8a3167711c656e8f034e36295a25e41c9";
+const crossLanguageBinding="0xe8539dc6d81fbd8491d86ca707cccc0d0e3a91629565eda34e7e1b5a85693b42";
 
 test("binds the exact registered request with a hand-checked digest",()=>{
   assert.equal(GENLAYER_RECORD_SCHEMA,"sentinel-policy-record/v1");
   assert.equal(genLayerRequestBinding(request,"v1"),binding);
   assert.notEqual(genLayerRequestBinding({...request,policy:"different"},"v1"),binding);
   assert.notEqual(genLayerRequestBinding({...request,decodedAction:"different"},"v1"),binding);
+});
+
+test("matches the Intelligent Contract request-binding proof vector",()=>{
+  const canonicalRequest={
+    ...request,
+    evidence:{
+      ...request.evidence,
+      uri:"https://governance.example/proposal/7",
+      digest:"0x576cf0b57420ca62f3ec30ae7fcd8b628ed284c717c586d6eb6ceb007127ec1b",
+    },
+    decodedAction:"transfer 1 token",
+    policy:"Require an exact, unexpired governance authorization.",
+  };
+  assert.equal(
+    genLayerRequestBinding(canonicalRequest,"treasury-v1"),
+    crossLanguageBinding,
+  );
 });
 
 test("decodes a versioned bound record without treating the reason as authorization",()=>{
