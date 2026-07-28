@@ -27,7 +27,7 @@
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
     "test": "npm run build && node --test scripts/test/*.test.js apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm run lint:ic && npm run test:ic:direct && npm test"
   },
   "devDependencies": {
     "@layerzerolabs/lz-evm-messagelib-v2": "3.0.168",
