@@ -15,6 +15,9 @@
   "scripts": {
     "compile:contracts": "node scripts/compile-contracts.mjs",
     "check:ic": "python3 scripts/check-intelligent-contract.py",
+    "setup:ic:direct": "node scripts/setup-intelligent-contract-tests.mjs",
+    "lint:ic": "node scripts/run-intelligent-contract-tool.mjs lint",
+    "test:ic:direct": "node scripts/run-intelligent-contract-tool.mjs test",
     "build:dashboard": "node scripts/build-dashboard.mjs",
     "check:dashboard": "node --check apps/dashboard/src/app.js && node --check apps/dashboard/src/timeline.js && node --check dist/apps/dashboard/demo.js && node scripts/check-dashboard.mjs",
     "preflight": "npm run build && node dist/services/coordinator/src/preflight.js",
@@ -22,7 +25,7 @@
     "recovery:prepare": "npm run build && node dist/services/coordinator/src/recovery-cli.js prepare",
     "recovery:apply": "npm run build && node dist/services/coordinator/src/recovery-cli.js apply",
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
-    "test": "npm run build && node --test apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
+    "test": "npm run build && node --test scripts/test/*.test.js apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check": "npm run typecheck && npm test"
   },

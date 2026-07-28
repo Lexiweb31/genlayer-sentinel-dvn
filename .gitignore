@@ -9,3 +9,5 @@ deployments/local/
 *.key
 work/
 .worktrees/
+.venv/
+.cache/genlayer-sentinel/
