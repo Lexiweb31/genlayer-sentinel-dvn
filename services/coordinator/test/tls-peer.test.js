@@ -35,13 +35,22 @@ test("hashes the certificate SPKI to the independent OpenSSL vector", () => {
   }
 });
 
-test("rejects absent, empty, PEM, or malformed DER certificates", () => {
+test("rejects absent, empty, PEM, noncanonical, or malformed DER certificates", () => {
   const fixture = createMutualTlsCertificateFixture();
   try {
+    const raw = new X509Certificate(fixture.signerCert).raw;
+    const noncanonical = Buffer.concat([
+      raw.subarray(0, 1),
+      Buffer.from([raw[1] + 1, 0]),
+      raw.subarray(2),
+    ]);
+    assert.doesNotThrow(() => new X509Certificate(noncanonical));
+
     for (const value of [
       undefined,
       Buffer.alloc(0),
       fixture.signerCert,
+      noncanonical,
       Buffer.from("not DER"),
     ]) {
       assert.throws(
