@@ -27,9 +27,11 @@ Restart the isolated demo or use a fresh run, enter `not-authorized`, and submit
 
 ### Recovery proof
 
-The automated E2E restarts the coordinator, dashboard server, four coordinator stores, and the local executor's attempt-store connection after source mining—but before any executor attempt—while leaving the EDR chain running. The listener ingests the original packet after restart, and the test-only provider observes exactly one wallet `eth_sendTransaction`.
+The source-restart E2E still restarts the coordinator, dashboard server, four coordinator stores, and the local executor's attempt-store connection after source mining—but before any executor attempt—while leaving the EDR chain running. The listener ingests the original packet after restart, and the test-only provider observes exactly one wallet `eth_sendTransaction`.
 
-A separate recovery test records an ambiguous executor incident, closes and reopens the real SQLite store, proves that the GUID cannot be reserved for a second broadcast, and then proves incident resolution is durable. A confirmer-level test uses that reservation contract across two confirmer instances and observes one destination send. The app exposes the execution incident through `/api/deliveries`; it clears only after Sentinel observes the exact executed GUID and target mutation. These tests are deliberately described separately rather than pretending the post-mining E2E restarts after an ambiguous destination broadcast.
+The new operator-recovery E2E exercises a different, explicitly adversarial destination path. It deploys the real local OApps, adapter, verification target and action target; obtains one real 3-of-5 DVN authorization; broadcasts the valid adapter transaction once; mines it; then forces the submitter to throw so the outbox durably records `RECOVERY_REQUIRED / SUBMISSION_AMBIGUOUS` without a trusted returned hash. A separately generated five-wallet recovery council prepares a deployment-bound EIP-712 proposal for the discovered hash, supplies exactly three signatures, advances the injected clock by the 900-second minimum delay, and applies while the runtime lease is released. Apply repeats the real local adapter path, receipt, event, block, used-state and confirmation checks, writes one hash-chained receipt, and moves directly to `CONFIRMED` without calling the submitter. The ordinary destination worker then completes the real OApp action. Submission count remains one; replay returns the same receipt; audit count remains one.
+
+A separate local-executor recovery test still records an ambiguous OApp-delivery incident, closes and reopens the real SQLite store, proves that the GUID cannot be reserved for a second broadcast, and then proves incident resolution is durable. The app exposes destination incidents through `/api/deliveries` and sanitized operator receipts through read-only `/api/recovery-actions`. These paths are described separately because adapter reconciliation and OApp-executor reconciliation have different proofs and controls.
 
 ## Exact trust labels
 
@@ -39,7 +41,8 @@ Real local behavior:
 - rejection of a source owner controlled by any unlocked harness account, so the harness cannot originate the claimed wallet-owned source action;
 - compiled `TreasuryPolicyOApp`, `SentinelDVNAdapter`, `ActionTarget`, and mock Endpoint transactions;
 - canonical PacketV1 decoding and hash binding;
-- five ECDSA signatures and on-chain 3-of-5 recovery;
+- five ECDSA DVN identities and on-chain 3-of-5 adapter authorization;
+- five separate recovery identities, three real EIP-712 approvals, an enforced test clock timelock, runtime fencing and one hash-chained receipt;
 - adapter `Verified` event and `used(digest)` state;
 - destination OApp receipt, `ActionExecuted`, replay state, and target mutation;
 - durable listener, coordinator, recovery, and verification-outbox state;
@@ -53,7 +56,7 @@ Fixtures:
 
 Unavailable:
 
-- live app URL, testnet contracts, live GenLayer request, independent DVNs/providers, five isolated operators, production custody, monitoring, audit, and mainnet support.
+- live app URL, testnet contracts, live GenLayer request, independent DVNs/providers, five isolated DVN signer operators, five isolated recovery operators, on-chain recovery governance, HSM custody, external audit anchoring, monitoring, audit, and mainnet support.
 
 ## Public demo gate
 
@@ -70,7 +73,8 @@ Video plan (4 minutes):
 - 1:05 — wallet-originated approved local action and exact GUID;
 - 2:10 — changed argument finalized as denial before signing;
 - 2:55 — real 3-of-5 adapter verification and destination OApp execution;
-- 3:25 — fixture labels, optional-DVN posture, limitations, and design-partner ask.
+- 3:20 — one mined ambiguous adapter transaction recovered without rebroadcast through timelocked 3-of-5 evidence;
+- 3:45 — fixture labels, optional-DVN posture, limitations, and design-partner ask.
 
 Every screen must distinguish live, local-test, fixture, and unavailable data.
 

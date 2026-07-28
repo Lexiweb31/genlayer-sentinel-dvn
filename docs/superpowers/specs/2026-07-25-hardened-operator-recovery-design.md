@@ -119,7 +119,7 @@ The runtime:
 
 Recovery `prepare` is read-only and may observe an active runtime, because the resulting precondition must still survive the timelock and application checks. Recovery `apply` requires a cleanly `RELEASED` lease. A stale heartbeat is never enough for the CLI to take ownership. After a process crash, operators must restart the coordinator under its normal loopback ownership, let it reclaim the stale runtime lease, and stop it cleanly before applying recovery. This favors integrity over emergency availability; Sentinel is intended to remain an optional DVN.
 
-The CLI acquires an exclusive recovery lease for the duration of application. Concurrent attempts either return the already-applied receipt for the same action ID or fail with a stable `RECOVERY_BUSY` code.
+The CLI acquires an exclusive recovery lease for the duration of application. Concurrent attempts either return the already-applied receipt for the same action ID or fail with the stable, deliberately nonspecific `RECOVERY_RUNTIME_ACTIVE` lease code.
 
 ## Ingestion recovery
 
@@ -182,27 +182,31 @@ The receipt hash commits to the complete sanitized row and prior receipt hash, p
 The only commands are:
 
 ```text
-npm run recovery:prepare -- <absolute-runtime-manifest> ingestion-requeue <transaction-hash>
-npm run recovery:prepare -- <absolute-runtime-manifest> destination-confirm <guid> <candidate-transaction-hash>
-npm run recovery:apply -- <absolute-runtime-manifest> <absolute-signed-bundle>
+npm run recovery:prepare -- ingestion --manifest <absolute-runtime-manifest> --transaction <transaction-hash>
+npm run recovery:prepare -- destination --manifest <absolute-runtime-manifest> --guid <guid> --transaction <candidate-transaction-hash>
+npm run recovery:apply -- --manifest <absolute-runtime-manifest> --bundle <absolute-signed-bundle>
 ```
 
 Paths must be explicit absolute arguments. Recovery does not read environment-variable fallbacks. Output is canonical JSON suitable for review and archival. Errors are allowlisted codes on stderr with a nonzero exit status; raw exceptions and upstream messages are suppressed.
 
 ## Failure handling
 
-All failures are fail-closed and leave protected state unchanged:
+Proof, authorization, state-binding and lease-acquisition failures are fail-closed and leave the protected dead letter or outbox row unchanged. The implemented public service/CLI codes are:
 
-- `RECOVERY_CONFIG_INVALID`
+- `RECOVERY_CLI_USAGE`
+- `RECOVERY_CLI_INPUT`
+- `RECOVERY_CLI_FAILED`
+- `RECOVERY_INVALID_BUNDLE`
+- `RECOVERY_NOT_FOUND`
 - `RECOVERY_STATE_CHANGED`
-- `RECOVERY_NOT_READY`
-- `RECOVERY_EXPIRED`
-- `RECOVERY_APPROVAL_INVALID`
 - `RECOVERY_RUNTIME_ACTIVE`
-- `RECOVERY_BUSY`
-- `RECOVERY_SOURCE_UNVERIFIED`
-- `RECOVERY_DESTINATION_UNVERIFIED`
-- `RECOVERY_AUDIT_INVALID`
+- `RECOVERY_SOURCE_PROOF_FAILED`
+- `RECOVERY_DESTINATION_PATH_FAILED`
+- `RECOVERY_DESTINATION_PENDING`
+- `RECOVERY_DESTINATION_FAILED`
+- `RECOVERY_APPLY_FAILED`
+
+`RECOVERY_RUNTIME_ACTIVE` also covers an unavailable recovery lease without disclosing internal lease state. A failure while resolving ingestion may leave only the idempotent inbox copy restored while the dead letter remains. A failure releasing resources after the protected transaction commits may be reported as `RECOVERY_APPLY_FAILED`; replay the exact same bundle to retrieve the already-written receipt before investigating. Neither condition authorizes a second destination broadcast.
 
 An audit-chain mismatch blocks all new recovery. Operators must restore or investigate the database; the CLI cannot reset the chain.
 

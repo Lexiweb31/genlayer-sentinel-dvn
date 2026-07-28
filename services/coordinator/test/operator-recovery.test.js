@@ -56,6 +56,7 @@ test("prepares without mutation and requeues only after repeated source proof an
 });
 
 test("fails closed for missing, unproven, unauthorized, active, changed or expired ingestion recovery",async()=>{
+  await assert.rejects(ingestionFixture({}).service.prepareIngestion("not-a-hash"),error=>error instanceof RecoveryError&&error.code==="RECOVERY_NOT_FOUND"&&!error.message.includes("hash"));
   await assert.rejects(ingestionFixture({}).service.prepareIngestion(h("b")),error=>error instanceof RecoveryError&&error.code==="RECOVERY_NOT_FOUND");
   const unproven=ingestionFixture();unproven.state.badProof=true;
   await assert.rejects(unproven.service.prepareIngestion(h("a")),error=>error.code==="RECOVERY_SOURCE_PROOF_FAILED"&&!error.message.includes("secret"));
@@ -101,6 +102,9 @@ test("confirms an ambiguous destination hash only after repeating path and recei
 });
 
 test("never mutates destination state for pending, failed, changed, active or audit-conflicting recovery",async()=>{
+  await assert.rejects(destinationFixture().service.prepareDestination("not-a-guid",h("c")),error=>error instanceof RecoveryError&&error.code==="RECOVERY_NOT_FOUND"&&!error.message.includes("hash"));
+  const corrupt=destinationFixture();corrupt.record={...corrupt.record,digest:h("f")};
+  await assert.rejects(corrupt.service.prepareDestination(h("3"),h("c")),error=>error instanceof RecoveryError&&error.code==="RECOVERY_STATE_CHANGED"&&!error.message.includes("digest"));
   for(const result of[{status:"PENDING"},{status:"FAILED",code:"EVENT_MISMATCH"},{status:"FAILED",code:"ADAPTER_UNUSED"},{status:"FAILED",code:"RPC_UNAVAILABLE"}]){
     const fixture=destinationFixture(result);
     await assert.rejects(fixture.service.prepareDestination(h("3"),h("c")),error=>error.code===`RECOVERY_DESTINATION_${result.status}`);

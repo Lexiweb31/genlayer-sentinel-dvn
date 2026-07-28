@@ -44,7 +44,8 @@ export class OperatorRecoveryService {
   constructor(private dependencies:OperatorRecoveryDependencies){}
 
   async prepareIngestion(transactionHash:Hex):Promise<RecoveryProposalV1>{
-    const subject=normalizeHash(transactionHash);
+    let subject:Hex;
+    try{subject=normalizeHash(transactionHash)}catch{throw new RecoveryError("RECOVERY_NOT_FOUND")}
     let record:RecoverableDeadLetter|undefined;
     try{record=await this.dependencies.recoveryStore.findDead(this.dependencies.config.pathway.name,subject)}
     catch{throw new RecoveryError("RECOVERY_NOT_FOUND")}
@@ -59,11 +60,18 @@ export class OperatorRecoveryService {
   }
 
   async prepareDestination(guid:Hex,candidateTransactionHash:Hex):Promise<RecoveryProposalV1>{
-    const subject=normalizeHash(guid),candidate=normalizeHash(candidateTransactionHash);
+    let subject:Hex,candidate:Hex;
+    try{subject=normalizeHash(guid);candidate=normalizeHash(candidateTransactionHash)}
+    catch{throw new RecoveryError("RECOVERY_NOT_FOUND")}
     let record:OutboxRecord|undefined;
     try{record=await this.dependencies.outbox.get(subject)}catch{throw new RecoveryError("RECOVERY_NOT_FOUND")}
     if(!record)throw new RecoveryError("RECOVERY_NOT_FOUND");
-    const observation=await this.observeDestination(record,candidate);
+    let observation:DestinationObservation;
+    try{observation=await this.observeDestination(record,candidate)}
+    catch(error){
+      if(error instanceof RecoveryError)throw error;
+      throw new RecoveryError("RECOVERY_STATE_CHANGED");
+    }
     try{return makeRecoveryProposal(this.dependencies.config,{
       kind:"DESTINATION_CONFIRM",subject,expectedState:"RECOVERY_REQUIRED",
       expectedFailureCode:record.failureCode!,preconditionDigest:observation.preconditionDigest,
