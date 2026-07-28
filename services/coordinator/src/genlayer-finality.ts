@@ -1,5 +1,6 @@
 import type {Hex,PolicyRequest,PolicyResult} from "../../../packages/core/src/types.js";
 import type {GenLayerFinality} from "./coordinator.js";
+import {decodeGenLayerRecord} from "./genlayer-record.js";
 import type {GenLayerStatusReader} from "./genlayer-status-reader.js";
 
 type TransactionExecution={txExecutionResultName?:string};
@@ -32,10 +33,8 @@ export class GenLayerRpcFinality implements GenLayerFinality{
     const tx=await this.client.getTransaction({hash:requestId as Hex});
     if(tx.txExecutionResultName!=="FINISHED_WITH_RETURN")throw new Error("finalized GenLayer execution did not succeed");
     const raw=await this.client.readContract({address:this.contractAddress,functionName:"get_record",args:[request.packet.guid],transactionHashVariant:"latest-final"});
-    if(typeof raw!=="string")throw new Error("invalid GenLayer policy record");
-    const [decision,packetDigest,evidenceDigest,policyVersion]=raw.split("|",5);
-    if((decision!=="ALLOW"&&decision!=="DENY")||packetDigest?.toLowerCase()!==request.packet.payloadHash.toLowerCase()||evidenceDigest?.toLowerCase()!==request.evidence.digest.toLowerCase()||!policyVersion)throw new Error("GenLayer record binding mismatch");
-    return{guid:request.packet.guid,packetDigest:request.packet.payloadHash,evidenceDigest:request.evidence.digest,decision,reasonCode:`GENLAYER_FINALIZED_${decision}`,finalizedAt:this.clock(),policyVersion};
+    const record=decodeGenLayerRecord(raw,request);
+    return{guid:request.packet.guid,packetDigest:request.packet.payloadHash,evidenceDigest:request.evidence.digest,decision:record.decision,reasonCode:`GENLAYER_FINALIZED_${record.decision}`,finalizedAt:this.clock(),policyVersion:record.policyVersion};
   }
 }
 

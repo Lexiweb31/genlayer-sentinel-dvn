@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {GenLayerRpcFinality} from "../../../dist/services/coordinator/src/genlayer-finality.js";
+import {genLayerRequestBinding} from "../../../dist/services/coordinator/src/genlayer-record.js";
 
 const h=n=>`0x${n.repeat(64)}`;
 const packet={guid:h("1"),srcEid:40161,dstEid:40231,nonce:1n,sender:h("2"),receiver:h("3"),message:"0x",payloadHash:h("4"),encodedPayloadHash:h("8"),txHash:h("5"),blockHash:h("6"),blockNumber:1n};
 const request={packet,evidence:{uri:"https://governance.example/proposal/1",digest:h("7"),observedAt:9,validUntil:100},decodedAction:"transfer 1 token",policy:"authorization required"};
+const binding=genLayerRequestBinding(request,"v1");
 
-function clients(status={status:"FINALIZED",statusCode:7},tx={txExecutionResultName:"FINISHED_WITH_RETURN"},record=`ALLOW|${h("4")}|${h("7")}|v1|authorized`){
+function clients(status={status:"FINALIZED",statusCode:7},tx={txExecutionResultName:"FINISHED_WITH_RETURN"},record=`v1|ALLOW|${h("4")}|${h("7")}|v1|${binding}|authorized`){
   const calls=[];
   return{
     status:{getTransactionStatus:async id=>{calls.push(["status",id]);return status}},
@@ -44,8 +46,12 @@ test("fails closed after finality when execution or record binding is invalid",a
     await assert.rejects(finality.finalized(id),/execution did not succeed/);
     assert.equal(c.calls.some(call=>call[0]==="read"),false);
   }
-  const mismatch=clients({status:"FINALIZED",statusCode:7},{txExecutionResultName:"FINISHED_WITH_RETURN"},`ALLOW|${h("0")}|${h("7")}|v1|bad`),finality=new GenLayerRpcFinality(mismatch.contract,mismatch.status,h("a")),id=await finality.submit(request);
+  const mismatch=clients({status:"FINALIZED",statusCode:7},{txExecutionResultName:"FINISHED_WITH_RETURN"},`v1|ALLOW|${h("0")}|${h("7")}|v1|${binding}|bad`),finality=new GenLayerRpcFinality(mismatch.contract,mismatch.status,h("a")),id=await finality.submit(request);
   await assert.rejects(finality.finalized(id),/record binding mismatch/);
+  const actionMismatch={...request,decodedAction:"transfer 2 tokens"};
+  const altered=clients(),bound=new GenLayerRpcFinality(altered.contract,altered.status,h("a"));
+  bound.register(h("9"),actionMismatch);
+  await assert.rejects(bound.finalized(h("9")),/record binding mismatch/);
   const malformed=clients({status:"FINALIZED",statusCode:7},{txExecutionResultName:"FINISHED_WITH_RETURN"},{decision:"ALLOW"}),invalid=new GenLayerRpcFinality(malformed.contract,malformed.status,h("a")),invalidId=await invalid.submit(request);
   await assert.rejects(invalid.finalized(invalidId),/invalid GenLayer policy record/);
 });
