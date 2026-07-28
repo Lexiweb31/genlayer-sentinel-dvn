@@ -15,15 +15,35 @@ export interface GenLayerPolicyRecord{
   reason:string;
 }
 
-export function genLayerRequestBinding(request:PolicyRequest,policyVersion:string):Hex{
+export interface GenLayerPolicyInput{
+  guid:Hex;
+  packetDigest:Hex;
+  evidenceUri:string;
+  evidenceDigest:Hex;
+  decodedAction:string;
+  policy:string;
+}
+
+export function genLayerPolicyInput(request:PolicyRequest):GenLayerPolicyInput{
+  return{
+    guid:request.packet.guid,
+    packetDigest:request.packet.payloadHash,
+    evidenceUri:request.evidence.uri,
+    evidenceDigest:request.evidence.digest,
+    decodedAction:request.decodedAction,
+    policy:request.policy,
+  };
+}
+
+export function genLayerRequestBindingFromInput(input:GenLayerPolicyInput,policyVersion:string):Hex{
   const fields=[
     GENLAYER_RECORD_SCHEMA,
-    request.packet.guid.toLowerCase(),
-    request.packet.payloadHash.toLowerCase(),
-    request.evidence.uri,
-    request.evidence.digest.toLowerCase(),
-    request.decodedAction,
-    request.policy,
+    input.guid.toLowerCase(),
+    input.packetDigest.toLowerCase(),
+    input.evidenceUri,
+    input.evidenceDigest.toLowerCase(),
+    input.decodedAction,
+    input.policy,
     policyVersion,
   ];
   const hash=createHash("sha256").update("SENTINEL_POLICY_REQUEST_V1","utf8");
@@ -36,7 +56,11 @@ export function genLayerRequestBinding(request:PolicyRequest,policyVersion:strin
   return `0x${hash.digest("hex")}` as Hex;
 }
 
-export function decodeGenLayerRecord(raw:unknown,request:PolicyRequest):GenLayerPolicyRecord{
+export function genLayerRequestBinding(request:PolicyRequest,policyVersion:string):Hex{
+  return genLayerRequestBindingFromInput(genLayerPolicyInput(request),policyVersion);
+}
+
+export function decodeGenLayerRecordForInput(raw:unknown,input:GenLayerPolicyInput):GenLayerPolicyRecord{
   if(typeof raw!=="string")throw new Error("invalid GenLayer policy record");
   if(Buffer.byteLength(raw,"utf8")>MAX_RECORD_BYTES)throw mismatch();
   const parts=raw.split("|");
@@ -44,15 +68,15 @@ export function decodeGenLayerRecord(raw:unknown,request:PolicyRequest):GenLayer
   const [schema,decision,packetDigest,evidenceDigest,policyVersion,requestBinding,...reasonParts]=parts;
   const policyVersionValue=policyVersion??"";
   const expectedBinding=POLICY_VERSION.test(policyVersionValue)
-    ?genLayerRequestBinding(request,policyVersionValue)
+    ?genLayerRequestBindingFromInput(input,policyVersionValue)
     :undefined;
   if(
     schema!==COMPAT_VERSION||
     (decision!=="ALLOW"&&decision!=="DENY")||
     !HEX32.test(packetDigest??"")||
-    packetDigest!==request.packet.payloadHash.toLowerCase()||
+    packetDigest!==input.packetDigest.toLowerCase()||
     !HEX32.test(evidenceDigest??"")||
-    evidenceDigest!==request.evidence.digest.toLowerCase()||
+    evidenceDigest!==input.evidenceDigest.toLowerCase()||
     !expectedBinding||
     requestBinding!==expectedBinding
   )throw mismatch();
@@ -65,6 +89,10 @@ export function decodeGenLayerRecord(raw:unknown,request:PolicyRequest):GenLayer
     requestBinding:requestBinding as Hex,
     reason,
   };
+}
+
+export function decodeGenLayerRecord(raw:unknown,request:PolicyRequest):GenLayerPolicyRecord{
+  return decodeGenLayerRecordForInput(raw,genLayerPolicyInput(request));
 }
 
 function mismatch():Error{

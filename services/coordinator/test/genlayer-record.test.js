@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   decodeGenLayerRecord,
+  decodeGenLayerRecordForInput,
+  genLayerPolicyInput,
   genLayerRequestBinding,
+  genLayerRequestBindingFromInput,
   GENLAYER_RECORD_SCHEMA,
 } from "../../../dist/services/coordinator/src/genlayer-record.js";
 
@@ -41,6 +44,24 @@ test("binds the exact registered request with a hand-checked digest",()=>{
   assert.notEqual(genLayerRequestBinding({...request,decodedAction:"different"},"v1"),binding);
 });
 
+test("binds and decodes the minimal GenLayer policy input",()=>{
+  const input={
+    guid:request.packet.guid,
+    packetDigest:request.packet.payloadHash,
+    evidenceUri:request.evidence.uri,
+    evidenceDigest:request.evidence.digest,
+    decodedAction:request.decodedAction,
+    policy:request.policy,
+  };
+  assert.deepEqual(genLayerPolicyInput(request),input);
+  assert.equal(genLayerRequestBindingFromInput(input,"v1"),binding);
+  const raw=`v1|ALLOW|${h("4")}|${h("7")}|v1|${binding}|authorized`;
+  assert.deepEqual(
+    decodeGenLayerRecordForInput(raw,input),
+    decodeGenLayerRecord(raw,request),
+  );
+});
+
 test("matches the Intelligent Contract request-binding proof vector",()=>{
   const canonicalRequest={
     ...request,
@@ -54,6 +75,13 @@ test("matches the Intelligent Contract request-binding proof vector",()=>{
   };
   assert.equal(
     genLayerRequestBinding(canonicalRequest,"treasury-v1"),
+    crossLanguageBinding,
+  );
+  assert.equal(
+    genLayerRequestBindingFromInput(
+      genLayerPolicyInput(canonicalRequest),
+      "treasury-v1",
+    ),
     crossLanguageBinding,
   );
 });
