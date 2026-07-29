@@ -19,7 +19,7 @@ test("rejects unsafe or incomplete options before starting local infrastructure"
 
 test("starts an isolated loopback app with wallet ownership, public capability and idempotent cleanup",async t=>{
   const owner=Wallet.createRandom().address;
-  const session=await startLocalDemo({owner,appHost:"127.0.0.1",appPort:0,pollIntervalMs:25});
+  const session=await startLocalDemo({owner,appHost:"127.0.0.1",appPort:0,pollIntervalMs:60_000});
   let stopped=false;t.after(async()=>{if(!stopped)await session.stop()});
   assert.equal(session.capability.mode,"LOCAL_WALLET_DEMO");
   assert.equal(session.capability.chainId,31337n);
