@@ -70,6 +70,7 @@ async function bootstrapDemo():Promise<void>{
   const result=await resolveDemoBootstrap(demoStorage,fetchCapability);
   if(result.kind==="DISABLED"){
     disable("The local wallet action capability is unavailable. Start the explicit local demo harness to enable it.");
+    announceOperations("OPERATIONS_ALLOWED");
     return;
   }
   if(result.kind==="RESTORED_UNAVAILABLE"){
@@ -79,6 +80,7 @@ async function bootstrapDemo():Promise<void>{
       transactionHash:result.locator.transactionHash,
       guid:result.locator.guid
     });
+    announceOperations("RESTORED_UNAVAILABLE");
     return;
   }
   config=result.config;
@@ -91,8 +93,9 @@ async function bootstrapDemo():Promise<void>{
       guid:result.locator.guid
     });
     window.dispatchEvent(new CustomEvent("sentinel:guid-observed",{detail:{guid:result.locator.guid}}));
-    scheduleCoordinatorPoll(result.locator.guid,0);
   }
+  announceOperations("OPERATIONS_ALLOWED");
+  if(result.kind==="RESUME")scheduleCoordinatorPoll(result.locator.guid,0);
 }
 
 async function fetchCapability():Promise<PublicDemoConfig>{
@@ -114,6 +117,10 @@ function showStoredIdentifiers(value:DemoSessionLocator):void{
   elements.destinationEid.textContent=String(value.destinationEid);
   elements.target.textContent="Unavailable";
   elements.signature.textContent="Unavailable";
+}
+
+function announceOperations(state:"OPERATIONS_ALLOWED"|"RESTORED_UNAVAILABLE"):void{
+  window.dispatchEvent(new CustomEvent("sentinel:demo-bootstrap",{detail:{state}}));
 }
 
 async function connectWallet():Promise<void>{
