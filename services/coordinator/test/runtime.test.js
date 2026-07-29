@@ -131,6 +131,20 @@ test("never resumes business work after ownership loss without a runtime restart
   assert.equal(value.runtime.runtimeStatus().lifecycle,"OWNERSHIP_LOST");
 });
 
+test("contains a regressing observation clock without leaking a scheduled failure",async()=>{
+  const value=setup();
+  await value.runtime.start();
+  assert.equal(value.runtime.runtimeStatus().observedAt,100);
+  value.setNow(99);
+  await value.scheduled[0]();
+  assert.equal(value.calls.includes("ingest"),false);
+  assert.equal(value.calls.includes("error:runtime observation timestamp regressed"),true);
+  assert.deepEqual(value.runtime.status,{started:true,stopping:false,tickActive:false});
+  value.setNow(101);
+  await value.scheduled[0]();
+  assert.equal(value.calls.includes("ingest"),true);
+});
+
 test("marks a final heartbeat failure as ownership loss",async()=>{
   let heartbeatCount=0,value;
   value=setup({

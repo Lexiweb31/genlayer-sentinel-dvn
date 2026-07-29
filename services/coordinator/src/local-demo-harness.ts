@@ -297,7 +297,7 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
           const prior=pipeline,port=prior.port;
           await prior.close();
           pipeline=await createPipeline(port);
-          observation.markRunning();
+          if(!shuttingDown)observation.markRunning();
         }finally{maintenance=false;restarting=undefined}
       })();
       return restarting;
@@ -308,9 +308,10 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
         shuttingDown=true;
         observation.markStopping();
         if(timer){clearInterval(timer);timer=undefined}
-        await restarting;
-        await activeTick;
-        await cleanupAll(cleanups);
+        let failure:unknown;
+        try{await restarting;await activeTick}catch(error){failure=error}
+        try{await cleanupAll(cleanups)}catch(error){failure??=error}
+        if(failure)throw failure;
       })();
       return stopped;
     };

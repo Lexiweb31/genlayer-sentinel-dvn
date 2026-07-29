@@ -82,6 +82,10 @@ export class RuntimeObservation implements RuntimeStatusReader {
     });
   }
 
+  hasLostOwnership():boolean {
+    return this.lifecycle==="OWNERSHIP_LOST";
+  }
+
   markStarting():void {
     this.lifecycle="STARTING";
     this.lease=this.mode==="LEASED"?"NOT_CLAIMED":"NOT_APPLICABLE_LOCAL_FIXTURE";

@@ -60,6 +60,21 @@ test("starts an isolated loopback app with wallet ownership, public capability a
   await assert.rejects(fetch(`${session.appUrl}/health`));
 });
 
+test("concurrent coordinator restart and stop settle after closing every local resource",async()=>{
+  const session=await startLocalDemo({
+    owner:Wallet.createRandom().address,
+    appHost:"127.0.0.1",
+    appPort:0,
+    pollIntervalMs:25
+  });
+  const restarting=session.restartCoordinator();
+  const stopping=session.stop();
+  await Promise.all([restarting,stopping]);
+  await session.stop();
+  await assert.rejects(session.tickOnce(),/stopping or stopped/);
+  await assert.rejects(fetch(`${session.appUrl}/health`));
+});
+
 test("rejects an owner controlled by the harness unlocked account set",async()=>{
   const probe=await startLocalEvm(20);
   const owner=await probe.signers[19].getAddress();

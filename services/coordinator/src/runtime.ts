@@ -14,7 +14,7 @@ export class SentinelRuntime {
   runtimeStatus():LiveRuntimeStatus{return this.observation.runtimeStatus()}
   async start():Promise<void>{if(this.started)return;try{this.observation.markStarting();await this.dependencies.restore();await this.dependencies.listen();await this.dependencies.claimLease();this.leaseClaimed=true;this.observation.markRunning();this.started=true;const schedule=this.dependencies.schedule??defaultSchedule;this.cancel=schedule(()=>this.runTick(),this.dependencies.intervalMs)}catch(error){await this.close();throw error}}
   async stop():Promise<void>{if(this.stopping)return this.tick;if(!this.started&&this.closed)return;this.stopping=true;this.observation.markStopping();this.cancel?.();try{await this.tick;await this.close()}finally{this.started=false;this.stopping=false}}
-  private runTick():Promise<void>{if(this.tick||!this.started||this.stopping||this.observation.runtimeStatus().lifecycle==="OWNERSHIP_LOST")return this.tick??Promise.resolve();const work=this.executeObservedTick();this.tick=work.finally(()=>{this.tick=undefined});return this.tick}
+  private runTick():Promise<void>{if(this.tick||!this.started||this.stopping||this.observation.hasLostOwnership())return this.tick??Promise.resolve();const work=this.executeObservedTick().catch(error=>this.reportSafely(error));this.tick=work.finally(()=>{this.tick=undefined});return this.tick}
   private async executeObservedTick():Promise<void>{
     let failureCode:RuntimeFailureCode|undefined,leaseLost=false,phase:RuntimePhase="HEARTBEAT_BEFORE";
     this.observation.beginTick("HEARTBEAT_BEFORE");
@@ -40,6 +40,7 @@ export class SentinelRuntime {
       this.observation.finishTick(failureCode,leaseLost);
     }
   }
+  private reportSafely(error:unknown):void{try{this.dependencies.report(error)}catch{}}
   private async close():Promise<void>{if(this.closed)return;this.closed=true;try{await this.dependencies.closeServer()}finally{try{if(this.leaseClaimed){await this.dependencies.releaseLease();this.leaseClaimed=false}}finally{this.dependencies.closeStores()}}}
 }
 function failureForPhase(phase:RuntimePhase):RuntimeFailureCode{
