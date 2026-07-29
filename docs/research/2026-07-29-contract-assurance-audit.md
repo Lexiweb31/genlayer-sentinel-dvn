@@ -71,7 +71,7 @@ The build compiler and static runner import one immutable Solidity build configu
 
 `test:properties`, `analyze:contracts`, `check:assurance`, and the top-level `check` do not bootstrap, install, or download. A missing cache fails with `assurance environment is missing; run npm run setup:assurance`. The entry test injects unavailable repository-local paths and proves that failure without network access.
 
-Every Python discovery probe and analyzer child receives a new allowlisted environment containing repository-local executable paths, deterministic locale/hash settings, and optional system certificate paths. Absolute reviewed Python 3.12 locations are tried before PATH-based names. The pip subprocess uses Python `-I`, pip `--isolated`, `--keyring-provider disabled`, and a unique empty home, XDG config directory, pip config, and netrc inside the repository cache; that disposable boundary is removed in `finally`. An existing virtual environment is version-checked before pip runs. Tests inject wallet/private-key/mnemonic/RPC/API/cloud credentials plus hostile pip/home/netrc variables and prove none reach probes or installation. The real hardened bootstrap reran successfully with Python `3.12.13`, Slither `0.11.5`, and native solc `0.8.30+commit.73712a01`. Slither JSON is written only to an operating-system temporary directory and removed on success and failure.
+Every Python discovery probe and analyzer child receives a new allowlisted environment containing repository-local executable paths, deterministic locale/hash settings, and optional system certificate paths. Absolute reviewed Python 3.12 locations are tried before PATH-based names. The pip subprocess uses Python `-I`, pip `--isolated`, `--keyring-provider disabled`, and `PIP_CONFIG_FILE` set to the operating-system null device, which disables global, user and virtual-environment configuration files. It also receives a unique empty home, XDG config directory, and netrc inside the repository cache; that disposable boundary is removed in `finally`, including when environment validation fails. An existing virtual environment is version-checked before pip runs. Tests inject wallet/private-key/mnemonic/RPC/API/cloud credentials plus hostile pip/home/netrc variables and a hostile virtual-environment `pip.conf`, and prove they cannot configure probes or installation. The real hardened bootstrap reran successfully with Python `3.12.13`, Slither `0.11.5`, and native solc `0.8.30+commit.73712a01`. Slither JSON is written only to an operating-system temporary directory and removed on success and failure.
 
 ## Property campaigns
 
@@ -92,7 +92,7 @@ Mutation evidence:
 - weakening strict signer ordering from `recovered <= previous` to `recovered < previous` failed on the first generated case because the quorum-length repeated signer was counted twice;
 - weakening OApp replay from GUID **or** authorization reuse to GUID **and** authorization reuse failed on the first generated case and shrank to a minimal same-authorization/new-GUID counterexample.
 
-Both mutations were restored before commit and all four campaigns reran green.
+All three mutations were restored before commit and all four campaigns reran green.
 
 ## Finding triage and production hardening
 
@@ -152,10 +152,10 @@ The complete `npm run check` result on 2026-07-29:
 - strict TypeScript: pass;
 - pinned official GenVM lint: pass;
 - direct Intelligent Contract tests: `24` pass;
-- ordinary Node tests: `323` pass;
+- ordinary Node tests: `326` pass;
 - fixed-seed contract property campaigns: `4` pass;
 - Slither: High `0`, Medium `0`, reviewed Low `1`, reviewed Informational `6`;
-- total executable test cases: `351`, with zero failures, skips, or todos.
+- total executable test cases: `354`, with zero failures, skips, or todos.
 
 The relevant commands are:
 

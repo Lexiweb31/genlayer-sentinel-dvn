@@ -22,16 +22,23 @@ export function compilationSettings(outputSelection) {
   };
 }
 
-export function nativeSolcArguments(root, includePath) {
+export function nativeSolcArguments(
+  root,
+  includePath,
+  buildConfig = solidityBuildConfig,
+) {
+  if (buildConfig.optimizer.enabled !== true) {
+    throw new Error("native optimizer must remain enabled");
+  }
   return [
     "--base-path",
     root,
     "--include-path",
     includePath,
     "--evm-version",
-    solidityBuildConfig.evmVersion,
+    buildConfig.evmVersion,
     "--optimize",
     "--optimize-runs",
-    String(solidityBuildConfig.optimizer.runs),
+    String(buildConfig.optimizer.runs),
   ];
 }

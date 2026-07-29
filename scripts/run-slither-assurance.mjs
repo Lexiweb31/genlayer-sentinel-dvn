@@ -123,6 +123,27 @@ async function loadSource(root, relative) {
   return fsp.readFile(path.join(root, relative));
 }
 
+export function formatDependencyAudit(audit) {
+  const normalized = mergeDependencyAudits([audit]);
+  const detectorCounts = new Map();
+  for (const detector of normalized.detectorIds) {
+    detectorCounts.set(detector, (detectorCounts.get(detector) ?? 0) + 1);
+  }
+  const detectors = [...detectorCounts]
+    .map(([detector, count]) => `${detector}:${count}`)
+    .join(",");
+  return [
+    "Excluded dependency-only findings:",
+    `High=${normalized.excludedFindings.High}`,
+    `Medium=${normalized.excludedFindings.Medium}`,
+    `Low=${normalized.excludedFindings.Low}`,
+    `Informational=${normalized.excludedFindings.Informational};`,
+    `elements=${normalized.excludedElements};`,
+    `mixed=${normalized.mixedFindings};`,
+    `detectors=${detectors || "none"}`,
+  ].join(" ");
+}
+
 export async function runSlitherAssurance(options = {}) {
   const root = options.root ?? repositoryRoot;
   const paths = options.paths ?? assurancePaths(root);
@@ -187,9 +208,7 @@ if (isDirectExecution()) {
         ? result.acceptedDetectorIds.join(",")
         : "none"}`,
     );
-    console.log(
-      `Excluded dependency-only findings: High=${result.dependencyAudit.excludedFindings.High} Medium=${result.dependencyAudit.excludedFindings.Medium} Low=${result.dependencyAudit.excludedFindings.Low} Informational=${result.dependencyAudit.excludedFindings.Informational}; mixed=${result.dependencyAudit.mixedFindings}`,
-    );
+    console.log(formatDependencyAudit(result.dependencyAudit));
   } catch (error) {
     console.error(error instanceof Error ? error.message : "contract static analysis failed");
     process.exitCode = 1;

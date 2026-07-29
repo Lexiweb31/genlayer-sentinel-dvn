@@ -4,6 +4,7 @@ import test from "node:test";
 import { assurancePaths } from "../contract-assurance-toolchain.mjs";
 import {
   analyzeContract,
+  formatDependencyAudit,
   runSlitherAssurance,
   slitherArguments,
 } from "../run-slither-assurance.mjs";
@@ -41,6 +42,13 @@ test("builds an explicit native-solc invocation for one production target", () =
     () => assertSolcJsVersion("0.8.30+commit.00000000.Emscripten.clang"),
     /solc-js version drift/,
   );
+  assert.throws(
+    () => nativeSolcArguments(root, path.join(root, "node_modules"), {
+      ...solidityBuildConfig,
+      optimizer: { enabled: false, runs: 200 },
+    }),
+    /native optimizer must remain enabled/,
+  );
   assert.deepEqual(slitherArguments(target, reportPath, root, paths), [
     target,
     "--solc",
@@ -77,6 +85,18 @@ test("rejects native compiler configuration drift before invoking Slither", asyn
     /Solidity compiler configuration drift/,
   );
   assert.equal(verified, false);
+});
+
+test("formats a deterministic dependency audit with elements and detector counts", () => {
+  assert.equal(
+    formatDependencyAudit({
+      excludedFindings: { High: 1, Medium: 2, Low: 0, Informational: 3 },
+      excludedElements: 17,
+      mixedFindings: 4,
+      detectorIds: ["incorrect-exp", "assembly", "assembly", "divide-before-multiply"],
+    }),
+    "Excluded dependency-only findings: High=1 Medium=2 Low=0 Informational=3; elements=17; mixed=4; detectors=assembly:2,divide-before-multiply:1,incorrect-exp:1",
+  );
 });
 
 test("analyzes with a sanitized environment and removes its report directory", async () => {

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import https from "node:https";
+import os from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
@@ -111,14 +112,10 @@ async function createSetupIsolation(paths) {
   await fsp.mkdir(paths.cacheRoot, { recursive: true });
   const root = await fsp.mkdtemp(path.join(paths.cacheRoot, "setup-"));
   const xdgConfigHome = path.join(root, "xdg");
-  const pipConfig = path.join(root, "pip.conf");
   const netrc = path.join(root, ".netrc");
   await fsp.mkdir(xdgConfigHome, { recursive: true });
-  await Promise.all([
-    fsp.writeFile(pipConfig, "", { mode: 0o600 }),
-    fsp.writeFile(netrc, "", { mode: 0o600 }),
-  ]);
-  return { root, pipConfig, netrc, xdgConfigHome };
+  await fsp.writeFile(netrc, "", { mode: 0o600 });
+  return { root, netrc, xdgConfigHome };
 }
 
 async function removeSetupIsolation(isolation) {
@@ -142,15 +139,15 @@ export async function setupContractAssurance(options = {}) {
 
   await validateLock(paths, config);
   const isolation = await createIsolation(paths);
-  const env = {
-    ...assuranceEnvironment(paths, options.environmentInput ?? process.env),
-    HOME: isolation.root,
-    XDG_CONFIG_HOME: isolation.xdgConfigHome,
-    PIP_CONFIG_FILE: isolation.pipConfig,
-    NETRC: isolation.netrc,
-    PIP_KEYRING_PROVIDER: "disabled",
-  };
   try {
+    const env = {
+      ...assuranceEnvironment(paths, options.environmentInput ?? process.env),
+      HOME: isolation.root,
+      XDG_CONFIG_HOME: isolation.xdgConfigHome,
+      PIP_CONFIG_FILE: os.devNull,
+      NETRC: isolation.netrc,
+      PIP_KEYRING_PROVIDER: "disabled",
+    };
     if (!await exists(paths.venvPython)) {
       const python = await findPython({ env });
       await runFile(python, ["-m", "venv", paths.venvRoot], { env });

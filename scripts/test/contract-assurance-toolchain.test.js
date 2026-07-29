@@ -410,7 +410,6 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
   const paths = assurancePaths(root, "darwin");
   const isolation = {
     root: `${paths.cacheRoot}/setup-fixed`,
-    pipConfig: `${paths.cacheRoot}/setup-fixed/pip.conf`,
     netrc: `${paths.cacheRoot}/setup-fixed/.netrc`,
     xdgConfigHome: `${paths.cacheRoot}/setup-fixed/xdg`,
   };
@@ -482,7 +481,7 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
       PYTHONNOUSERSITE: "1",
       HOME: isolation.root,
       XDG_CONFIG_HOME: isolation.xdgConfigHome,
-      PIP_CONFIG_FILE: isolation.pipConfig,
+      PIP_CONFIG_FILE: os.devNull,
       NETRC: isolation.netrc,
       PIP_KEYRING_PROVIDER: "disabled",
     }],
@@ -512,7 +511,7 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
     assert.equal(env.LANG, "C");
     assert.equal(env.PIP_INDEX_URL, undefined);
     assert.equal(env.HOME, isolation.root);
-    assert.equal(env.PIP_CONFIG_FILE, isolation.pipConfig);
+    assert.equal(env.PIP_CONFIG_FILE, os.devNull);
     assert.equal(env.NETRC, isolation.netrc);
     assert.equal(env.PIP_KEYRING_PROVIDER, "disabled");
   }
@@ -524,7 +523,6 @@ test("rejects a stale assurance venv before invoking pip", async () => {
   const paths = assurancePaths(root, "linux");
   const isolation = {
     root: `${paths.cacheRoot}/setup-stale`,
-    pipConfig: `${paths.cacheRoot}/setup-stale/pip.conf`,
     netrc: `${paths.cacheRoot}/setup-stale/.netrc`,
     xdgConfigHome: `${paths.cacheRoot}/setup-stale/xdg`,
   };
@@ -545,4 +543,78 @@ test("rejects a stale assurance venv before invoking pip", async () => {
     /requires Python 3.12.x/,
   );
   assert.deepEqual(calls, [[paths.venvPython, ["--version"]]]);
+});
+
+test("disables every pip config layer when a hostile venv-site config exists", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sentinel-assurance-pip-config-"));
+  const paths = assurancePaths(root, process.platform);
+  const isolation = {
+    root: path.join(paths.cacheRoot, "setup-hostile"),
+    netrc: path.join(paths.cacheRoot, "setup-hostile", ".netrc"),
+    xdgConfigHome: path.join(paths.cacheRoot, "setup-hostile", "xdg"),
+  };
+  await fs.mkdir(paths.venvRoot, { recursive: true });
+  await fs.writeFile(
+    path.join(paths.venvRoot, "pip.conf"),
+    "[global]\nindex-url = https://user:password@private.example/simple\n",
+  );
+  let pipEnvironment;
+  try {
+    await setupContractAssurance({
+      root,
+      host: { platform: "linux", arch: "x64" },
+      config: loadAssuranceConfig(expectedConfig),
+      validateLock: async () => {},
+      pathExists: async () => true,
+      createSetupIsolation: async () => isolation,
+      removeSetupIsolation: async () => {},
+      runFile: async (command, args, options) => {
+        if (command === paths.venvPython && args[0] === "--version") {
+          return { stdout: "Python 3.12.13\n", stderr: "", code: 0 };
+        }
+        if (command === paths.venvPython && args.includes("pip")) {
+          pipEnvironment = options.env;
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      downloadCompiler: async () => {},
+      verifyInstallation: async () => ({
+        python: "3.12.13",
+        slither: "0.11.5",
+        solc: "0.8.30+commit.73712a01",
+        platform: "linux-x64",
+      }),
+    });
+    assert.equal(pipEnvironment.PIP_CONFIG_FILE, os.devNull);
+    assert.equal(pipEnvironment.PIP_INDEX_URL, undefined);
+    assert.equal(pipEnvironment.HOME, isolation.root);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("removes setup isolation when child-environment validation fails", async () => {
+  const removed = [];
+  const root = "/sentinel";
+  const paths = assurancePaths(root, "linux");
+  const isolation = {
+    root: `${paths.cacheRoot}/setup-invalid-environment`,
+    netrc: `${paths.cacheRoot}/setup-invalid-environment/.netrc`,
+    xdgConfigHome: `${paths.cacheRoot}/setup-invalid-environment/xdg`,
+  };
+  await assert.rejects(
+    setupContractAssurance({
+      root,
+      host: { platform: "linux", arch: "x64" },
+      config: loadAssuranceConfig(expectedConfig),
+      validateLock: async () => {},
+      createSetupIsolation: async () => isolation,
+      removeSetupIsolation: async (actual) => removed.push(actual.root),
+      environmentInput: {
+        REQUESTS_CA_BUNDLE: "https://user:password@example.test/bundle.pem",
+      },
+    }),
+    /unsafe retained environment value/,
+  );
+  assert.deepEqual(removed, [isolation.root]);
 });
