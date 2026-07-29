@@ -35,11 +35,26 @@ test("starts an isolated loopback app with wallet ownership, public capability a
 
   const health=await fetch(`${session.appUrl}/health`).then(response=>response.json());
   assert.deepEqual(health,{status:"ok",mode:"testnet-prototype",presentationMode:"LOCAL_TEST"});
+  const runtimeResponse=await fetch(`${session.appUrl}/api/runtime-status`);
+  assert.equal(runtimeResponse.status,200);
+  const runtime=await runtimeResponse.json();
+  assert.equal(runtime.lifecycle,"RUNNING");
+  assert.equal(runtime.lease,"NOT_APPLICABLE_LOCAL_FIXTURE");
+  assert.equal(runtime.recoveryPosture,"REQUIRES_OFFLINE_VERIFICATION");
+  assert.equal(JSON.stringify(runtime).includes("CLAIMED"),false);
+  assert.equal(JSON.stringify(runtime).includes("OWNERSHIP_LOST"),false);
   const capability=await fetch(`${session.appUrl}/api/demo/config`).then(response=>response.json());
   assert.equal(capability.sourceOApp,(await session.sourceOApp.getAddress()).toLowerCase());
   assert.equal(capability.rpcUrl,session.rpcUrl);
   assert.equal(JSON.stringify(capability).match(/private|secret|mnemonic|signer/ig),null);
   await session.tickOnce();
+  const completed=await fetch(`${session.appUrl}/api/runtime-status`).then(response=>response.json());
+  assert.equal(completed.tick.lastOutcome,"SUCCEEDED");
+  assert.equal(completed.tick.phase,"IDLE");
+  await session.restartCoordinator();
+  const restarted=await fetch(`${session.appUrl}/api/runtime-status`).then(response=>response.json());
+  assert.equal(restarted.lifecycle,"RUNNING");
+  assert.equal(restarted.lease,"NOT_APPLICABLE_LOCAL_FIXTURE");
   await session.stop();await session.stop();stopped=true;
   await assert.rejects(session.tickOnce(),/stopping or stopped/);
   await assert.rejects(fetch(`${session.appUrl}/health`));

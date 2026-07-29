@@ -23,6 +23,7 @@ import {Uln302IntentFactory} from "./uln302-intent.js";
 import {SqliteVerificationOutbox} from "./verification-outbox.js";
 import type {SignerService} from "./signing.js";
 import{SqliteRuntimeLease,type RuntimeLease}from"./runtime-lease.js";
+import{RuntimeObservation}from"./runtime-observation.js";
 
 export interface RuntimeCapabilities {
   genlayer:GenLayerContractClient;
@@ -58,8 +59,8 @@ export function composeRuntime(config:RuntimeConfig,capabilities:RuntimeCapabili
     const recovery=new RecoveryService(config.pathway.name,recoveryStore,listener),ingestion=new IngestionRunner(listener,coordinatorPacketHandler(factory,coordinator),recoveryFailurePolicy(config.pathway.name,recoveryStore,config.runtime.maxIngestionAttempts));
     const planner=new DeliveryPlanner(coordinator,outbox,pathVerifier,new Uln302IntentFactory(config.destination.signatureTtlSeconds),config.destination.authorizedSigners,report);
     const destinationWorker=new DestinationWorker(outbox,capabilities.destinationSubmitter,receiptVerifier,pathVerifier,coordinator,report);
-    const server=createDashboardServer(coordinator,dashboardRoot,recovery,outbox,{presentationMode:capabilities.presentationMode},undefined,outbox);
-    const leaseOwner=`sentinel-runtime:${randomUUID()}`,now=()=>Math.floor(Date.now()/1000);
+    const leaseOwner=`sentinel-runtime:${randomUUID()}`,now=()=>Math.floor(Date.now()/1000),observation=new RuntimeObservation("LEASED",now);
+    const server=createDashboardServer(coordinator,dashboardRoot,recovery,outbox,{presentationMode:capabilities.presentationMode},undefined,outbox,observation);
     const runtime=new SentinelRuntime({
       restore:async()=>{await coordinator.restore();await planner.reconcile()},
       ingest:async()=>{await ingestion.pollOnce()},
@@ -74,7 +75,7 @@ export function composeRuntime(config:RuntimeConfig,capabilities:RuntimeCapabili
       closeStores:()=>closeOwned(owned),
       report,
       intervalMs:config.runtime.pollIntervalMs
-    });
+    },observation);
     return{runtime,coordinator,recovery,outbox,planner,destinationWorker};
   }catch(error){try{closeOwned(owned)}catch{}throw error}
 }

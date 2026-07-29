@@ -42,6 +42,7 @@ import {LocalExecutionDeliveryReader,SqliteLocalExecutionAttempts} from "./local
 import {PolicyRequestFactory} from "./request-factory.js";
 import {RecoveryService,recoveryFailurePolicy} from "./recovery-service.js";
 import {SqliteRecoveryStore} from "./recovery-store.js";
+import {RuntimeObservation,type RuntimeFailureCode} from "./runtime-observation.js";
 import {IsolatedSignerService,type SigningEnvelope} from "./signing.js";
 import {createDashboardServer} from "./status-api.js";
 import {Uln302IntentFactory} from "./uln302-intent.js";
@@ -121,6 +122,7 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
   const options=validateOptions(rawOptions);
   const cleanups:Array<()=>Promise<void>|void>=[],register=(cleanup:()=>Promise<void>|void)=>cleanups.push(cleanup);
   let stopped:Promise<void>|undefined,timer:NodeJS.Timeout|undefined,activeTick:Promise<void>|undefined,restarting:Promise<void>|undefined,shuttingDown=false,maintenance=false;
+  const observation=new RuntimeObservation("LOCAL_FIXTURE");
   try{
     const evm=await startLocalEvm(12);register(()=>evm.close());
     const rpc:LocalDemoRpc=(method,params)=>evm.provider.send(method,params);
@@ -244,7 +246,7 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
         );
         await coordinator.restore();await planner.reconcile();
         const deliveries=new LocalExecutionDeliveryReader(outbox,executionAttempts);
-        const server=createDashboardServer(coordinator,resolve("apps/dashboard"),recovery,deliveries,{presentationMode:"LOCAL_TEST"},capability);
+        const server=createDashboardServer(coordinator,resolve("apps/dashboard"),recovery,deliveries,{presentationMode:"LOCAL_TEST"},capability,undefined,observation);
         acquire(()=>closeServer(server));
         await listen(server,appPort,options.appHost);
         const addressInfo=server.address();
@@ -260,15 +262,24 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
     };
 
     let pipeline=await createPipeline(options.appPort);register(()=>pipeline.close());
+    observation.markRunning();
     const appUrl=`http://${options.appHost}:${pipeline.port}`;
 
     const runTick=async()=>{
       const current=pipeline;
-      await rpc("evm_mine",[]);
-      await current.ingestion.pollOnce();
-      await current.coordinator.pollPending();
-      await current.planner.pollOnce();
-      await current.destinationWorker.pollOnce();
+      let failureCode:RuntimeFailureCode|undefined="INGESTION_FAILED";
+      observation.beginTick("INGESTION");
+      try{
+        await rpc("evm_mine",[]);
+        await current.ingestion.pollOnce();
+        failureCode="POLICY_FINALITY_FAILED";observation.enterPhase("POLICY_FINALITY");
+        await current.coordinator.pollPending();
+        failureCode="DELIVERY_PLANNING_FAILED";observation.enterPhase("DELIVERY_PLANNING");
+        await current.planner.pollOnce();
+        failureCode="DESTINATION_DELIVERY_FAILED";observation.enterPhase("DESTINATION_DELIVERY");
+        await current.destinationWorker.pollOnce();
+        failureCode=undefined;
+      }finally{observation.finishTick(failureCode)}
     };
     const tickOnce=():Promise<void>=>{
       if(shuttingDown)return Promise.reject(new Error("local demo is stopping or stopped"));
@@ -280,11 +291,13 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
       if(shuttingDown)return Promise.reject(new Error("local demo is stopping or stopped"));
       if(!restarting)restarting=(async()=>{
         maintenance=true;
+        observation.markStarting();
         try{
           await activeTick;
           const prior=pipeline,port=prior.port;
           await prior.close();
           pipeline=await createPipeline(port);
+          observation.markRunning();
         }finally{maintenance=false;restarting=undefined}
       })();
       return restarting;
@@ -293,6 +306,7 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
     const stop=():Promise<void>=>{
       if(!stopped)stopped=(async()=>{
         shuttingDown=true;
+        observation.markStopping();
         if(timer){clearInterval(timer);timer=undefined}
         await restarting;
         await activeTick;

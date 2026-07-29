@@ -14,6 +14,19 @@ const a=n=>`0x${n.repeat(40)}`,h=n=>`0x${n.repeat(64)}`,b=n=>`0x${"0".repeat(24)
 const authorized=[a("1"),a("2"),a("3"),a("4"),a("5")];
 function config(path){return{mode:"TESTNET_PROTOTYPE",pathway:{name:"test",sourceChainId:11155111,destinationChainId:421614,srcEid:40161,dstEid:40231,endpoint:a("1"),sendLibrary:a("2"),sourceOApp:b("3"),sourceOAppAddress:a("3"),destinationOApp:b("4"),sentinelDvn:a("5"),executor:a("6"),maxMessageSize:10000,deadDvn:a("d"),requiredDvns:[a("a")],optionalDvns:[a("5"),a("b")],optionalDvnThreshold:1,startBlock:1n,confirmations:15n,rpcUrls:["https://rpc-a.example","https://rpc-b.example"]},destination:{rpcUrls:["https://dst-a.example","https://dst-b.example"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:64n,requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:authorized,quorum:3,signatureTtlSeconds:300},evidence:{uri:"https://governance.example/auth",allowedHost:"governance.example",policy:"exact authorization",ttlSeconds:300,maximumBytes:262144},genlayer:{endpoint:"https://genlayer.example/api",policyContract:a("6")},recovery:{operators:[a("6"),a("7"),a("8"),a("9"),a("c")],quorum:3,minimumDelaySeconds:900,maximumLifetimeSeconds:3600},storage:{sqlitePath:path},runtime:{pollIntervalMs:5000,maxIngestionAttempts:3},status:{host:"127.0.0.1",port:0}}}
 function capabilities(){let signerCalls=0,destinationCalls=0,genlayerCalls=0;const value={genlayer:{writeContract:async()=>{genlayerCalls++;return h("7")},getTransaction:async()=>({}),readContract:async()=>""},sourceRpc:async()=>{throw new Error("source RPC fixture invoked")},signers:authorized.map(address=>({address,sign:async()=>{signerCalls++;throw new Error("unexpected signer call")}})),destinationSubmitter:{used:async()=>{destinationCalls++;return false},submitVerification:async()=>{destinationCalls++;return h("8")}},destinationRpc:async()=>{destinationCalls++;throw new Error("unexpected destination RPC")},presentationMode:"LOCAL_TEST"};return{value,signerCalls:()=>signerCalls,destinationCalls:()=>destinationCalls,genlayerCalls:()=>genlayerCalls}}
+function serverJson(server,path){
+  return new Promise((resolveResponse,reject)=>{
+    const listener=server.listeners("request")[0];
+    if(typeof listener!=="function"){reject(new Error("request listener unavailable"));return}
+    const response={
+      statusCode:0,
+      headers:new Map(),
+      setHeader(name,value){this.headers.set(name,value)},
+      end(body){resolveResponse({status:this.statusCode,body:JSON.parse(String(body))})}
+    };
+    Promise.resolve(listener({method:"GET",url:path},response)).catch(reject);
+  });
+}
 
 test("composes the complete loopback runtime without eager account, signer, or network work",async()=>{
   const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),socketCalls=[],caps=capabilities(),originalFetch=globalThis.fetch;let genlayerFetches=0;globalThis.fetch=async()=>{genlayerFetches++;throw new Error("unexpected network call")};
@@ -57,6 +70,36 @@ test("binds HTTP before claiming the runtime lease and releases it before store 
     await value.runtime.start();assert.deepEqual(calls.slice(0,2),["listen","claim"]);
     await value.runtime.stop();assert.deepEqual(calls.slice(-3),["close-http","release","close-lease"]);
   }finally{rmSync(dir,{recursive:true,force:true})}
+});
+
+test("shares one leased runtime observation with the production dashboard",async()=>{
+  const dir=mkdtempSync(join(tmpdir(),"sentinel-runtime-")),path=join(dir,"state.db"),caps=capabilities();
+  let server,startingStatus;
+  const socket={
+    listen:async value=>{
+      server=value;
+      startingStatus=await serverJson(server,"/api/runtime-status");
+    },
+    close:async()=>{}
+  };
+  const value=composeRuntime(config(path),caps.value,resolve("apps/dashboard"),console.error,socket);
+  try{
+    await value.runtime.start();
+    const{observedAt,...starting}=startingStatus.body;
+    assert.equal(Number.isSafeInteger(observedAt),true);
+    assert.deepEqual(starting,{
+      version:1,
+      lifecycle:"STARTING",
+      lease:"NOT_CLAIMED",
+      recoveryPosture:"REQUIRES_OFFLINE_VERIFICATION",
+      tick:{active:false,phase:"IDLE",lastOutcome:"NEVER"}
+    });
+    const running=await serverJson(server,"/api/runtime-status");
+    assert.equal(running.status,200);
+    assert.equal(running.body.lifecycle,"RUNNING");
+    assert.equal(running.body.lease,"CLAIMED");
+    assert.equal(running.body.recoveryPosture,"BLOCKED_BY_ACTIVE_RUNTIME");
+  }finally{await value.runtime.stop();rmSync(dir,{recursive:true,force:true})}
 });
 
 test("fails startup closed when another live runtime owns the durable lease",async()=>{
