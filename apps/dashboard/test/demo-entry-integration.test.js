@@ -5,6 +5,14 @@ import {id,Interface} from "ethers";
 const transactionHash=`0x${"6".repeat(64)}`;
 const guid=`0x${"7".repeat(64)}`;
 const storageKey="genlayer-sentinel.local-action.v1";
+const localRuntimeStatus={
+  version:1,
+  observedAt:100,
+  lifecycle:"RUNNING",
+  lease:"NOT_APPLICABLE_LOCAL_FIXTURE",
+  recoveryPosture:"REQUIRES_OFFLINE_VERIFICATION",
+  tick:{active:false,phase:"IDLE",lastOutcome:"NEVER"}
+};
 
 class FakeElement {
   constructor(){
@@ -168,6 +176,7 @@ test("matching restoration unlocks read-only operations and schedules the exact 
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:true,status:200,json:async()=>publicConfig};
     if(path==="/health")return{ok:true,status:200,json:async()=>({presentationMode:"LOCAL_TEST"})};
+    if(path==="/api/runtime-status")return{ok:true,status:200,json:async()=>localRuntimeStatus};
     if(["/api/jobs","/api/dead-letters","/api/deliveries","/api/recovery-actions"].includes(path))
       return{ok:true,status:200,json:async()=>[]};
     throw new Error(`unexpected fetch ${path}`);
@@ -185,18 +194,70 @@ test("matching restoration unlocks read-only operations and schedules the exact 
   assert.deepEqual(fetches,[
     "/api/demo/config",
     "/health",
+    "/api/runtime-status",
     "/api/jobs",
     "/api/dead-letters",
     "/api/deliveries",
     "/api/recovery-actions"
   ]);
-  assert.equal(intervals.length,5);
+  assert.equal(intervals.length,6);
+  const fetchCount=fetches.length;
+  windowValue.dispatchEvent(new FakeCustomEvent("sentinel:demo-bootstrap",{detail:{state:"OPERATIONS_ALLOWED"}}));
+  assert.equal(fetches.length,fetchCount);
+  assert.equal(intervals.length,6);
   assert.equal(windowValue.timeouts.length,1);
   assert.equal(windowValue.timeouts[0].delay,0);
   assert.equal(walletRequests,0);
   assert.equal(documentValue.elements.get("demo-status").textContent,"COORDINATOR PENDING");
   assert.match(documentValue.elements.get("demo-message").textContent,/no wallet request or source resend/);
   assert.equal(storage.value(storageKey),JSON.stringify(locator));
+  assert.equal(documentValue.elements.get("#runtime-status-badge").textContent,"RUNNING");
+  assert.equal(documentValue.elements.get("#runtime-lease").textContent,"NOT APPLICABLE · LOCAL FIXTURE");
+});
+
+test("runtime status failure renders unavailable without disrupting other operations panels",async()=>{
+  const storage=memoryStorage();
+  const windowValue=new FakeWindow(storage,undefined);
+  const documentValue=fakeDocument();
+  const fetches=[];
+  const intervals=[];
+  globalThis.window=windowValue;
+  globalThis.document=documentValue;
+  globalThis.CustomEvent=FakeCustomEvent;
+  globalThis.fetch=async path=>{
+    fetches.push(String(path));
+    if(path==="/api/demo/config")return{ok:false,status:404,json:async()=>({})};
+    if(path==="/health")return{ok:true,status:200,json:async()=>({presentationMode:"LOCAL_TEST"})};
+    if(path==="/api/runtime-status")return{ok:false,status:503,json:async()=>({error:"runtime status unavailable"})};
+    if(["/api/jobs","/api/dead-letters","/api/deliveries","/api/recovery-actions"].includes(path))
+      return{ok:true,status:200,json:async()=>[]};
+    throw new Error(`unexpected fetch ${path}`);
+  };
+  globalThis.setInterval=(callback,delay)=>{
+    intervals.push({callback,delay});
+    return intervals.length;
+  };
+
+  const suffix=`runtime-unavailable-${Date.now()}`;
+  await import(`../src/app.js?${suffix}`);
+  await import(`../../../dist/apps/dashboard/demo.js?${suffix}`);
+  await new Promise(resolve=>setImmediate(resolve));
+
+  assert.deepEqual(fetches,[
+    "/api/demo/config",
+    "/health",
+    "/api/runtime-status",
+    "/api/jobs",
+    "/api/dead-letters",
+    "/api/deliveries",
+    "/api/recovery-actions"
+  ]);
+  assert.equal(intervals.length,6);
+  assert.equal(documentValue.elements.get("#runtime-status-badge").textContent,"UNAVAILABLE");
+  assert.equal(documentValue.elements.get("#connection-status").textContent,"NO PACKETS DETECTED");
+  assert.equal(documentValue.elements.get("#quarantine-status").textContent,"CLEAR");
+  assert.equal(documentValue.elements.get("#delivery-status").textContent,"EMPTY");
+  assert.equal(documentValue.elements.get("#recovery-action-status").textContent,"EMPTY");
 });
 
 test("a fresh wallet action persists nothing until the mined receipt yields its bound GUID",async()=>{
@@ -264,6 +325,7 @@ test("a fresh wallet action persists nothing until the mined receipt yields its 
   globalThis.fetch=async path=>{
     if(path==="/api/demo/config")return{ok:true,status:200,json:async()=>publicConfig};
     if(path==="/health")return{ok:true,status:200,json:async()=>({presentationMode:"LOCAL_TEST"})};
+    if(path==="/api/runtime-status")return{ok:true,status:200,json:async()=>localRuntimeStatus};
     if(["/api/jobs","/api/dead-letters","/api/deliveries","/api/recovery-actions"].includes(path))
       return{ok:true,status:200,json:async()=>[]};
     throw new Error(`unexpected fetch ${path}`);

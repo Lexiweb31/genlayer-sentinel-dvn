@@ -40,6 +40,18 @@
       <div class="notice demo-message" id="demo-message" role="status" aria-live="polite">The wallet action is disabled until the local harness exposes a valid capability.</div>
       <details class="demo-boundary"><summary>Immutable local action boundary</summary><dl><dt>Source OApp</dt><dd><code id="demo-source-oapp">—</code></dd><dt>Destination EID</dt><dd id="demo-destination-eid">—</dd><dt>Target</dt><dd><code id="demo-target">—</code></dd><dt>Function</dt><dd id="demo-signature">record(bytes32)</dd><dt>Action value</dt><dd>0 wei</dd><dt>Semantic source</dt><dd>LOCAL_POLICY_FIXTURE</dd></dl></details>
     </section>
+    <section class="runtime-observation">
+      <div class="section-head"><div><p>COORDINATOR PROCESS</p><h2>Live runtime observation</h2></div><span class="status" id="runtime-status-badge">CONNECTING</span></div>
+      <p class="recovery-note">Live observation from this coordinator process only. This is not failover, high availability, or recovery authorization.</p>
+      <dl class="runtime-observation-grid">
+        <div><dt>Lifecycle</dt><dd id="runtime-lifecycle">Not observed</dd></div>
+        <div><dt>Lease relationship</dt><dd id="runtime-lease">Not observed</dd></div>
+        <div><dt>Current phase</dt><dd id="runtime-phase">Not observed</dd></div>
+        <div><dt>Last heartbeat</dt><dd id="runtime-heartbeat">Not observed</dd></div>
+        <div><dt>Last completed tick</dt><dd id="runtime-last-tick">Not observed</dd></div>
+        <div><dt>Recovery posture</dt><dd id="runtime-recovery-posture">Not observed</dd></div>
+      </dl>
+    </section>
     <section>
       <div class="section-head"><div><p>OPERATIONS</p><h2>Packet lifecycle</h2></div><span class="status" id="connection-status">CONNECTING</span></div>
       <div class="packet-bar"><label for="job-select">Observed packet</label><select id="job-select" disabled><option>Waiting for coordinator</option></select><span id="refresh-time">Never refreshed</span></div>
