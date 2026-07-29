@@ -99,6 +99,68 @@ test("normalizes one production finding without host-only fields", () => {
   assert.deepEqual(normalizeSlitherReport(report, root), [expectedFinding]);
 });
 
+test("accepts Slither's discriminated contract and annotated-node element shapes", () => {
+  const contractElement = structuredClone(report);
+  contractElement.results.detectors[0].elements[0].type = "contract";
+  contractElement.results.detectors[0].elements[0].name = "A";
+  delete contractElement.results.detectors[0].elements[0].type_specific_fields;
+  assert.deepEqual(normalizeSlitherReport(contractElement, root), [{
+    ...expectedFinding,
+    elements: [{
+      ...expectedFinding.elements[0],
+      type: "contract",
+      name: "A",
+      functionName: "",
+    }],
+  }]);
+
+  const annotatedNode = structuredClone(report);
+  annotatedNode.results.detectors[0].elements[0].type = "node";
+  annotatedNode.results.detectors[0].elements[0].name = "target.call(data)";
+  annotatedNode.results.detectors[0].elements[0].additional_fields = {
+    underlying_type: "external_calls",
+  };
+  assert.deepEqual(normalizeSlitherReport(annotatedNode, root), [{
+    ...expectedFinding,
+    elements: [{
+      ...expectedFinding.elements[0],
+      type: "node",
+      name: "target.call(data)",
+      functionName: "",
+    }],
+  }]);
+
+  const annotatedVariable = structuredClone(report);
+  annotatedVariable.results.detectors[0].elements[0].type = "variable";
+  annotatedVariable.results.detectors[0].elements[0].name = "_value";
+  annotatedVariable.results.detectors[0].elements[0].additional_fields = {
+    target: "parameter",
+    convention: "mixedCase",
+  };
+  assert.deepEqual(normalizeSlitherReport(annotatedVariable, root), [{
+    ...expectedFinding,
+    elements: [{
+      ...expectedFinding.elements[0],
+      type: "variable",
+      name: "_value",
+      functionName: "",
+    }],
+  }]);
+
+  const eventElement = structuredClone(report);
+  eventElement.results.detectors[0].elements[0].type = "event";
+  eventElement.results.detectors[0].elements[0].name = "Verified";
+  assert.deepEqual(normalizeSlitherReport(eventElement, root), [{
+    ...expectedFinding,
+    elements: [{
+      ...expectedFinding.elements[0],
+      type: "event",
+      name: "Verified",
+      functionName: "",
+    }],
+  }]);
+});
+
 test("fails closed when Slither reports analysis failure", () => {
   assert.throws(
     () => normalizeSlitherReport({
@@ -164,6 +226,29 @@ test("rejects dependency, traversal, and outside-repository source mappings", ()
   const absolute = structuredClone(report);
   absolute.results.detectors[0].elements[0].source_mapping.filename_absolute = "/tmp/Secret.sol";
   assert.throws(() => normalizeSlitherReport(absolute, root), /outside the repository/);
+});
+
+test("partitions dependency-only results without hiding mixed production findings", () => {
+  const dependencyElement = structuredClone(report.results.detectors[0].elements[0]);
+  dependencyElement.name = "dependencyFunction";
+  dependencyElement.source_mapping.filename_relative = "node_modules/vendor/Dependency.sol";
+  dependencyElement.source_mapping.filename_absolute = "/sentinel/node_modules/vendor/Dependency.sol";
+  dependencyElement.source_mapping.filename_short = "node_modules/vendor/Dependency.sol";
+  dependencyElement.source_mapping.is_dependency = false;
+
+  const mixed = structuredClone(report);
+  mixed.results.detectors[0].elements.push(dependencyElement);
+  assert.deepEqual(
+    normalizeSlitherReport(mixed, root, { dependencyMode: "partition" }),
+    [expectedFinding],
+  );
+
+  const dependencyOnly = structuredClone(report);
+  dependencyOnly.results.detectors[0].elements = [dependencyElement];
+  assert.deepEqual(
+    normalizeSlitherReport(dependencyOnly, root, { dependencyMode: "partition" }),
+    [],
+  );
 });
 
 test("binds a finding to literal description and source bytes", () => {

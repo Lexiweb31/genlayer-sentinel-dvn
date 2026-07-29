@@ -13,7 +13,9 @@ const detectorKeys = [
   "impact",
   "confidence",
 ];
-const elementKeys = ["type", "name", "source_mapping", "type_specific_fields"];
+const typedElementKeys = ["type", "name", "source_mapping", "type_specific_fields"];
+const contractElementKeys = ["type", "name", "source_mapping"];
+const annotatedNodeElementKeys = [...typedElementKeys, "additional_fields"];
 const mappingKeys = [
   "start",
   "length",
@@ -70,12 +72,14 @@ function requireInteger(value, label, minimum = 0) {
   return value;
 }
 
-function productionPath(mapping, root) {
+function mappedPath(mapping, root, dependencyMode) {
   const relative = requireString(mapping.filename_relative, "source relative path");
   if (relative.includes("\\") || path.posix.normalize(relative) !== relative) {
     throw new Error("Slither finding is outside contracts/src/");
   }
-  if (!relative.startsWith("contracts/src/") || !relative.endsWith(".sol")) {
+  const production = relative.startsWith("contracts/src/") && relative.endsWith(".sol");
+  const dependency = relative.startsWith("node_modules/") && relative.endsWith(".sol");
+  if (!production && !(dependencyMode === "partition" && dependency)) {
     throw new Error("Slither finding is outside contracts/src/");
   }
   const resolvedRoot = path.resolve(root);
@@ -90,22 +94,42 @@ function productionPath(mapping, root) {
   if (absolute !== resolvedRelative) {
     throw new Error("Slither absolute source path is outside the repository");
   }
-  if (mapping.is_dependency !== false) {
+  if (typeof mapping.is_dependency !== "boolean") {
+    throw new Error("Slither dependency marker must be boolean");
+  }
+  if (production && mapping.is_dependency !== false) {
     throw new Error("Slither dependency finding is not permitted");
   }
-  return relative;
+  return { path: relative, dependency };
 }
 
-function normalizeElement(raw, root) {
-  exactKeys(raw, elementKeys, "element");
+function normalizeElement(raw, root, dependencyMode) {
+  if (!isRecord(raw)) throw new Error("element must be an object");
   const type = requireString(raw.type, "element type");
+  if (!["contract", "event", "function", "modifier", "node", "variable", "pragma"].includes(type)) {
+    throw new Error(`unknown Slither element type: ${type}`);
+  }
+  if (type === "contract") {
+    exactKeys(raw, contractElementKeys, "element");
+  } else if (type === "node" && Object.hasOwn(raw, "additional_fields")) {
+    exactKeys(raw, annotatedNodeElementKeys, "element");
+    exactKeys(raw.additional_fields, ["underlying_type"], "element additional_fields");
+    requireString(raw.additional_fields.underlying_type, "element underlying type");
+  } else if (type === "variable" && Object.hasOwn(raw, "additional_fields")) {
+    exactKeys(raw, annotatedNodeElementKeys, "element");
+    exactKeys(raw.additional_fields, ["target", "convention"], "element additional_fields");
+    requireString(raw.additional_fields.target, "element variable target");
+    requireString(raw.additional_fields.convention, "element variable convention");
+  } else {
+    exactKeys(raw, typedElementKeys, "element");
+  }
   const name = requireString(raw.name, "element name", { allowEmpty: true });
-  if (!isRecord(raw.type_specific_fields)) {
+  if (type !== "contract" && !isRecord(raw.type_specific_fields)) {
     throw new Error("element type_specific_fields must be an object");
   }
   const mapping = raw.source_mapping;
   exactKeys(mapping, mappingKeys, "source mapping");
-  const path = productionPath(mapping, root);
+  const mapped = mappedPath(mapping, root, dependencyMode);
   const start = requireInteger(mapping.start, "source start");
   const length = requireInteger(mapping.length, "source length", 1);
   requireString(mapping.filename_short, "source short path");
@@ -115,23 +139,34 @@ function normalizeElement(raw, root) {
   }
   requireInteger(mapping.starting_column, "source starting column", 1);
   requireInteger(mapping.ending_column, "source ending column", 1);
-  const parent = raw.type_specific_fields.parent;
-  const contractName = isRecord(parent) && typeof parent.name === "string"
-    ? parent.name
-    : "";
-  const functionName = ["function", "modifier"].includes(type) ? name : "";
+  const parent = raw.type_specific_fields?.parent;
+  const parentOfParent = parent?.type_specific_fields?.parent;
+  let contractName = type === "contract" ? name : "";
+  let functionName = ["function", "modifier"].includes(type) ? name : "";
+  if (isRecord(parent) && parent.type === "contract" && typeof parent.name === "string") {
+    contractName = parent.name;
+  }
+  if (isRecord(parent) && ["function", "modifier"].includes(parent.type)
+    && typeof parent.name === "string") {
+    functionName = parent.name;
+  }
+  if (isRecord(parentOfParent) && parentOfParent.type === "contract"
+    && typeof parentOfParent.name === "string") {
+    contractName = parentOfParent.name;
+  }
   return {
     type,
     name,
-    path,
+    path: mapped.path,
     start,
     length,
     contractName,
     functionName,
+    dependency: mapped.dependency,
   };
 }
 
-function normalizeDetector(raw, root) {
+function normalizeDetector(raw, root, dependencyMode) {
   exactKeys(raw, detectorKeys, "detector");
   if (!Array.isArray(raw.elements) || raw.elements.length === 0) {
     throw new Error("detector elements must be a nonempty array");
@@ -147,16 +182,24 @@ function normalizeDetector(raw, root) {
   if (!confidences.has(raw.confidence)) {
     throw new Error(`unknown Slither confidence: ${raw.confidence}`);
   }
+  const elements = raw.elements
+    .map((element) => normalizeElement(element, root, dependencyMode))
+    .filter((element) => !element.dependency)
+    .map(({ dependency: _dependency, ...element }) => element);
+  if (elements.length === 0 && dependencyMode === "partition") return null;
   return {
     check: raw.check,
     impact: raw.impact,
     confidence: raw.confidence,
     description: raw.description,
-    elements: raw.elements.map((element) => normalizeElement(element, root)),
+    elements,
   };
 }
 
-export function normalizeSlitherReport(raw, root) {
+export function normalizeSlitherReport(raw, root, { dependencyMode = "reject" } = {}) {
+  if (!["reject", "partition"].includes(dependencyMode)) {
+    throw new Error("unknown Slither dependency mode");
+  }
   exactKeys(raw, ["success", "error", "results"], "report");
   if (typeof raw.success !== "boolean") throw new Error("report success must be boolean");
   if (raw.error !== null && typeof raw.error !== "string") {
@@ -168,7 +211,9 @@ export function normalizeSlitherReport(raw, root) {
   }
   if (!raw.success) throw new Error("Slither analysis failed");
   if (raw.error !== null) throw new Error("successful Slither report has an error");
-  return raw.results.detectors.map((detector) => normalizeDetector(detector, root));
+  return raw.results.detectors
+    .map((detector) => normalizeDetector(detector, root, dependencyMode))
+    .filter((finding) => finding !== null);
 }
 
 function sha256(value) {
