@@ -18,6 +18,8 @@
     "setup:ic:direct": "node scripts/setup-intelligent-contract-tests.mjs",
     "setup:assurance": "node scripts/setup-contract-assurance.mjs",
     "analyze:contracts": "node scripts/run-slither-assurance.mjs",
+    "test:properties": "node --test contracts/assurance/*.property.test.js",
+    "check:assurance": "npm run build && npm run test:properties && npm run analyze:contracts",
     "lint:ic": "node scripts/run-intelligent-contract-tool.mjs lint",
     "test:ic:direct": "node scripts/run-intelligent-contract-tool.mjs test",
     "build:dashboard": "node scripts/build-dashboard.mjs",
@@ -29,7 +31,7 @@
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
     "test": "npm run build && node --test scripts/test/*.test.js apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check": "npm run typecheck && npm run lint:ic && npm run test:ic:direct && npm test"
+    "check": "npm run typecheck && npm run lint:ic && npm run test:ic:direct && npm test && npm run check:assurance"
   },
   "devDependencies": {
     "@layerzerolabs/lz-evm-messagelib-v2": "3.0.168",
