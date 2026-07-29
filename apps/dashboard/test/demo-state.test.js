@@ -179,3 +179,49 @@ test("input changes cancel an in-flight quote before a stale result can be accep
     /invalid demo transition/
   );
 });
+
+test("restores a matching locator only into coordinator-pending state",()=>{
+  let state=initialDemoState();
+  state=reduceDemoState(state,{type:"CAPABILITY_AVAILABLE"});
+  state=reduceDemoState(state,{type:"ACTION_RESTORED",transactionHash,guid});
+
+  assert.deepEqual(state,{
+    phase:"COORDINATOR_PENDING",
+    transactionHash,
+    guid,
+    restored:true
+  });
+  assert.deepEqual(reduceDemoState(state,{type:"INVALIDATED"}),state);
+  assert.throws(
+    ()=>reduceDemoState(state,{type:"SENTINEL_EXECUTED"}),
+    /invalid demo transition/
+  );
+  state=reduceDemoState(state,{type:"COORDINATOR_STAGE",stage:"EXECUTED"});
+  assert.deepEqual(state,{
+    phase:"SENTINEL_EXECUTED",
+    transactionHash,
+    guid,
+    restored:true,
+    coordinatorStage:"EXECUTED"
+  });
+});
+
+test("retains an unavailable locator without accepting coordinator evidence",()=>{
+  const state=reduceDemoState(initialDemoState(),{
+    type:"ACTION_RESTORE_UNAVAILABLE",
+    transactionHash,
+    guid
+  });
+
+  assert.deepEqual(state,{
+    phase:"RESTORED_UNAVAILABLE",
+    transactionHash,
+    guid,
+    restored:true
+  });
+  assert.deepEqual(reduceDemoState(state,{type:"INVALIDATED"}),state);
+  assert.throws(
+    ()=>reduceDemoState(state,{type:"COORDINATOR_STAGE",stage:"EXECUTED"}),
+    /invalid demo transition/
+  );
+});

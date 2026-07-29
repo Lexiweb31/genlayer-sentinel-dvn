@@ -1,5 +1,5 @@
 export type DemoPhase=
-  |"DISABLED"|"WALLET_REQUIRED"|"WALLET_CONNECTING"|"WALLET_FAILED"|"WRONG_CHAIN"|"WRONG_OWNER"
+  |"DISABLED"|"RESTORED_UNAVAILABLE"|"WALLET_REQUIRED"|"WALLET_CONNECTING"|"WALLET_FAILED"|"WRONG_CHAIN"|"WRONG_OWNER"
   |"READY"|"QUOTING"|"QUOTE_FAILED"
   |"QUOTED"|"WALLET_CONFIRMATION"|"USER_REJECTED"|"SOURCE_REVERTED"
   |"SOURCE_FAILED"|"SUBMITTED"|"COORDINATOR_PENDING"|"POLICY_REJECTED"
@@ -13,6 +13,7 @@ export interface DemoState {
   guid?:string;
   errorCode?:string;
   coordinatorStage?:string;
+  restored?:true;
 }
 
 export type DemoEvent=
@@ -31,6 +32,8 @@ export type DemoEvent=
   |{type:"GUID_OBSERVED";transactionHash:string;guid:string}
   |{type:"COORDINATOR_STAGE";stage:string}
   |{type:"COORDINATOR_INCIDENT";code:string}
+  |{type:"ACTION_RESTORED";transactionHash:string;guid:string}
+  |{type:"ACTION_RESTORE_UNAVAILABLE";transactionHash:string;guid:string}
   |{type:"INVALIDATED"}
   |{type:string;[key:string]:unknown};
 
@@ -51,6 +54,22 @@ export function reduceDemoState(state:DemoState,event:DemoEvent):DemoState {
   }
   if(state.phase==="DISABLED"&&event.type==="CAPABILITY_AVAILABLE")
     return initialDemoState("WALLET_REQUIRED");
+  if(state.phase==="DISABLED"&&event.type==="ACTION_RESTORE_UNAVAILABLE"&&
+    validHash(event.transactionHash)&&validHash(event.guid))
+    return{
+      phase:"RESTORED_UNAVAILABLE",
+      transactionHash:event.transactionHash.toLowerCase(),
+      guid:event.guid.toLowerCase(),
+      restored:true
+    };
+  if(state.phase==="WALLET_REQUIRED"&&event.type==="ACTION_RESTORED"&&
+    validHash(event.transactionHash)&&validHash(event.guid))
+    return{
+      phase:"COORDINATOR_PENDING",
+      transactionHash:event.transactionHash.toLowerCase(),
+      guid:event.guid.toLowerCase(),
+      restored:true
+    };
   if(state.phase==="WALLET_REQUIRED"&&event.type==="WALLET_CONNECT_REQUESTED")
     return initialDemoState("WALLET_CONNECTING");
   if(state.phase==="WALLET_CONNECTING"&&event.type==="WALLET_READY"&&validAddress(event.account))
