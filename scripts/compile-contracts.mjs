@@ -1,5 +1,5 @@
 import fs from "node:fs"; import path from "node:path"; import solc from "solc";
-const root=process.cwd(); const files=["contracts/src/SentinelDVNAdapter.sol","contracts/src/TreasuryPolicyOApp.sol","contracts/test/MockVerificationTarget.sol","contracts/test/MockEndpointV2.sol","contracts/test/ActionTarget.sol"];
+const root=process.cwd(); const files=["contracts/src/SentinelDVNAdapter.sol","contracts/src/TreasuryPolicyOApp.sol","contracts/test/MockVerificationTarget.sol","contracts/test/MockEndpointV2.sol","contracts/test/ActionTarget.sol","contracts/test/RevertingActionTarget.sol"];
 const sources=Object.fromEntries(files.map(f=>[f,{content:fs.readFileSync(f,"utf8")}]))
 function findImports(name){for(const base of [root,path.join(root,"node_modules")]){const p=path.join(base,name);if(fs.existsSync(p))return{contents:fs.readFileSync(p,"utf8")}}return{error:`not found: ${name}`}}
 const input={language:"Solidity",sources,settings:{evmVersion:"shanghai",optimizer:{enabled:true,runs:200},outputSelection:{"*":{"*":["abi","evm.bytecode.object"]}}}};
