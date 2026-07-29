@@ -182,12 +182,17 @@ test("generated invalid actions and reverting targets leave no execution state",
   const generated = fc.record({
     values: fc.uniqueArray(nonzeroBytes32, { minLength: 4, maxLength: 4 }),
     nonce: fc.integer({ min: 1, max: 1_000_000 }),
+    nativeValue: fc.bigInt({ min: 1n, max: 10n ** 18n }),
   });
 
   await campaign(
     "OApp rejection and rollback",
     generated,
-    async ({ values: [authorizationId, guid, recordValue, otherGuid], nonce }) => {
+    async ({
+      values: [authorizationId, guid, recordValue, otherGuid],
+      nonce,
+      nativeValue,
+    }) => {
       await withEvmSnapshot(context.provider, async () => {
         const data = targetInterface.encodeFunctionData("record", [recordValue]);
         const targetAddress = await context.target.getAddress();
@@ -237,6 +242,13 @@ test("generated invalid actions and reverting targets leave no execution state",
             target: await context.unauthorizedTarget.getAddress(),
           }),
         );
+        await deliverRejected(
+          context.epB,
+          receiver,
+          origin,
+          guid,
+          encodeAction({...validAction, value: nativeValue}),
+        );
         await deliverRejected(context.epB, receiver, origin, guid, "0x1234");
         await deliverRejected(
           context.epB,
@@ -258,6 +270,31 @@ test("generated invalid actions and reverting targets leave no execution state",
             { nativeFee: quoted.nativeFee, lzTokenFee: quoted.lzTokenFee },
             { value: quoted.nativeFee },
           ),
+        );
+        const nativeAction = {...validAction, value: nativeValue};
+        await assert.rejects(
+          context.a.quoteAction(40231, nativeAction, "0x", false),
+        );
+        const beforeNonce = await context.epA.outboundNonce(
+          await context.a.getAddress(),
+          40231,
+          context.peerB,
+        );
+        await assert.rejects(
+          context.a.connect(context.signers[2]).sendAction(
+            40231,
+            nativeAction,
+            "0x",
+            {nativeFee: 0, lzTokenFee: 0},
+          ),
+        );
+        assert.equal(
+          await context.epA.outboundNonce(
+            await context.a.getAddress(),
+            40231,
+            context.peerB,
+          ),
+          beforeNonce,
         );
         await assert.rejects(
           context.b.connect(context.signers[7]).setAuthorizedTarget(

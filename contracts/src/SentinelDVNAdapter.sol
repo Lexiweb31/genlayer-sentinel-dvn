@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.30;
 
 import {ILayerZeroDVN} from "@layerzerolabs/lz-evm-messagelib-v2/contracts/uln/interfaces/ILayerZeroDVN.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @notice ULN302-compatible job interface plus Sentinel policy-gated quorum execution. Testnet prototype; unaudited.
-contract SentinelDVNAdapter is ILayerZeroDVN {
+contract SentinelDVNAdapter is ReentrancyGuard {
     using ECDSA for bytes32;
     error Unauthorized(); error InvalidQuorum(); error InvalidSigner(); error Replay(); error Expired();
     error InvalidSignatureOrder(); error UnsupportedDestination(); error VerificationCallFailed(bytes reason);
@@ -23,7 +24,7 @@ contract SentinelDVNAdapter is ILayerZeroDVN {
     constructor(address lib, address target, uint32 dstEid, address[] memory signers, uint256 q) {
         if (lib == address(0) || target == address(0) || q == 0 || q > signers.length) revert InvalidQuorum();
         messageLib = lib; verificationTarget = target; supportedDstEid = dstEid; quorum = q;
-        address previous;
+        address previous = address(0);
         for (uint256 i; i < signers.length; ++i) {
             if (signers[i] == address(0) || signers[i] <= previous) revert InvalidSigner();
             previous = signers[i]; signer[signers[i]] = true;
@@ -34,7 +35,7 @@ contract SentinelDVNAdapter is ILayerZeroDVN {
         if (dstEid != supportedDstEid) revert UnsupportedDestination(); return 0;
     }
 
-    function assignJob(AssignJobParam calldata p, bytes calldata) external payable returns (uint256) {
+    function assignJob(ILayerZeroDVN.AssignJobParam calldata p, bytes calldata) external returns (uint256) {
         if (msg.sender != messageLib) revert Unauthorized();
         if (p.dstEid != supportedDstEid) revert UnsupportedDestination();
         bytes32 id = keccak256(abi.encode(p.dstEid, p.packetHeader, p.payloadHash, p.confirmations, p.sender));
@@ -45,12 +46,12 @@ contract SentinelDVNAdapter is ILayerZeroDVN {
         public view returns (bytes32)
     { return keccak256(abi.encode(block.chainid, address(this), verificationTarget, guid, packetDigest, evidenceDigest, keccak256(callData), expiry)); }
 
-    function submitVerification(bytes32 guid, bytes32 packetDigest, bytes32 evidenceDigest, bytes calldata callData, uint64 expiry, bytes[] calldata signatures) external {
+    function submitVerification(bytes32 guid, bytes32 packetDigest, bytes32 evidenceDigest, bytes calldata callData, uint64 expiry, bytes[] calldata signatures) external nonReentrant {
         if (block.timestamp > expiry) revert Expired();
         bytes32 digest = executionDigest(guid, packetDigest, evidenceDigest, callData, expiry);
         if (used[digest]) revert Replay();
         bytes32 ethDigest = MessageHashUtils.toEthSignedMessageHash(digest);
-        address previous; uint256 count;
+        address previous = address(0); uint256 count = 0;
         for (uint256 i; i < signatures.length; ++i) {
             address recovered = ECDSA.recover(ethDigest, signatures[i]);
             if (recovered <= previous) revert InvalidSignatureOrder();

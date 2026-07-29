@@ -108,3 +108,31 @@ test("rejects untrusted peers and unauthorized targets", async t => {
     message
   ));
 });
+
+test("rejects nonzero native-value actions before emitting a packet", async t => {
+  const {a, epA, target, s, peerB} = await fixture(t);
+  const action = {
+    authorizationId: id("native-value"),
+    target: await target.getAddress(),
+    value: 1,
+    data: new Interface(["function record(bytes32)"]).encodeFunctionData(
+      "record",
+      [id("must-not-send")],
+    ),
+  };
+  await assert.rejects(a.quoteAction(40231, action, "0x", false));
+  const beforeNonce = await epA.outboundNonce(await a.getAddress(), 40231, peerB);
+  await assert.rejects(async () => {
+    const transaction = await a.connect(s[2]).sendAction(
+      40231,
+      action,
+      "0x",
+      {nativeFee: 0, lzTokenFee: 0},
+    );
+    await transaction.wait();
+  });
+  assert.equal(
+    await epA.outboundNonce(await a.getAddress(), 40231, peerB),
+    beforeNonce,
+  );
+});

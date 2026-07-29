@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.30;
 
 import {OApp, Origin, MessagingFee, MessagingReceipt} from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -30,10 +30,13 @@ contract TreasuryPolicyOApp is OApp, ReentrancyGuard {
 
     function quoteAction(uint32 dstEid, Action calldata action, bytes calldata options, bool payInLzToken)
         external view returns (MessagingFee memory)
-    { return _quote(dstEid, abi.encode(action), options, payInLzToken); }
+    {
+        _validateAction(action);
+        return _quote(dstEid, abi.encode(action), options, payInLzToken);
+    }
 
     function sendAction(uint32 dstEid, Action calldata action, bytes calldata options, MessagingFee calldata fee)
-        external payable onlyOwner returns (MessagingReceipt memory receipt)
+        external payable onlyOwner nonReentrant returns (MessagingReceipt memory receipt)
     {
         _validateAction(action);
         receipt = _lzSend(dstEid, abi.encode(action), options, fee, payable(msg.sender));
@@ -48,15 +51,17 @@ contract TreasuryPolicyOApp is OApp, ReentrancyGuard {
         if (executedGuid[guid] || executedAuthorization[action.authorizationId]) revert Replay();
         executedGuid[guid] = true;
         executedAuthorization[action.authorizationId] = true;
-        (bool ok, bytes memory reason) = action.target.call{value: action.value}(action.data);
+        (bool ok, bytes memory reason) = action.target.call(action.data);
         if (!ok) assembly { revert(add(reason, 32), mload(reason)) }
         emit ActionExecuted(action.authorizationId, guid, action.target, action.value);
     }
 
     function _validateAction(Action memory action) private view {
-        if (action.authorizationId == bytes32(0) || action.target == address(0)) revert InvalidAction();
+        if (
+            action.authorizationId == bytes32(0)
+                || action.target == address(0)
+                || action.value != 0
+        ) revert InvalidAction();
         if (!authorizedTarget[action.target]) revert UnauthorizedTarget(action.target);
     }
-
-    receive() external payable {}
 }
