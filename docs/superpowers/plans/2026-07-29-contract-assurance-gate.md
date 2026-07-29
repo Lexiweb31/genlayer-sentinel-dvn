@@ -296,6 +296,8 @@ Normalize only detector records with:
 
 Require every canonical relative source to resolve inside the repository and below `contracts/src/`. Reject dependency findings rather than silently accepting them if they reach this boundary.
 
+Implementation evidence note (2026-07-29): pinned Slither `0.11.5` emits dependency-only JSON even with `--exclude-dependencies`, including one High and nine Medium library-math records, and `--filter-paths node_modules` also hides mixed findings that contain production elements. The reviewed implementation therefore uses a stricter observable partition: every returned dependency element must pass the closed schema and canonical repository-path checks; dependency-only severity counts, detector IDs, and element counts are returned in the assurance result; and every production element in a mixed finding remains subject to exact fingerprint enforcement. This evidence-backed deviation prevents both a permanently unusable gate and silent dependency filtering.
+
 - [ ] **Step 4: Implement drift-sensitive fingerprinting**
 
 Hash with SHA-256:
@@ -742,7 +744,7 @@ Load `package.json` and assert exact scripts:
 ```js
 assert.equal(
   scripts["test:properties"],
-  "node --test contracts/assurance/*.property.test.js"
+  "node --test --test-concurrency=1 contracts/assurance/*.property.test.js"
 );
 assert.equal(
   scripts["check:assurance"],
@@ -768,7 +770,7 @@ Expected: FAIL because the scripts are absent.
 Add:
 
 ```json
-"test:properties": "node --test contracts/assurance/*.property.test.js",
+"test:properties": "node --test --test-concurrency=1 contracts/assurance/*.property.test.js",
 "check:assurance": "npm run build && npm run test:properties && npm run analyze:contracts"
 ```
 

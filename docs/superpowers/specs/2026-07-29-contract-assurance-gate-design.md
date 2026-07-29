@@ -118,7 +118,7 @@ The OApp fixture uses two production OApps behind the behavioral `MockEndpointV2
 
 ## Static-analysis architecture
 
-`npm run analyze:contracts` invokes the repository-local Slither executable separately for the two production source files. It supplies explicit base/include paths for `node_modules`, excludes dependency findings from the result set, pins the compiler and optimizer settings, and writes machine-readable JSON only to an operating-system temporary directory.
+`npm run analyze:contracts` invokes the repository-local Slither executable separately for the two production source files. It supplies explicit base/include paths for `node_modules`, excludes dependency-only findings from production enforcement only after validating and reporting them, retains production elements from mixed findings, pins the compiler and optimizer settings, and writes machine-readable JSON only to an operating-system temporary directory. This explicit reporting rule reflects observed Slither `0.11.5` behavior: `--exclude-dependencies` does not remove dependency-only detector records from JSON, while blanket path filtering can hide mixed production findings.
 
 The runner validates Slither output with a closed schema and rejects:
 

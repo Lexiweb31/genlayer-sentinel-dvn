@@ -13,10 +13,16 @@ import {
   verifyAssuranceInstallation,
 } from "./contract-assurance-toolchain.mjs";
 import {
+  createDependencyAudit,
   enforceSlitherFindings,
+  mergeDependencyAudits,
   normalizeSlitherReport,
   validateAllowlist,
 } from "./slither-findings.mjs";
+import {
+  nativeSolcArguments,
+  solidityBuildConfig,
+} from "./solidity-build-config.mjs";
 
 export const productionTargets = Object.freeze([
   "contracts/src/SentinelDVNAdapter.sol",
@@ -27,13 +33,10 @@ export function slitherArguments(target, reportPath, root, paths) {
   if (!productionTargets.includes(target)) {
     throw new Error("unreviewed Slither target");
   }
-  const solcArguments = [
-    `--base-path ${root}`,
-    `--include-path ${path.join(root, "node_modules")}`,
-    "--evm-version shanghai",
-    "--optimize",
-    "--optimize-runs 200",
-  ].join(" ");
+  const solcArguments = nativeSolcArguments(
+    root,
+    path.join(root, "node_modules"),
+  ).join(" ");
   return [
     target,
     "--solc",
@@ -89,11 +92,15 @@ export async function analyzeContract(target, capabilities = {}) {
       throw new Error("contract static analysis failed");
     }
     try {
-      const findings = normalizeSlitherReport(raw, root, { dependencyMode: "partition" });
+      const dependencyAudit = createDependencyAudit();
+      const findings = normalizeSlitherReport(raw, root, {
+        dependencyMode: "partition",
+        dependencyAudit,
+      });
       if (childFailed && raw.success !== true) {
         throw new Error("contract static analysis failed");
       }
-      return findings;
+      return { findings, dependencyAudit };
     } catch (error) {
       if (error.message === "Slither analysis failed") {
         throw new Error("contract static analysis failed");
@@ -129,11 +136,21 @@ export async function runSlitherAssurance(options = {}) {
   const readSource = options.loadSource ?? ((relative) => loadSource(root, relative));
   const now = options.now ?? new Date().toISOString().slice(0, 10);
 
+  if (config.versions.solc !== solidityBuildConfig.version) {
+    throw new Error("Solidity compiler configuration drift");
+  }
   const versions = await verifyInstallation(paths, config, platform);
   const allowlist = validateAllowlist(await readAllowlist());
   const findings = [];
+  const dependencyAudits = [];
   for (const target of productionTargets) {
-    findings.push(...await analyze(target));
+    const analysis = await analyze(target);
+    if (analysis === null || typeof analysis !== "object"
+      || !Array.isArray(analysis.findings)) {
+      throw new Error("contract static analysis returned an invalid result");
+    }
+    findings.push(...analysis.findings);
+    dependencyAudits.push(analysis.dependencyAudit);
   }
   const sources = new Map();
   for (const finding of findings) {
@@ -148,6 +165,7 @@ export async function runSlitherAssurance(options = {}) {
     versions,
     targets: [...productionTargets],
     ...enforced,
+    dependencyAudit: mergeDependencyAudits(dependencyAudits),
   };
 }
 
@@ -168,6 +186,9 @@ if (isDirectExecution()) {
       `Accepted detector IDs: ${result.acceptedDetectorIds.length
         ? result.acceptedDetectorIds.join(",")
         : "none"}`,
+    );
+    console.log(
+      `Excluded dependency-only findings: High=${result.dependencyAudit.excludedFindings.High} Medium=${result.dependencyAudit.excludedFindings.Medium} Low=${result.dependencyAudit.excludedFindings.Low} Informational=${result.dependencyAudit.excludedFindings.Informational}; mixed=${result.dependencyAudit.mixedFindings}`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : "contract static analysis failed");

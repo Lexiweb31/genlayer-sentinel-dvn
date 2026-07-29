@@ -18,7 +18,7 @@
     "setup:ic:direct": "node scripts/setup-intelligent-contract-tests.mjs",
     "setup:assurance": "node scripts/setup-contract-assurance.mjs",
     "analyze:contracts": "node scripts/run-slither-assurance.mjs",
-    "test:properties": "node --test contracts/assurance/*.property.test.js",
+    "test:properties": "node --test --test-concurrency=1 contracts/assurance/*.property.test.js",
     "check:assurance": "npm run build && npm run test:properties && npm run analyze:contracts",
     "lint:ic": "node scripts/run-intelligent-contract-tool.mjs lint",
     "test:ic:direct": "node scripts/run-intelligent-contract-tool.mjs test",

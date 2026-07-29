@@ -18,7 +18,7 @@ test("package scripts expose the complete contract assurance gate", async () => 
   );
   assert.equal(
     packageJson.scripts["test:properties"],
-    "node --test contracts/assurance/*.property.test.js",
+    "node --test --test-concurrency=1 contracts/assurance/*.property.test.js",
   );
   assert.equal(
     packageJson.scripts["check:assurance"],

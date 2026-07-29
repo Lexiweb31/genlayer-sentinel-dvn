@@ -43,6 +43,54 @@ const fingerprintKeys = [
 ];
 const entryKeys = [...fingerprintKeys, "reviewedAt", "rationale"];
 
+export function createDependencyAudit() {
+  return {
+    excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 0 },
+    excludedElements: 0,
+    mixedFindings: 0,
+    detectorIds: [],
+  };
+}
+
+function validateDependencyAudit(audit) {
+  exactKeys(
+    audit,
+    ["excludedFindings", "excludedElements", "mixedFindings", "detectorIds"],
+    "dependency audit",
+  );
+  exactKeys(
+    audit.excludedFindings,
+    ["High", "Medium", "Low", "Informational"],
+    "dependency audit findings",
+  );
+  for (const impact of impacts) {
+    requireInteger(audit.excludedFindings[impact], `dependency audit ${impact}`);
+  }
+  requireInteger(audit.excludedElements, "dependency audit excluded elements");
+  requireInteger(audit.mixedFindings, "dependency audit mixed findings");
+  if (!Array.isArray(audit.detectorIds)
+    || audit.detectorIds.some((detector) => typeof detector !== "string" || !detector)) {
+    throw new Error("dependency audit detector IDs are invalid");
+  }
+  return audit;
+}
+
+export function mergeDependencyAudits(audits) {
+  if (!Array.isArray(audits)) throw new Error("dependency audits must be an array");
+  const merged = createDependencyAudit();
+  for (const audit of audits) {
+    validateDependencyAudit(audit);
+    for (const impact of impacts) {
+      merged.excludedFindings[impact] += audit.excludedFindings[impact];
+    }
+    merged.excludedElements += audit.excludedElements;
+    merged.mixedFindings += audit.mixedFindings;
+    merged.detectorIds.push(...audit.detectorIds);
+  }
+  merged.detectorIds.sort();
+  return merged;
+}
+
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -166,7 +214,7 @@ function normalizeElement(raw, root, dependencyMode) {
   };
 }
 
-function normalizeDetector(raw, root, dependencyMode) {
+function normalizeDetector(raw, root, dependencyMode, dependencyAudit) {
   exactKeys(raw, detectorKeys, "detector");
   if (!Array.isArray(raw.elements) || raw.elements.length === 0) {
     throw new Error("detector elements must be a nonempty array");
@@ -182,11 +230,23 @@ function normalizeDetector(raw, root, dependencyMode) {
   if (!confidences.has(raw.confidence)) {
     throw new Error(`unknown Slither confidence: ${raw.confidence}`);
   }
-  const elements = raw.elements
-    .map((element) => normalizeElement(element, root, dependencyMode))
+  const normalizedElements = raw.elements
+    .map((element) => normalizeElement(element, root, dependencyMode));
+  const dependencyElements = normalizedElements.filter((element) => element.dependency);
+  const productionElements = normalizedElements.filter((element) => !element.dependency);
+  if (dependencyElements.length > 0) {
+    dependencyAudit.excludedElements += dependencyElements.length;
+    if (productionElements.length > 0) {
+      dependencyAudit.mixedFindings += 1;
+    } else {
+      dependencyAudit.excludedFindings[raw.impact] += 1;
+      dependencyAudit.detectorIds.push(raw.check);
+      return null;
+    }
+  }
+  const elements = productionElements
     .filter((element) => !element.dependency)
     .map(({ dependency: _dependency, ...element }) => element);
-  if (elements.length === 0 && dependencyMode === "partition") return null;
   return {
     check: raw.check,
     impact: raw.impact,
@@ -196,10 +256,15 @@ function normalizeDetector(raw, root, dependencyMode) {
   };
 }
 
-export function normalizeSlitherReport(raw, root, { dependencyMode = "reject" } = {}) {
+export function normalizeSlitherReport(
+  raw,
+  root,
+  { dependencyMode = "reject", dependencyAudit } = {},
+) {
   if (!["reject", "partition"].includes(dependencyMode)) {
     throw new Error("unknown Slither dependency mode");
   }
+  if (dependencyMode === "partition") validateDependencyAudit(dependencyAudit);
   exactKeys(raw, ["success", "error", "results"], "report");
   if (typeof raw.success !== "boolean") throw new Error("report success must be boolean");
   if (raw.error !== null && typeof raw.error !== "string") {
@@ -212,7 +277,12 @@ export function normalizeSlitherReport(raw, root, { dependencyMode = "reject" } 
   if (!raw.success) throw new Error("Slither analysis failed");
   if (raw.error !== null) throw new Error("successful Slither report has an error");
   return raw.results.detectors
-    .map((detector) => normalizeDetector(detector, root, dependencyMode))
+    .map((detector) => normalizeDetector(
+      detector,
+      root,
+      dependencyMode,
+      dependencyAudit,
+    ))
     .filter((finding) => finding !== null);
 }
 
@@ -354,6 +424,9 @@ export function enforceSlitherFindings(findings, allowlist, sources, now) {
     if (reviewDate > auditDate) throw new Error("future Slither allowlist review");
     const ageDays = (auditDate - reviewDate) / 86_400_000;
     if (ageDays > 366) throw new Error("expired Slither allowlist review");
+    if (used.has(identity)) {
+      throw new Error("one Slither allowlist entry matched multiple findings");
+    }
     used.add(identity);
     acceptedDetectorIds.push(finding.check);
   }

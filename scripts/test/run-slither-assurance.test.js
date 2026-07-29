@@ -7,6 +7,12 @@ import {
   runSlitherAssurance,
   slitherArguments,
 } from "../run-slither-assurance.mjs";
+import {
+  assertSolcJsVersion,
+  compilationSettings,
+  nativeSolcArguments,
+  solidityBuildConfig,
+} from "../solidity-build-config.mjs";
 
 const root = "/sentinel";
 const paths = assurancePaths(root, "linux");
@@ -19,6 +25,22 @@ const cleanReport = JSON.stringify({
 });
 
 test("builds an explicit native-solc invocation for one production target", () => {
+  assert.deepEqual(solidityBuildConfig, {
+    version: "0.8.30",
+    nativeVersion: "0.8.30+commit.73712a01",
+    solcJsVersion: "0.8.30+commit.73712a01.Emscripten.clang",
+    evmVersion: "shanghai",
+    optimizer: { enabled: true, runs: 200 },
+  });
+  assert.deepEqual(compilationSettings({ C: ["abi"] }), {
+    evmVersion: "shanghai",
+    optimizer: { enabled: true, runs: 200 },
+    outputSelection: { C: ["abi"] },
+  });
+  assert.throws(
+    () => assertSolcJsVersion("0.8.30+commit.00000000.Emscripten.clang"),
+    /solc-js version drift/,
+  );
   assert.deepEqual(slitherArguments(target, reportPath, root, paths), [
     target,
     "--solc",
@@ -26,7 +48,7 @@ test("builds an explicit native-solc invocation for one production target", () =
     "--solc-working-dir",
     root,
     "--solc-args",
-    `--base-path ${root} --include-path ${path.join(root, "node_modules")} --evm-version shanghai --optimize --optimize-runs 200`,
+    nativeSolcArguments(root, path.join(root, "node_modules")).join(" "),
     "--exclude-dependencies",
     "--json",
     reportPath,
@@ -35,6 +57,26 @@ test("builds an explicit native-solc invocation for one production target", () =
     "--disable-color",
     "--fail-none",
   ]);
+});
+
+test("rejects native compiler configuration drift before invoking Slither", async () => {
+  let verified = false;
+  await assert.rejects(
+    runSlitherAssurance({
+      root,
+      paths,
+      config: {
+        versions: { solc: "0.8.29" },
+      },
+      platform: { id: "linux-x64" },
+      verifyInstallation: async () => {
+        verified = true;
+        return {};
+      },
+    }),
+    /Solidity compiler configuration drift/,
+  );
+  assert.equal(verified, false);
 });
 
 test("analyzes with a sanitized environment and removes its report directory", async () => {
@@ -62,7 +104,15 @@ test("analyzes with a sanitized environment and removes its report directory", a
       AWS_SECRET_ACCESS_KEY: "never-forward",
     },
   });
-  assert.deepEqual(findings, []);
+  assert.deepEqual(findings, {
+    findings: [],
+    dependencyAudit: {
+      excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 0 },
+      excludedElements: 0,
+      mixedFindings: 0,
+      detectorIds: [],
+    },
+  });
   assert.equal(calls[0][0], "makeTempDirectory");
   assert.deepEqual(calls[1].slice(0, 3), [
     "runFile",
@@ -96,7 +146,15 @@ test("parses a successful report after a finding-related child exit", async () =
     },
     environmentInput: { PATH: "/usr/bin:/bin" },
   });
-  assert.deepEqual(findings, []);
+  assert.deepEqual(findings, {
+    findings: [],
+    dependencyAudit: {
+      excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 0 },
+      excludedElements: 0,
+      mixedFindings: 0,
+      detectorIds: [],
+    },
+  });
   assert.equal(removed, true);
 });
 
@@ -166,7 +224,15 @@ test("verifies once and analyzes exactly the two production targets in order", a
     loadAllowlist: async () => ({ version: 1, entries: [] }),
     analyze: async (actualTarget) => {
       calls.push(["analyze", actualTarget]);
-      return [];
+      return {
+        findings: [],
+        dependencyAudit: {
+          excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 0 },
+          excludedElements: 0,
+          mixedFindings: 0,
+          detectorIds: [],
+        },
+      };
     },
     loadSource: async (actualPath) => {
       calls.push(["loadSource", actualPath]);
@@ -192,5 +258,11 @@ test("verifies once and analyzes exactly the two production targets in order", a
     ],
     counts: { High: 0, Medium: 0, Low: 0, Informational: 0 },
     acceptedDetectorIds: [],
+    dependencyAudit: {
+      excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 0 },
+      excludedElements: 0,
+      mixedFindings: 0,
+      detectorIds: [],
+    },
   });
 });

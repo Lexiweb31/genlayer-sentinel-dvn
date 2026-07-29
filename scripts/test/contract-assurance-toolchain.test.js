@@ -135,33 +135,55 @@ test("accepts Python 3.12 and rejects every other interpreter line", () => {
 
 test("selects the first Python 3.12 candidate without a shell", async () => {
   const calls = [];
+  const env = {
+    PATH: "/reviewed/bin",
+    LANG: "C",
+  };
   const result = await findPython312({
-    candidates: ["python3.12", "/opt/python3.12", "python3"],
-    runFile: async (command, args) => {
-      calls.push([command, args]);
-      if (command === "python3.12") throw new Error("missing");
-      if (command === "/opt/python3.12") return { stdout: "Python 3.12.13\n", stderr: "", code: 0 };
+    candidates: ["/opt/python3.12", "python3.12", "python3"],
+    env,
+    runFile: async (command, args, options) => {
+      calls.push([command, args, options]);
+      assert.equal(options.env, env);
+      assert.equal(options.env.PRIVATE_KEY, undefined);
+      if (command === "/opt/python3.12") throw new Error("missing");
+      if (command === "python3.12") return { stdout: "Python 3.12.13\n", stderr: "", code: 0 };
       return { stdout: "Python 3.13.1\n", stderr: "", code: 0 };
     },
   });
-  assert.equal(result, "/opt/python3.12");
+  assert.equal(result, "python3.12");
   assert.deepEqual(calls, [
-    ["python3.12", ["--version"]],
-    ["/opt/python3.12", ["--version"]],
+    ["/opt/python3.12", ["--version"], { env }],
+    ["python3.12", ["--version"], { env }],
   ]);
 });
 
 test("fails with the setup instruction when Python 3.12 is absent", async () => {
+  const env = { PATH: "/reviewed/bin", LANG: "C" };
   await assert.rejects(
     findPython312({
       candidates: ["python3.12", "python3"],
-      runFile: async (command) => ({
-        stdout: command === "python3.12" ? "Python 3.11.9\n" : "Python 3.13.1\n",
-        stderr: "",
-        code: 0,
-      }),
+      env,
+      runFile: async (command, _args, options) => {
+        assert.equal(options.env, env);
+        return {
+          stdout: command === "python3.12" ? "Python 3.11.9\n" : "Python 3.13.1\n",
+          stderr: "",
+          code: 0,
+        };
+      },
     }),
     /Python 3.12.x was not found/,
+  );
+});
+
+test("refuses to probe Python without an explicit sanitized environment", async () => {
+  await assert.rejects(
+    findPython312({
+      candidates: ["python3.12"],
+      runFile: async () => ({ stdout: "Python 3.12.13\n", stderr: "", code: 0 }),
+    }),
+    /sanitized environment/,
   );
 });
 
@@ -386,6 +408,12 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
   const calls = [];
   const root = "/sentinel";
   const paths = assurancePaths(root, "darwin");
+  const isolation = {
+    root: `${paths.cacheRoot}/setup-fixed`,
+    pipConfig: `${paths.cacheRoot}/setup-fixed/pip.conf`,
+    netrc: `${paths.cacheRoot}/setup-fixed/.netrc`,
+    xdgConfigHome: `${paths.cacheRoot}/setup-fixed/xdg`,
+  };
   const config = loadAssuranceConfig(expectedConfig);
   const versions = {
     python: "3.12.13",
@@ -404,12 +432,30 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
       calls.push(["exists", target]);
       return false;
     },
-    findPython: async () => {
-      calls.push(["findPython"]);
+    createSetupIsolation: async (actualPaths) => {
+      calls.push(["createIsolation", actualPaths.cacheRoot]);
+      return isolation;
+    },
+    removeSetupIsolation: async (actualIsolation) => {
+      calls.push(["removeIsolation", actualIsolation.root]);
+    },
+    environmentInput: {
+      PATH: "/custom/bin:/usr/bin",
+      PRIVATE_KEY: "must-not-leak",
+      PIP_INDEX_URL: "https://user:password@example.test/simple",
+      PIP_CONFIG_FILE: "/home/user/.config/pip/pip.conf",
+      NETRC: "/home/user/.netrc",
+      HOME: "/home/user",
+    },
+    findPython: async (options) => {
+      calls.push(["findPython", options.env]);
       return "/opt/homebrew/bin/python3.12";
     },
     runFile: async (command, args, options) => {
       calls.push(["run", command, args, options.env]);
+      if (command === paths.venvPython && args[0] === "--version") {
+        return { stdout: "Python 3.12.13\n", stderr: "", code: 0 };
+      }
       return { stdout: "", stderr: "", code: 0 };
     },
     downloadCompiler: async (platform, actualPaths) => {
@@ -423,12 +469,32 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
   assert.deepEqual(result, versions);
   assert.deepEqual(calls.map((entry) => entry.slice(0, 3)), [
     ["validateLock", paths.lock, "0.11.5"],
+    ["createIsolation", paths.cacheRoot],
     ["exists", paths.venvPython],
-    ["findPython"],
+    ["findPython", {
+      PATH: `${paths.venvBin}${path.delimiter}/custom/bin:/usr/bin`,
+      LANG: "C",
+      LC_ALL: "C",
+      VIRTUAL_ENV: paths.venvRoot,
+      PYTHONHASHSEED: "0",
+      PIP_DISABLE_PIP_VERSION_CHECK: "1",
+      PYTHONDONTWRITEBYTECODE: "1",
+      PYTHONNOUSERSITE: "1",
+      HOME: isolation.root,
+      XDG_CONFIG_HOME: isolation.xdgConfigHome,
+      PIP_CONFIG_FILE: isolation.pipConfig,
+      NETRC: isolation.netrc,
+      PIP_KEYRING_PROVIDER: "disabled",
+    }],
     ["run", "/opt/homebrew/bin/python3.12", ["-m", "venv", paths.venvRoot]],
+    ["run", paths.venvPython, ["--version"]],
     ["run", paths.venvPython, [
+      "-I",
       "-m",
       "pip",
+      "--isolated",
+      "--keyring-provider",
+      "disabled",
       "install",
       "--require-hashes",
       "-r",
@@ -437,11 +503,46 @@ test("bootstraps with hash-locked pip, proves Rosetta, then verifies exact versi
     ["run", "/usr/bin/arch", ["-x86_64", "/usr/bin/true"]],
     ["downloadCompiler", "darwin-arm64", paths.solc],
     ["verify", paths.solc, "0.11.5"],
+    ["removeIsolation", isolation.root],
   ]);
   for (const call of calls.filter(([kind]) => kind === "run")) {
     const env = call[3];
     assert.equal(env.PRIVATE_KEY, undefined);
     assert.equal(env.RPC_URL, undefined);
     assert.equal(env.LANG, "C");
+    assert.equal(env.PIP_INDEX_URL, undefined);
+    assert.equal(env.HOME, isolation.root);
+    assert.equal(env.PIP_CONFIG_FILE, isolation.pipConfig);
+    assert.equal(env.NETRC, isolation.netrc);
+    assert.equal(env.PIP_KEYRING_PROVIDER, "disabled");
   }
+});
+
+test("rejects a stale assurance venv before invoking pip", async () => {
+  const calls = [];
+  const root = "/sentinel";
+  const paths = assurancePaths(root, "linux");
+  const isolation = {
+    root: `${paths.cacheRoot}/setup-stale`,
+    pipConfig: `${paths.cacheRoot}/setup-stale/pip.conf`,
+    netrc: `${paths.cacheRoot}/setup-stale/.netrc`,
+    xdgConfigHome: `${paths.cacheRoot}/setup-stale/xdg`,
+  };
+  await assert.rejects(
+    setupContractAssurance({
+      root,
+      host: { platform: "linux", arch: "x64" },
+      config: loadAssuranceConfig(expectedConfig),
+      validateLock: async () => {},
+      pathExists: async () => true,
+      createSetupIsolation: async () => isolation,
+      removeSetupIsolation: async () => {},
+      runFile: async (command, args) => {
+        calls.push([command, args]);
+        return { stdout: "Python 3.11.9\n", stderr: "", code: 0 };
+      },
+    }),
+    /requires Python 3.12.x/,
+  );
+  assert.deepEqual(calls, [[paths.venvPython, ["--version"]]]);
 });

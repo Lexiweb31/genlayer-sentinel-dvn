@@ -15,6 +15,7 @@ import {
   runAssuranceFile,
   selectAssurancePlatform,
   sha256File,
+  parsePythonVersion,
   validateRequirementsLock,
   verifyAssuranceInstallation,
 } from "./contract-assurance-toolchain.mjs";
@@ -106,6 +107,24 @@ async function validateLockFile(paths, config) {
   validateRequirementsLock(lockText, config.versions.slither);
 }
 
+async function createSetupIsolation(paths) {
+  await fsp.mkdir(paths.cacheRoot, { recursive: true });
+  const root = await fsp.mkdtemp(path.join(paths.cacheRoot, "setup-"));
+  const xdgConfigHome = path.join(root, "xdg");
+  const pipConfig = path.join(root, "pip.conf");
+  const netrc = path.join(root, ".netrc");
+  await fsp.mkdir(xdgConfigHome, { recursive: true });
+  await Promise.all([
+    fsp.writeFile(pipConfig, "", { mode: 0o600 }),
+    fsp.writeFile(netrc, "", { mode: 0o600 }),
+  ]);
+  return { root, pipConfig, netrc, xdgConfigHome };
+}
+
+async function removeSetupIsolation(isolation) {
+  await fsp.rm(isolation.root, { recursive: true, force: true });
+}
+
 export async function setupContractAssurance(options = {}) {
   const root = options.root ?? repositoryRoot;
   const host = options.host ?? hostPlatform();
@@ -118,26 +137,46 @@ export async function setupContractAssurance(options = {}) {
   const runFile = options.runFile ?? runAssuranceFile;
   const downloadCompiler = options.downloadCompiler ?? downloadVerifiedCompiler;
   const verifyInstallation = options.verifyInstallation ?? verifyAssuranceInstallation;
-  const env = assuranceEnvironment(paths);
+  const createIsolation = options.createSetupIsolation ?? createSetupIsolation;
+  const removeIsolation = options.removeSetupIsolation ?? removeSetupIsolation;
 
   await validateLock(paths, config);
-  if (!await exists(paths.venvPython)) {
-    const python = await findPython();
-    await runFile(python, ["-m", "venv", paths.venvRoot], { env });
+  const isolation = await createIsolation(paths);
+  const env = {
+    ...assuranceEnvironment(paths, options.environmentInput ?? process.env),
+    HOME: isolation.root,
+    XDG_CONFIG_HOME: isolation.xdgConfigHome,
+    PIP_CONFIG_FILE: isolation.pipConfig,
+    NETRC: isolation.netrc,
+    PIP_KEYRING_PROVIDER: "disabled",
+  };
+  try {
+    if (!await exists(paths.venvPython)) {
+      const python = await findPython({ env });
+      await runFile(python, ["-m", "venv", paths.venvRoot], { env });
+    }
+    const pythonVersion = await runFile(paths.venvPython, ["--version"], { env });
+    parsePythonVersion(`${pythonVersion.stdout}${pythonVersion.stderr}`);
+    await runFile(paths.venvPython, [
+      "-I",
+      "-m",
+      "pip",
+      "--isolated",
+      "--keyring-provider",
+      "disabled",
+      "install",
+      "--require-hashes",
+      "-r",
+      paths.lock,
+    ], { env });
+    if (platform.execution === "ROSETTA_X86_64") {
+      await runFile("/usr/bin/arch", ["-x86_64", "/usr/bin/true"], { env });
+    }
+    await downloadCompiler(platform, paths);
+    return await verifyInstallation(paths, config, platform);
+  } finally {
+    await removeIsolation(isolation);
   }
-  await runFile(paths.venvPython, [
-    "-m",
-    "pip",
-    "install",
-    "--require-hashes",
-    "-r",
-    paths.lock,
-  ], { env });
-  if (platform.execution === "ROSETTA_X86_64") {
-    await runFile("/usr/bin/arch", ["-x86_64", "/usr/bin/true"], { env });
-  }
-  await downloadCompiler(platform, paths);
-  return verifyInstallation(paths, config, platform);
 }
 
 function isDirectExecution() {

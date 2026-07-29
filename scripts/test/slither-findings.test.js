@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createDependencyAudit,
   enforceSlitherFindings,
   findingFingerprint,
   normalizeSlitherReport,
@@ -238,17 +239,37 @@ test("partitions dependency-only results without hiding mixed production finding
 
   const mixed = structuredClone(report);
   mixed.results.detectors[0].elements.push(dependencyElement);
+  const mixedAudit = createDependencyAudit();
   assert.deepEqual(
-    normalizeSlitherReport(mixed, root, { dependencyMode: "partition" }),
+    normalizeSlitherReport(mixed, root, {
+      dependencyMode: "partition",
+      dependencyAudit: mixedAudit,
+    }),
     [expectedFinding],
   );
+  assert.deepEqual(mixedAudit, {
+    excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 0 },
+    excludedElements: 1,
+    mixedFindings: 1,
+    detectorIds: [],
+  });
 
   const dependencyOnly = structuredClone(report);
   dependencyOnly.results.detectors[0].elements = [dependencyElement];
+  const dependencyOnlyAudit = createDependencyAudit();
   assert.deepEqual(
-    normalizeSlitherReport(dependencyOnly, root, { dependencyMode: "partition" }),
+    normalizeSlitherReport(dependencyOnly, root, {
+      dependencyMode: "partition",
+      dependencyAudit: dependencyOnlyAudit,
+    }),
     [],
   );
+  assert.deepEqual(dependencyOnlyAudit, {
+    excludedFindings: { High: 0, Medium: 0, Low: 0, Informational: 1 },
+    excludedElements: 1,
+    mixedFindings: 0,
+    detectorIds: ["fixture-detector"],
+  });
 });
 
 test("binds a finding to literal description and source bytes", () => {
@@ -356,6 +377,15 @@ test("rejects unexpected, stale, duplicate, expired, future, and unused reviews"
   assert.throws(
     () => validateAllowlist({ version: 1, entries: [reviewedEntry, reviewedEntry] }),
     /duplicate allowlist entry/,
+  );
+  assert.throws(
+    () => enforceSlitherFindings(
+      [expectedFinding, expectedFinding],
+      validateAllowlist({ version: 1, entries: [reviewedEntry] }),
+      new Map([[expectedFingerprint.path, source]]),
+      "2026-07-29",
+    ),
+    /one Slither allowlist entry matched multiple findings/,
   );
   assert.throws(
     () => enforceSlitherFindings(

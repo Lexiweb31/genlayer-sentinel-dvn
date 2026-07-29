@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { solidityBuildConfig } from "./solidity-build-config.mjs";
 
 const execFileAsync = promisify(execFile);
 const setupInstruction = "assurance environment is missing; run npm run setup:assurance";
@@ -15,7 +16,7 @@ const requiredConfig = Object.freeze({
   versions: Object.freeze({
     python: ">=3.12.0 <3.13.0",
     slither: "0.11.5",
-    solc: "0.8.30",
+    solc: solidityBuildConfig.version,
   }),
   platforms: Object.freeze({
     "darwin-arm64": Object.freeze({
@@ -125,12 +126,43 @@ export function parsePythonVersion(output) {
 }
 
 export async function findPython312({
-  candidates = ["python3.12", "/opt/homebrew/bin/python3.12", "python3"],
+  candidates = [
+    "/opt/homebrew/bin/python3.12",
+    "/usr/local/bin/python3.12",
+    "/usr/bin/python3.12",
+    "python3.12",
+    "python3",
+  ],
   runFile = runAssuranceFile,
+  env,
 } = {}) {
+  if (!isRecord(env)) throw new Error("Python discovery requires a sanitized environment");
+  const allowedEnvironmentKeys = new Set([
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "VIRTUAL_ENV",
+    "PYTHONHASHSEED",
+    "PIP_DISABLE_PIP_VERSION_CHECK",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONNOUSERSITE",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "HOME",
+    "XDG_CONFIG_HOME",
+    "PIP_CONFIG_FILE",
+    "NETRC",
+    "PIP_KEYRING_PROVIDER",
+  ]);
+  for (const key of Object.keys(env)) {
+    if (!allowedEnvironmentKeys.has(key)) {
+      throw new Error(`Python discovery environment is not sanitized: ${key}`);
+    }
+  }
   for (const candidate of candidates) {
     try {
-      const result = await runFile(candidate, ["--version"]);
+      const result = await runFile(candidate, ["--version"], { env });
       parsePythonVersion(`${result.stdout}${result.stderr}`);
       return candidate;
     } catch {
@@ -269,13 +301,13 @@ export async function verifyAssuranceInstallation(
     throw new Error("assurance Slither version mismatch");
   }
   const solc = await runFile(paths.solc, ["--version"], { env });
-  if (!String(solc.stdout).includes("0.8.30+commit.73712a01")) {
+  if (!String(solc.stdout).includes(solidityBuildConfig.nativeVersion)) {
     throw new Error("assurance solc version mismatch");
   }
   return {
     python: `${pythonVersion.major}.${pythonVersion.minor}.${pythonVersion.patch}`,
     slither: config.versions.slither,
-    solc: "0.8.30+commit.73712a01",
+    solc: solidityBuildConfig.nativeVersion,
     platform: platform.id,
   };
 }

@@ -63,7 +63,7 @@ Pinned artifacts:
 - Linux AMD64 solc URL: `https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.30+commit.73712a01`
 - Linux AMD64 solc SHA-256: `f3e987dc6ecebd4bd350c48edcbc320b46cf9e3109bd3fc3d88f1acaf4c428f7`
 
-The static runner supplies the native compiler with the same Shanghai EVM target, optimizer enabled, and 200 optimizer runs as `scripts/compile-contracts.mjs`. It fails before analysis on an unsupported platform, missing local installation, lock drift, compiler checksum/version drift, Slither version drift, or malformed closed configuration.
+The build compiler and static runner import one immutable Solidity build configuration containing the exact solc-js build, native compiler commit, Shanghai EVM target, optimizer flag, and 200 optimizer runs. Compilation rejects solc-js commit drift, and analysis rejects native/configuration drift before Slither. The runner also fails before analysis on an unsupported platform, missing local installation, lock drift, compiler checksum/version drift, Slither version drift, or malformed closed configuration.
 
 ## Setup, network, and secret boundary
 
@@ -71,7 +71,7 @@ The static runner supplies the native compiler with the same Shanghai EVM target
 
 `test:properties`, `analyze:contracts`, `check:assurance`, and the top-level `check` do not bootstrap, install, or download. A missing cache fails with `assurance environment is missing; run npm run setup:assurance`. The entry test injects unavailable repository-local paths and proves that failure without network access.
 
-Analyzer children receive a new allowlisted environment containing repository-local executable paths, deterministic locale/hash settings, and optional system certificate paths. Tests prove that wallet/private-key/mnemonic/RPC/API/cloud credentials and token-like variables are not forwarded. Slither JSON is written only to an operating-system temporary directory and removed on success and failure.
+Every Python discovery probe and analyzer child receives a new allowlisted environment containing repository-local executable paths, deterministic locale/hash settings, and optional system certificate paths. Absolute reviewed Python 3.12 locations are tried before PATH-based names. The pip subprocess uses Python `-I`, pip `--isolated`, `--keyring-provider disabled`, and a unique empty home, XDG config directory, pip config, and netrc inside the repository cache; that disposable boundary is removed in `finally`. An existing virtual environment is version-checked before pip runs. Tests inject wallet/private-key/mnemonic/RPC/API/cloud credentials plus hostile pip/home/netrc variables and prove none reach probes or installation. The real hardened bootstrap reran successfully with Python `3.12.13`, Slither `0.11.5`, and native solc `0.8.30+commit.73712a01`. Slither JSON is written only to an operating-system temporary directory and removed on success and failure.
 
 ## Property campaigns
 
@@ -80,7 +80,7 @@ Every generated case takes an EVM snapshot and always reverts it, including fail
 | Campaign | Seed | Runs | Main invariant |
 | --- | ---: | ---: | --- |
 | Adapter authorization | `1597463007` | `32` | A sorted authorized 3-of-5 quorum executes the exact domain-bound call once. |
-| Adapter atomicity | `324508639` | `24` | Insufficient, outsider, duplicate, malformed, reordered, expired, altered-domain, and reverting-target cases cannot persist execution. |
+| Adapter atomicity | `324508639` | `24` | Independently generated 0–2-authorized/outsider mixtures, quorum-length duplicates, malformed data after a valid quorum, reordering, expiry, altered domains, and reverting targets cannot persist execution. |
 | OApp execution and replay | `610839776` | `24` | Trusted zero-value actions execute once; same-GUID or same-authorization replay fails; outbound packet and event bindings are exact. |
 | OApp rejection and rollback | `195948557` | `32` | Bad peer/action/target/value/payload/owner and reverting-target cases leave replay and target state unchanged. |
 
@@ -89,6 +89,7 @@ The adapter campaign recomputes the on-chain digest with the independently compi
 Mutation evidence:
 
 - weakening adapter quorum from `count < quorum` to `count + 1 < quorum` failed on the first generated case and shrank to a two-signature counterexample;
+- weakening strict signer ordering from `recovered <= previous` to `recovered < previous` failed on the first generated case because the quorum-length repeated signer was counted twice;
 - weakening OApp replay from GUID **or** authorization reuse to GUID **and** authorization reuse failed on the first generated case and shrank to a minimal same-authorization/new-GUID counterexample.
 
 Both mutations were restored before commit and all four campaigns reran green.
@@ -117,13 +118,13 @@ All entries were reviewed on `2026-07-29` and expire after 366 days unless re-re
 - `pragma`, Informational/High, OApp pragma, bytes `32+23`, snippet SHA-256 `7ad2aadc95e298951e2642673055ef2985c9ca7719f3ceec5c38ee1193c68ab7`: the source and build use exact `0.8.30`.
 - `low-level-calls`, Informational/High, `TreasuryPolicyOApp._lzReceive`, bytes `2215+671`, snippet SHA-256 `7f8b6d2082ab88bea92afd34a35f6b864258fc7a362b175906850a3dd45af641`: LayerZero peer authentication, owner target authorization, zero-value enforcement, dual replay gates, and nonreentrancy bound the call; failure rolls back.
 
-There are no detector-name, path-pattern, dependency-pattern, or severity-wide suppressions. Dependency-only findings are excluded only after the complete returned finding shape is validated; a mixed finding retains every production element.
+There are no detector-name, path-pattern, dependency-pattern, or severity-wide suppressions. Slither `0.11.5` still returned dependency-only detector records despite `--exclude-dependencies`: High `1` (`incorrect-exp`), Medium `9` (`divide-before-multiply`), Low `0`, and Informational `58`, covering `166` dependency elements. It also returned `3` mixed findings. Rejecting any dependency record would therefore make the pinned production-target command permanently fail, while `--filter-paths node_modules` was separately observed to hide a mixed production `locked-ether` finding. The implemented boundary validates the complete closed shape and canonical repository path of every dependency element, reports all excluded dependency-only severity counts and detector IDs, and retains every production element from mixed findings. Production-source High/Medium enforcement remains fail-closed. Dependency risk is additionally bounded by the separate production npm audit below; these counts are not presented as a source audit of third-party packages.
 
 ## ABI and bytecode review
 
 Baseline is commit `7fcbf98` immediately before production hardening. Both builds used current pinned solc-js, Shanghai, optimizer enabled, and 200 runs.
 
-| Artifact | Baseline ABI SHA-256 | Current ABI SHA-256 | Baseline creation-bytecode SHA-256 | Current creation-bytecode SHA-256 |
+| Artifact | Baseline ABI SHA-256 | Current ABI SHA-256 | Baseline creation-bytecode hex-text SHA-256 | Current creation-bytecode hex-text SHA-256 |
 | --- | --- | --- | --- | --- |
 | SentinelDVNAdapter | `8029f87bf8d901dce921c90e5bb7e4017f25ff5cbcd2db4fcf331037b98f1e27` | `f3a6163f13ae5675658c6c091b49109bdb72c72d35a343445f09bde0b98d7169` | `1f678790c6fec74c718c154e917c48d25ba8e9debc2f2fce95be7463d16a0526` | `1105b4367563f430ef0e275c740d5e069ba8b3ab62e1c5824f3a9703f8637b4c` |
 | TreasuryPolicyOApp | `76e5b858b16c2155bbbd4720c01c94dd572ddfb8bc0722e522468873d908ea60` | `9611c7180c9df9b5188f4e6f9e388ed17af2ff736c1054e1567c65590336132e` | `07dd7e3f631ea72efe5183c2276f2d49851e64bc5b554c87e73dfb0c014e6db8` | `a94a35067c8275c72d5dac8390ed23dbcc959c648bcb415727fa4a7dcd59c370` |
@@ -131,6 +132,8 @@ Baseline is commit `7fcbf98` immediately before production hardening. Both build
 The adapter's only callable-function ABI change is `assignJob` mutability from payable to nonpayable; its selector and tuple are unchanged. `ReentrancyGuardReentrantCall` is an additive error. The OApp removed only its catch-all payable `receive` ABI item; no named function, event, or error signature changed. `Action.value` remains encoded for packet compatibility but is required to be zero. Bytecode changes are expected from those value bounds, exact pragmas, explicit initialization, quote validation, and reentrancy guards.
 
 Whole generated artifact SHA-256 changed from `2dec439726756f27f221dbb5877e8854484d323af317e78841ba7d5bfa0610c3` to `f76bf146baf4ad70c75ac219cba43f05c9f293b53d664e82bc71c6626acd9097` for the adapter, and from `9be42d4e62f946ea05fbf43869b3127a08608ac29b511e09ad2414148fb10e0e` to `f86abbdb59c398e0df5b5e7494b9bce25486f97fc9ec78a087e734646462165a` for the OApp.
+
+The creation-bytecode values above hash the lowercase hexadecimal artifact string as UTF-8 text, without a `0x` prefix; they are not hashes of decoded byte arrays.
 
 ## Dependency evidence
 
@@ -149,10 +152,10 @@ The complete `npm run check` result on 2026-07-29:
 - strict TypeScript: pass;
 - pinned official GenVM lint: pass;
 - direct Intelligent Contract tests: `24` pass;
-- ordinary Node tests: `320` pass;
+- ordinary Node tests: `323` pass;
 - fixed-seed contract property campaigns: `4` pass;
 - Slither: High `0`, Medium `0`, reviewed Low `1`, reviewed Informational `6`;
-- total executable test cases: `348`, with zero failures, skips, or todos.
+- total executable test cases: `351`, with zero failures, skips, or todos.
 
 The relevant commands are:
 

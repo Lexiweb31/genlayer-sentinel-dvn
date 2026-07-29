@@ -32,7 +32,7 @@ async function fixture(t) {
   );
   signerRecords.sort((left, right) => left.address.localeCompare(right.address));
   const outsiderRecords = await Promise.all(
-    signers.slice(7, 9).map(async (signer) => ({
+    signers.slice(7, 10).map(async (signer) => ({
       signer,
       address: (await signer.getAddress()).toLowerCase(),
     })),
@@ -50,7 +50,7 @@ async function fixture(t) {
   );
   return {
     ...evm,
-    adapter: adapter.connect(signers[9]),
+    adapter: adapter.connect(signers[1]),
     target,
     signerRecords,
     outsiderRecords,
@@ -129,15 +129,28 @@ test("generated authorized 3-of-5 quorums execute exactly once", async (t) => {
 
 test("generated invalid shares and reverting targets remain atomic", async (t) => {
   const context = await fixture(t);
+  const insufficientQuorum = fc.integer({ min: 0, max: 2 }).chain(
+    (authorizedCount) => fc.record({
+      authorizedIndexes: fc.subarray([0, 1, 2, 3, 4], {
+        minLength: authorizedCount,
+        maxLength: authorizedCount,
+      }),
+      outsiderIndexes: fc.subarray([0, 1, 2], {
+        minLength: 3 - authorizedCount,
+        maxLength: 3 - authorizedCount,
+      }),
+    }),
+  );
   const generated = fc.record({
     values: fc.uniqueArray(bytes32Arbitrary, { minLength: 8, maxLength: 8 }),
     expiryOffset: fc.integer({ min: 60, max: 3_600 }),
+    insufficientQuorum,
   });
 
   await campaign(
     "adapter atomicity",
     generated,
-    async ({ values, expiryOffset }) => {
+    async ({ values, expiryOffset, insufficientQuorum: shareMix }) => {
       await withEvmSnapshot(context.provider, async () => {
         const [
           guid,
@@ -156,15 +169,32 @@ test("generated invalid shares and reverting targets remain atomic", async (t) =
         const args = [guid, packetDigest, evidenceDigest, callData, expiry];
         const digest = await context.adapter.executionDigest(...args);
         const twoAuthorized = await signatures(context.signerRecords.slice(0, 2), digest);
-        const combined = [
-          ...context.signerRecords.slice(0, 2),
-          context.outsiderRecords[0],
+        const insufficientRecords = [
+          ...shareMix.authorizedIndexes.map((index) => context.signerRecords[index]),
+          ...shareMix.outsiderIndexes.map((index) => context.outsiderRecords[index]),
         ].sort((left, right) => left.address.localeCompare(right.address));
+        const duplicateQuorumLength = [
+          context.signerRecords[0],
+          context.signerRecords[0],
+          context.signerRecords[1],
+        ];
+        const otherwiseValidQuorum = await signatures(
+          context.signerRecords.slice(0, 3),
+          digest,
+        );
 
         await rejected(context.adapter, args, twoAuthorized);
-        await rejected(context.adapter, args, await signatures(combined, digest));
-        await rejected(context.adapter, args, [twoAuthorized[0], twoAuthorized[0]]);
-        await rejected(context.adapter, args, ["0x1234"]);
+        await rejected(
+          context.adapter,
+          args,
+          await signatures(insufficientRecords, digest),
+        );
+        await rejected(
+          context.adapter,
+          args,
+          await signatures(duplicateQuorumLength, digest),
+        );
+        await rejected(context.adapter, args, [...otherwiseValidQuorum, "0x1234"]);
 
         for (const changed of [
           { packetDigest: otherPacket },
