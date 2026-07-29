@@ -405,8 +405,8 @@ test("bounds the whole exchange, rejects body aborts, and remains usable", async
           `Content-Length: 100\r\n` +
           `Connection: close\r\n\r\n` +
           fixtureToken,
+        () => socket.destroy(),
       );
-      socket.destroy();
     },
     (socket) =>
       socket.end(

@@ -32,6 +32,7 @@ export interface SignerDaemonAddress {
 const MAX_REQUEST_BYTES = 32_768;
 const MAX_RESPONSE_BYTES = 16_384;
 const MAX_HEADERS_COUNT = 32;
+const CONNECTIONS_CHECKING_INTERVAL_MS = 100;
 const TRANSPORT_REFUSED =
   '{"version":"sentinel-signer/v2","error":{"code":"TRANSPORT_REFUSED","message":"request refused"}}';
 const CLIENT_ERROR_RESPONSE = parserResponse(400, "Bad Request");
@@ -89,6 +90,7 @@ export class MutualTlsSignerDaemon {
           minVersion: "TLSv1.3",
           maxVersion: "TLSv1.3",
           ALPNProtocols: ["http/1.1"],
+          connectionsCheckingInterval: CONNECTIONS_CHECKING_INTERVAL_MS,
         },
         (request, response) => {
           const active = this.handleRequest(request, response);

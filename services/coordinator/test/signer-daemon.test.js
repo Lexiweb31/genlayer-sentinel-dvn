@@ -490,18 +490,18 @@ test("bounds partial and aborted requests without poisoning subsequent work", as
   );
   try {
     const address = await daemon.start();
-    let partialHeaders = "";
-    try {
-      partialHeaders = await rawExchange(
-        address,
-        certificates,
-        "POST /v2/sign HTTP/1.1\r\nHost: signer.example\r\nContent-Ty",
-        { keepOpen: true, endAfterMs: 200, clientTimeoutMs: 1_000 },
-      );
-    } catch (error) {
-      assert.notEqual(error.message, "raw exchange timed out");
-      partialHeaders = "";
-    }
+    const partialHeadersStarted = Date.now();
+    const partialHeaders = await rawExchange(
+      address,
+      certificates,
+      "POST /v2/sign HTTP/1.1\r\nHost: signer.example\r\nContent-Ty",
+      { keepOpen: true, clientTimeoutMs: 1_000 },
+    );
+    const partialHeadersElapsed = Date.now() - partialHeadersStarted;
+    assert.ok(
+      partialHeadersElapsed >= 50 && partialHeadersElapsed < 750,
+      `partial headers elapsed ${partialHeadersElapsed}ms`,
+    );
     if (partialHeaders.length > 0) {
       const parsed = parseRawResponse(partialHeaders);
       assert.ok(
@@ -509,6 +509,10 @@ test("bounds partial and aborted requests without poisoning subsequent work", as
           parsed.status === 408,
       );
     }
+    assert.equal(fixture.handlerCalls.length, 0);
+    assert.equal(fixture.replayCalls.length, 0);
+    assert.equal(fixture.finalityCalls.length, 0);
+    assert.equal(fixture.keyCalls.length, 0);
 
     const partialBody = parseRawResponse(
       await rawExchange(
