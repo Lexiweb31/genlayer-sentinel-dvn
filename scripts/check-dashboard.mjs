@@ -7,6 +7,8 @@ for(const token of ["LOCAL TEST · FIXTURE POLICY","Connect wallet","Quote Layer
 for(const token of ["SEMANTIC ENGINE","PACKET PROOFS"])if(!html.includes(token))throw new Error(`missing honest operations label: ${token}`);
 for(const claim of ["ETHEREUM SEPOLIA → ARBITRUM SEPOLIA","Sentinel independently proves","decentralized semantic consensus","requires isolated signer quorum","awaiting independent confirmations","verification independently confirmed","No independent provider verification recorded."])if(browserText(html,js).includes(claim))throw new Error(`dashboard overstates local or configured infrastructure: ${claim}`);
 for(const token of ["fetch(\"/api/demo/config\"","sentinel:guid-observed","WalletActionClient","COORDINATOR_STAGE","executionFailureCode","/api/jobs/","/api/deliveries"])if(!demo.includes(token))throw new Error(`missing coordinator-bound demo behavior: ${token}`);
+for(const token of ["genlayer-sentinel.local-action.v1","RESTORED_UNAVAILABLE","sessionStorage","Saved public locator restored"])if(!bundle.includes(token))throw new Error(`missing reload-resumable demo behavior: ${token}`);
+if(bundle.includes("localStorage"))throw new Error("dashboard must not persist local actions beyond same-tab session storage");
 if(!js.includes("sentinel:guid-observed"))throw new Error("operations workspace does not receive observed GUIDs");
 const browserSources=`${html}\n${js}\n${demo}\n${wallet}`;
 const recoverySection=html.match(/<section class="operator-recovery"[\s\S]*?<\/section>/i)?.[0];if(!recoverySection)throw new Error("missing operator recovery audit section");

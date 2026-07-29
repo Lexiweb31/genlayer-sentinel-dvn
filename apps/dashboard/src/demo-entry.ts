@@ -14,6 +14,12 @@ import {
   type DemoEvent,
   type DemoState
 } from "./demo-state.js";
+import {resolveDemoBootstrap} from "./demo-bootstrap.js";
+import {
+  writeDemoSession,
+  type DemoSessionLocator,
+  type StorageLike
+} from "./demo-session.js";
 
 const elements={
   workspace:required<HTMLElement>("demo-workspace"),
@@ -44,6 +50,7 @@ let prepared:PreparedQuote|undefined;
 let cleanupProvider:()=>void=()=>{};
 let pollHandle:number|undefined;
 let quoteGeneration=0;
+const demoStorage=browserSessionStorage();
 
 elements.connect.addEventListener("click",()=>void connectWallet());
 elements.quote.addEventListener("click",()=>void quoteAction());
@@ -57,21 +64,56 @@ elements.input.addEventListener("input",()=>{
 });
 window.addEventListener("pagehide",()=>{cleanupProvider();if(pollHandle!==undefined)window.clearTimeout(pollHandle)},{once:true});
 
-void loadCapability();
+void bootstrapDemo();
 
-async function loadCapability():Promise<void>{
-  try{
-    const response=await fetch("/api/demo/config",{headers:{accept:"application/json"},cache:"no-store"});
-    if(response.status===404){disable("The local wallet action is disabled. Start the explicit local demo harness to enable it.");return}
-    if(!response.ok){disable("The local wallet action capability is unavailable.");return}
-    config=parsePublicDemoConfig(await response.json());
-    elements.input.value=config.approvedRecordLabel;
-    elements.sourceOApp.textContent=config.sourceOApp;
-    elements.destinationEid.textContent=String(config.destinationEid);
-    elements.target.textContent=config.authorizedTarget;
-    elements.signature.textContent=config.actionSignature;
-    transition({type:"CAPABILITY_AVAILABLE"});
-  }catch{disable("The local wallet action capability failed strict validation.")}
+async function bootstrapDemo():Promise<void>{
+  const result=await resolveDemoBootstrap(demoStorage,fetchCapability);
+  if(result.kind==="DISABLED"){
+    disable("The local wallet action capability is unavailable. Start the explicit local demo harness to enable it.");
+    return;
+  }
+  if(result.kind==="RESTORED_UNAVAILABLE"){
+    showStoredIdentifiers(result.locator);
+    transition({
+      type:"ACTION_RESTORE_UNAVAILABLE",
+      transactionHash:result.locator.transactionHash,
+      guid:result.locator.guid
+    });
+    return;
+  }
+  config=result.config;
+  showCapability(config);
+  transition({type:"CAPABILITY_AVAILABLE"});
+  if(result.kind==="RESUME"){
+    transition({
+      type:"ACTION_RESTORED",
+      transactionHash:result.locator.transactionHash,
+      guid:result.locator.guid
+    });
+    window.dispatchEvent(new CustomEvent("sentinel:guid-observed",{detail:{guid:result.locator.guid}}));
+    scheduleCoordinatorPoll(result.locator.guid,0);
+  }
+}
+
+async function fetchCapability():Promise<PublicDemoConfig>{
+  const response=await fetch("/api/demo/config",{headers:{accept:"application/json"},cache:"no-store"});
+  if(!response.ok)throw new Error();
+  return parsePublicDemoConfig(await response.json());
+}
+
+function showCapability(value:PublicDemoConfig):void{
+  elements.input.value=value.approvedRecordLabel;
+  elements.sourceOApp.textContent=value.sourceOApp;
+  elements.destinationEid.textContent=String(value.destinationEid);
+  elements.target.textContent=value.authorizedTarget;
+  elements.signature.textContent=value.actionSignature;
+}
+
+function showStoredIdentifiers(value:DemoSessionLocator):void{
+  elements.sourceOApp.textContent=value.sourceOApp;
+  elements.destinationEid.textContent=String(value.destinationEid);
+  elements.target.textContent="Unavailable";
+  elements.signature.textContent="Unavailable";
 }
 
 async function connectWallet():Promise<void>{
@@ -121,6 +163,7 @@ async function sendAction():Promise<void>{
       transition({type:"SOURCE_SUBMITTED",transactionHash});
     });
     transition({type:"GUID_OBSERVED",transactionHash:submission.transactionHash,guid:submission.guid});
+    writeDemoSession(demoStorage,config,submission);
     window.dispatchEvent(new CustomEvent("sentinel:guid-observed",{detail:{guid:submission.guid}}));
     scheduleCoordinatorPoll(submission.guid,0);
   }catch(error){
@@ -142,7 +185,11 @@ async function pollCoordinator(guid:string):Promise<void>{
   if(isTerminal(state.phase))return;
   try{
     const response=await fetch(`/api/jobs/${guid}`,{headers:{accept:"application/json"},cache:"no-store"});
-    if(response.status===404){scheduleCoordinatorPoll(guid,1000);return}
+    if(response.status===404){
+      setMessage("The matching harness has not ingested this GUID yet. Sentinel will keep checking without resending.");
+      scheduleCoordinatorPoll(guid,1000);
+      return;
+    }
     if(!response.ok)throw new Error();
     const job=await response.json() as unknown;
     const stage=boundJobStage(job,guid);
@@ -190,6 +237,7 @@ function phaseMessage(value:DemoState):string{
   if(value.errorCode)return codeMessage(value.errorCode);
   switch(value.phase){
     case"DISABLED":return"The wallet action is disabled.";
+    case"RESTORED_UNAVAILABLE":return"Saved public transaction and GUID retained. The current local harness cannot be verified, so Sentinel will not poll or resend.";
     case"WALLET_REQUIRED":return"Connect wallet to verify local chain 31337 and the source OApp owner.";
     case"WALLET_CONNECTING":return"Waiting for the wallet account, local chain, and source OApp owner checks.";
     case"READY":return"Wallet verified. Quote the immutable action before submitting.";
@@ -197,7 +245,9 @@ function phaseMessage(value:DemoState):string{
     case"QUOTED":return"Fee quoted. Review the fixed action boundary before wallet confirmation.";
     case"WALLET_CONFIRMATION":return"Confirm once in your wallet. Sentinel never receives the wallet key.";
     case"SUBMITTED":return"Source transaction submitted. Waiting for a successful mined receipt.";
-    case"COORDINATOR_PENDING":return"Packet emitted; Sentinel decision pending";
+    case"COORDINATOR_PENDING":return value.restored
+      ?"Saved public locator restored. Loading authoritative coordinator evidence; no wallet request or source resend occurred."
+      :"Packet emitted; Sentinel decision pending";
     case"POLICY_REJECTED":return"Fixture policy finalized DENY. No signer quorum or destination submission is authorized. Start a fresh harness for another action.";
     case"SENTINEL_EXECUTED":return"Coordinator confirms signer quorum, DVN adapter verification, and destination OApp execution. Start a fresh harness for another action.";
     case"SENTINEL_INCIDENT":return"Coordinator reports a destination delivery incident. Operator recovery is required; this action cannot be resent.";
@@ -264,7 +314,10 @@ function walletCode(error:unknown):string{
 }
 function isTerminal(phase:string):boolean{return phase==="POLICY_REJECTED"||phase==="SENTINEL_EXECUTED"}
 function isSuccess(phase:string):boolean{return phase==="READY"||phase==="QUOTED"||phase==="SENTINEL_EXECUTED"}
-function isFailure(phase:string):boolean{return phase==="WALLET_FAILED"||phase==="WRONG_CHAIN"||phase==="WRONG_OWNER"||phase==="QUOTE_FAILED"||phase==="USER_REJECTED"||phase==="SOURCE_REVERTED"||phase==="SOURCE_FAILED"||phase==="POLICY_REJECTED"||phase==="SENTINEL_INCIDENT"}
+function isFailure(phase:string):boolean{return phase==="RESTORED_UNAVAILABLE"||phase==="WALLET_FAILED"||phase==="WRONG_CHAIN"||phase==="WRONG_OWNER"||phase==="QUOTE_FAILED"||phase==="USER_REJECTED"||phase==="SOURCE_REVERTED"||phase==="SOURCE_FAILED"||phase==="POLICY_REJECTED"||phase==="SENTINEL_INCIDENT"}
+function browserSessionStorage():StorageLike|undefined{
+  try{return window.sessionStorage}catch{return undefined}
+}
 function required<T extends HTMLElement>(id:string):T{
   const value=document.getElementById(id);
   if(!value)throw new Error(`missing dashboard target ${id}`);

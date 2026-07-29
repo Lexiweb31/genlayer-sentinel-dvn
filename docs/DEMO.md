@@ -21,6 +21,17 @@ The command prints a loopback app URL and RPC URL, chain ID `31337`, the source 
 5. Follow the mined `ActionSent` GUID through packet/receipt confirmation, `LOCAL_POLICY_FIXTURE` finality, 3-of-5 signer quorum, adapter verification, and destination OApp execution.
 6. Confirm the target recorded the approved `bytes32` argument.
 
+### Same-tab reload
+
+Once the mined receipt contains exactly one bound `ActionSent` event, the browser saves a versioned public locator containing only chain ID, source OApp, source Endpoint, destination EID, transaction hash, and GUID. Reloading the same tab compares that locator with the strictly parsed current demo capability:
+
+- an exact match restores `COORDINATOR PENDING`, reselects the GUID, and resumes read-only job observation without touching the wallet;
+- a job `404` means the matching coordinator has not ingested the GUID yet and remains retryable;
+- a capability outage retains and displays the public locator as `RESTORED UNAVAILABLE` but does not poll;
+- a validated different harness clears the obsolete locator and exposes a fresh action workspace.
+
+The locator is browser convenience state, not packet inclusion, policy finality, signer quorum, destination verification, rejection, or execution evidence. It contains no account, fee, calldata, authorization evidence, signer data, RPC credential, or secret. Restoration never requests accounts, reconnects the wallet, quotes, signs, submits, or resends the source action. Closing the tab ends the intended persistence lifetime.
+
 ### Denied path
 
 Restart the isolated demo or use a fresh run, enter `not-authorized`, and submit. The transaction uses the same authorization ID, target, zero value, selector, and options; only the `record(bytes32)` argument changes. The real packet is mined, but the semantic fixture finalizes `DENY`. The job reaches `REJECTED`, with no signer calls, outbox record, adapter submission, or destination execution.

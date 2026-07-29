@@ -510,4 +510,3 @@ Expected: all checks pass and the worktree contains no uncommitted implementatio
 - [ ] **Step 4: Preserve the branch**
 
 Do not deploy, fund, create cloud resources, push, publish, merge, or remove the worktree. Report the exact branch, commits, test counts, limitations, and next approval boundary.
-

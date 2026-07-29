@@ -258,4 +258,3 @@ README and local demo documentation will explain:
 - a new harness invalidates the old locator;
 - capability unavailability retains but does not poll the locator; and
 - no wallet transaction is initiated during restoration.
-
