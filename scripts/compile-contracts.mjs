@@ -4,6 +4,8 @@ import solc from "solc";
 import {
   assertSolcJsVersion,
   compilationSettings,
+  contractBuildManifest,
+  solidityBuildConfig,
 } from "./solidity-build-config.mjs";
 
 const root = process.cwd();
@@ -51,4 +53,31 @@ for (const [file, contracts] of Object.entries(output.contracts)) {
     }
   }
 }
+const productionContracts = [
+  ["contracts/src/SentinelDVNAdapter.sol", "SentinelDVNAdapter"],
+  ["contracts/src/TreasuryPolicyOApp.sol", "TreasuryPolicyOApp"],
+].map(([file, name]) => {
+  const artifact = output.contracts[file]?.[name];
+  if (!artifact) throw new Error("production contract artifact missing");
+  return {
+    name,
+    source: file,
+    sourceText: sources[file].content,
+    abi: artifact.abi,
+    creationBytecode: artifact.evm.bytecode.object,
+  };
+});
+const buildManifest = contractBuildManifest({
+  compilerVersion: solc.version(),
+  settings: {
+    evmVersion: solidityBuildConfig.evmVersion,
+    optimizer: { ...solidityBuildConfig.optimizer },
+  },
+  contracts: productionContracts,
+});
+fs.writeFileSync(
+  "dist/contracts/build-manifest.json",
+  `${JSON.stringify(buildManifest, null, 2)}\n`,
+  { encoding: "utf8", mode: 0o600 },
+);
 console.log(`compiled ${files.length} Solidity sources with solc ${solc.version()}`);
