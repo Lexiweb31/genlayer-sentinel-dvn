@@ -16,6 +16,7 @@
     "compile:contracts": "node scripts/compile-contracts.mjs",
     "check:ic": "python3 scripts/check-intelligent-contract.py",
     "setup:ic:direct": "node scripts/setup-intelligent-contract-tests.mjs",
+    "setup:assurance": "node scripts/setup-contract-assurance.mjs",
     "lint:ic": "node scripts/run-intelligent-contract-tool.mjs lint",
     "test:ic:direct": "node scripts/run-intelligent-contract-tool.mjs test",
     "build:dashboard": "node scripts/build-dashboard.mjs",
