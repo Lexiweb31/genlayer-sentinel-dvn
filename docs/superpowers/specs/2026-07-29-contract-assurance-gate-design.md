@@ -17,7 +17,7 @@ The approved approach combines:
 
 1. `fast-check` `4.9.0`, pinned exactly as a development dependency, for seeded property tests that execute the compiled production contracts against Sentinel's isolated Hardhat EDR chain.
 2. Slither `0.11.5`, installed with a fully hash-locked Python dependency graph in a dedicated repository-local `.venv-assurance`.
-3. Native Solidity `0.8.30`, installed inside the assurance virtual environment through the pinned `solc-select` dependency and verified against repository-pinned platform checksums before use.
+3. Native Solidity `0.8.30`, downloaded from Solidity's official binary manifests into `.cache/contract-assurance` and verified against repository-pinned platform checksums before use.
 
 This was selected over two alternatives:
 
@@ -45,7 +45,7 @@ The only network-enabled assurance command is:
 npm run setup:assurance
 ```
 
-It creates `.venv-assurance`, installs the hash-locked Python graph, installs native Solidity `0.8.30` under that virtual environment's `.solc-select` directory, verifies the compiler checksum and version, and prints the installed tool versions. It does not run a deployment or access a chain.
+It creates `.venv-assurance`, installs the hash-locked Python graph, installs native Solidity `0.8.30` under `.cache/contract-assurance/solc`, verifies the compiler checksum and version, and prints the installed tool versions. It does not run a deployment or access a chain.
 
 Ordinary property and static checks never bootstrap or download. If the exact environment is missing or wrong, they fail with one sanitized instruction to run `npm run setup:assurance`.
 
@@ -59,10 +59,10 @@ The repository will add:
 
 - `fast-check: "4.9.0"` to `devDependencies`;
 - `requirements/contract-assurance.lock`, containing the complete transitive Python graph with exact versions and SHA-256 hashes;
-- `config/contract-assurance-toolchain.json`, with schema version, required Python range `>=3.12.0 <3.13.0`, Slither `0.11.5`, native solc `0.8.30`, supported platform identifiers, and exact native-compiler SHA-256 digests;
+- `config/contract-assurance-toolchain.json`, with schema version, required Python range `>=3.12.0 <3.13.0`, Slither `0.11.5`, native solc `0.8.30`, supported platform identifiers, exact official download paths, and exact native-compiler SHA-256 digests;
 - a setup script that refuses an unlisted platform, unexpected Python, compiler checksum, compiler version, Slither version, or lock drift.
 
-The initial supported platforms are the current `darwin-arm64` development host and `linux-x64` CI/runtime-development host. Other platforms fail explicitly rather than downloading an unreviewed binary. Adding a platform requires a dated primary-source audit and a committed checksum.
+The initial supported platforms are the current `darwin-arm64` development host and `linux-x64` CI/runtime-development host. Solidity's official manifest does not publish a native macOS ARM `0.8.30` binary, and the ARM source used by current `solc-select` stops at `0.8.24`. Therefore `darwin-arm64` uses Solidity's official macOS x86_64 `0.8.30` binary through Rosetta after setup proves `arch -x86_64 /usr/bin/true` succeeds. It is pinned to SHA-256 `738dcdc6afddeb505ee4e4ef24f1c1fdba2b8c924e614cbbf5801a5b062dd683`. `linux-x64` uses the official Linux x86_64 binary pinned to SHA-256 `f3e987dc6ecebd4bd350c48edcbc320b46cf9e3109bd3fc3d88f1acaf4c428f7`. Other platforms, or a Mac without Rosetta, fail explicitly rather than downloading an unreviewed binary or downgrading the compiler. Adding a platform requires a dated primary-source audit and a committed checksum.
 
 The ordinary runner verifies all pinned versions before analysis. It invokes native solc with the same `0.8.30`, Shanghai EVM target, optimizer enabled, and 200 optimizer runs used by `scripts/compile-contracts.mjs`. A mismatch between the existing solc-js build and assurance compiler settings is a gate failure.
 
