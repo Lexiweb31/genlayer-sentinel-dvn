@@ -1,6 +1,6 @@
 {
   "name": "genlayer-sentinel",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -28,6 +28,7 @@
     "demo:local": "npm run build && node dist/services/coordinator/src/local-demo-cli.js",
     "recovery:prepare": "npm run build && node dist/services/coordinator/src/recovery-cli.js prepare",
     "recovery:apply": "npm run build && node dist/services/coordinator/src/recovery-cli.js apply",
+    "readiness:bundle": "npm run build && node dist/services/coordinator/src/deployment-readiness-cli.js",
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
     "test": "npm run build && node --test scripts/test/*.test.js apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
