@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "toolVersion": "sentinel-readiness/v1",
+  "maximumAuditAgeDays": 7,
+  "networkConfig": "config/networks.json",
+  "auditEvidence": "docs/research/2026-07-29-deployment-readiness-audit.md",
+  "buildManifest": "dist/contracts/build-manifest.json",
+  "productionSources": {
+    "SentinelDVNAdapter": "contracts/src/SentinelDVNAdapter.sol",
+    "TreasuryPolicyOApp": "contracts/src/TreasuryPolicyOApp.sol"
+  },
+  "pathway": {
+    "source": "ethereum-sepolia",
+    "destination": "arbitrum-sepolia"
+  },
+  "gates": {
+    "adapterConformance": "LOCAL_ADAPTER_PROTOTYPE",
+    "payableAssignJobResolved": false,
+    "destinationVerificationTopologyResolved": false,
+    "layerZeroOnboardingConfirmed": false,
+    "independentDvnsSelected": false,
+    "livePathwayValidated": false,
+    "confirmationPolicyApproved": false,
+    "liveGenLayerFinalityReader": false,
+    "isolatedSignerOperators": false,
+    "independentRecoveryOperators": false,
+    "deploymentSecurityApproval": false
+  }
+}
