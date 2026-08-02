@@ -1,5 +1,7 @@
 import{lookup as dnsLookup}from"node:dns/promises";
 import{request as httpsRequest}from"node:https";
+import type{ClientRequest,IncomingMessage}from"node:http";
+import type{RequestOptions}from"node:https";
 import{isIP}from"node:net";
 import type{TLSSocket}from"node:tls";
 import{TextDecoder}from"node:util";
@@ -39,6 +41,8 @@ export interface ReadOnlyRpcExchangeResponse{
   headers:Record<string,string|string[]|undefined>;
   body:Uint8Array;
 }
+export type ReadOnlyRpcExchange=(target:ReadOnlyRpcExchangeTarget,request:ReadOnlyRpcExchangeRequest)=>Promise<ReadOnlyRpcExchangeResponse>;
+export type ReadOnlyRpcRequestFactory=(options:RequestOptions,onResponse:(response:IncomingMessage)=>void)=>ClientRequest;
 export interface ReadOnlyRpcDependencies{
   resolve?:(hostname:string)=>Promise<readonly ReadOnlyRpcResolution[]>;
   exchange?:(target:ReadOnlyRpcExchangeTarget,request:ReadOnlyRpcExchangeRequest)=>Promise<ReadOnlyRpcExchangeResponse>;
@@ -237,10 +241,8 @@ function publicAddress(addressValue:string,allowDocumentation:boolean):boolean{
   }
   if(family===6){
     const value=ipv6Number(addressValue);
-    if((value>>32n)===0n)return false;
-    if((value>>32n)===0xffffn)return publicAddress(ipv4String(Number(value&0xffffffffn)),allowDocumentation);
-    if((value>>32n)===(ipv6Number("64:ff9b::")>>32n))return publicAddress(ipv4String(Number(value&0xffffffffn)),allowDocumentation);
-    return !ipv6Ranges.some(([network,prefix])=>inCidr(value,ipv6Number(network),prefix,128));
+    if(!inCidr(value,ipv6Number("2000::"),3,128))return false;
+    return !ipv6NonGlobalRanges.some(([network,prefix])=>inCidr(value,ipv6Number(network),prefix,128));
   }
   return false;
 }
@@ -251,10 +253,8 @@ const ipv4Ranges:[string,number][]=[
   ["192.168.0.0",16],["198.18.0.0",15],["198.51.100.0",24],["203.0.113.0",24],
   ["224.0.0.0",4],["240.0.0.0",4]
 ];
-const ipv6Ranges:[string,number][]=[
-  ["::",128],["::1",128],["64:ff9b:1::",48],["100::",64],["2001::",32],
-  ["2001:2::",48],["2001:10::",28],["2001:db8::",32],["2002::",16],["3fff::",20],["5f00::",16],["fc00::",7],
-  ["fe80::",10],["ff00::",8]
+const ipv6NonGlobalRanges:[string,number][]=[
+  ["2001::",23],["2001:db8::",32],["2002::",16],["3ffe::",16],["3fff::",20]
 ];
 
 function isDocumentationV4(value:string):boolean{
@@ -264,7 +264,6 @@ function isDocumentationV4(value:string):boolean{
 function ipv4Number(value:string):bigint{
   return value.split(".").reduce((result,part)=>(result<<8n)|BigInt(Number(part)),0n);
 }
-function ipv4String(value:number):string{return[24,16,8,0].map(shift=>String((value>>>shift)&255)).join(".")}
 function ipv6Number(input:string):bigint{
   let value=input.toLowerCase();
   if(value.includes(".")){
@@ -303,7 +302,17 @@ function header(headers:Record<string,string|string[]|undefined>,name:string):st
   return matches[0]![1] as string;
 }
 
-function nativeHttpsExchange(target:ReadOnlyRpcExchangeTarget,input:ReadOnlyRpcExchangeRequest):Promise<ReadOnlyRpcExchangeResponse>{
+export function createNativeHttpsExchange(requestFactory:ReadOnlyRpcRequestFactory=defaultRequestFactory):ReadOnlyRpcExchange{
+  return(target,input)=>nativeHttpsExchange(target,input,requestFactory);
+}
+
+const defaultRequestFactory:ReadOnlyRpcRequestFactory=(options,onResponse)=>httpsRequest(options,onResponse);
+
+function nativeHttpsExchange(
+  target:ReadOnlyRpcExchangeTarget,
+  input:ReadOnlyRpcExchangeRequest,
+  requestFactory:ReadOnlyRpcRequestFactory=defaultRequestFactory
+):Promise<ReadOnlyRpcExchangeResponse>{
   if(input.signal.aborted)return Promise.reject(new Error("aborted"));
   return new Promise((resolve,reject)=>{
     let settled=false,responseReceived=false;
@@ -316,7 +325,7 @@ function nativeHttpsExchange(target:ReadOnlyRpcExchangeTarget,input:ReadOnlyRpcE
       if(error){responseStream?.destroy();request.destroy();reject(error)}else resolve(result!);
     };
     const abort=()=>finish(new Error("aborted"));
-    const request=httpsRequest({
+    const request=requestFactory({
       host:target.address,port:443,servername:target.servername,path:target.path,method:target.method,
       agent:false,rejectUnauthorized:true,minVersion:"TLSv1.2",maxVersion:"TLSv1.3",
       headers:input.headers

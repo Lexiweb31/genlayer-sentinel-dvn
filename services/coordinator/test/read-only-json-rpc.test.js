@@ -1,6 +1,8 @@
 import test from"node:test";
 import assert from"node:assert/strict";
+import{EventEmitter}from"node:events";
 import{
+  createNativeHttpsExchange,
   createReadOnlyRpcClient,
   PathwayAuditError
 }from"../../../dist/services/coordinator/src/read-only-json-rpc.js";
@@ -182,8 +184,8 @@ test("rejects any nonpublic DNS answer, including metadata, documentation, and r
     "0.0.0.0","10.0.0.1","100.64.0.1","127.0.0.1","169.254.169.254","172.16.0.1","192.168.0.1",
     "192.0.2.1","192.88.99.1","198.18.0.1","198.51.100.1","203.0.113.10","224.0.0.1","240.0.0.1",
     "::","::1","::127.0.0.1","::ffff:127.0.0.1","64:ff9b::127.0.0.1","100::1",
-    "2001:db8::1","2002::1","3fff::1","5f00::1",
-    "fc00::1","fe80::1","ff02::1"
+    "2001:db8::1","2002::1","3ffe::1","3fff::1","5f00::1",
+    "400::1","100:0:0:1::1","fc00::1","fe00::1","fe80::1","ff02::1"
   ];
   for(const addressValue of nonpublic){
     let calls=0;
@@ -193,6 +195,17 @@ test("rejects any nonpublic DNS answer, including metadata, documentation, and r
     });
     await assert.rejects(client.call("eth_chainId",[]),transportFailure);
     assert.equal(calls,0,addressValue);
+  }
+});
+
+test("accepts compressed and expanded globally routable IPv6 answers",async()=>{
+  for(const addressValue of["2606:4700:4700::1111","2606:4700:4700:0000:0000:0000:0000:1111"]){
+    const exchange=successfulExchange();
+    const client=createReadOnlyRpcClient(endpoint(),{
+      resolve:async()=>[{address:addressValue,family:6}],exchange
+    });
+    assert.deepEqual(await client.call("eth_chainId",[]),{ok:true});
+    assert.equal(exchange.calls[0].address,addressValue);
   }
 });
 
@@ -215,4 +228,106 @@ test("returns a detached parsed result",async()=>{
   assert.notStrictEqual(result,providerResult);assert.notStrictEqual(result.nested,providerResult.nested);
   result.nested.value=9;
   assert.equal(providerResult.nested.value,1);
+});
+
+const nativeTarget={
+  address:"8.8.8.8",servername:"rpc-a.example",hostHeader:"rpc-a.example",path:"/rpc",method:"POST"
+};
+const nativeInput=(overrides={})=>({
+  headers:{Host:"rpc-a.example","Content-Type":"application/json",Connection:"close"},
+  body:'{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}',
+  signal:new AbortController().signal,
+  connectTimeoutMs:25,responseTimeoutMs:25,maxResponseBytes:2*1024*1024,
+  ...overrides
+});
+const requestFactory=scenario=>{
+  const calls=[];
+  const factory=(options,onResponse)=>{
+    const request=new EventEmitter();
+    Object.assign(request,{destroyed:false,body:undefined,maxHeadersCount:undefined});
+    request.destroy=()=>{request.destroyed=true};
+    request.end=body=>{request.body=body;queueMicrotask(()=>scenario({options,onResponse,request,body}))};
+    calls.push({options,request});
+    return request;
+  };
+  factory.calls=calls;
+  return factory;
+};
+const incoming=(body,statusCode=200,includeLength=true)=>{
+  const response=new EventEmitter(),bytes=Buffer.from(body);
+  Object.assign(response,{
+    statusCode,complete:true,destroyed:false,
+    rawHeaders:["Content-Type","application/json",...(includeLength?["Content-Length",String(bytes.length)]:[])]
+  });
+  response.destroy=()=>{response.destroyed=true};
+  return{response,bytes};
+};
+const connect=(request,onResponse,response,chunks)=>{
+  const socket=new EventEmitter();
+  request.emit("socket",socket);socket.emit("secureConnect");onResponse(response);
+  for(const chunk of chunks)response.emit("data",chunk);
+  response.emit("end");
+};
+
+test("the native adapter dials only the checked address while preserving TLS name verification and Host",async()=>{
+  const factory=requestFactory(({request,onResponse,body})=>{
+    const id=JSON.parse(body).id,{response,bytes}=incoming(JSON.stringify({jsonrpc:"2.0",id,result:"0x1"}));
+    connect(request,onResponse,response,[bytes]);
+  });
+  const client=createReadOnlyRpcClient(endpoint(),{
+    resolve:async()=>[{address:"8.8.8.8",family:4}],
+    exchange:createNativeHttpsExchange(factory)
+  });
+  assert.equal(await client.call("eth_chainId",[]),"0x1");
+  assert.equal(factory.calls.length,1);
+  assert.deepEqual(factory.calls[0].options,{
+    host:"8.8.8.8",port:443,servername:"rpc-a.example",path:"/rpc",method:"POST",
+    agent:false,rejectUnauthorized:true,minVersion:"TLSv1.2",maxVersion:"TLSv1.3",
+    headers:{
+      Host:"rpc-a.example",Accept:"application/json","Content-Type":"application/json",
+      "Content-Encoding":"identity","Content-Length":"59",Connection:"close"
+    }
+  });
+});
+
+test("the native adapter returns a redirect once and never follows it",async()=>{
+  const factory=requestFactory(({request,onResponse})=>{
+    const{response,bytes}=incoming('{"redirect":"https://secret.example"}',302);
+    connect(request,onResponse,response,[bytes]);
+  });
+  const client=createReadOnlyRpcClient(endpoint(),{
+    resolve:async()=>[{address:"8.8.8.8",family:4}],
+    exchange:createNativeHttpsExchange(factory)
+  });
+  await assert.rejects(client.call("eth_chainId",[]),transportFailure);
+  assert.equal(factory.calls.length,1);
+});
+
+test("the native adapter destroys the stream and request when a chunk crosses the body limit",async()=>{
+  let streamedResponse;
+  const factory=requestFactory(({request,onResponse})=>{
+    const{response}=incoming("",200,false);streamedResponse=response;
+    connect(request,onResponse,response,[Buffer.alloc(5),Buffer.alloc(5)]);
+  });
+  const exchange=createNativeHttpsExchange(factory);
+  await assert.rejects(exchange(nativeTarget,nativeInput({maxResponseBytes:8})));
+  assert.equal(factory.calls[0].request.destroyed,true);
+  assert.equal(streamedResponse.destroyed,true);
+});
+
+test("the native adapter destroys requests on connect and response timeout",async()=>{
+  const cases=[
+    requestFactory(()=>{}),
+    requestFactory(({request})=>{const socket=new EventEmitter();request.emit("socket",socket);socket.emit("secureConnect")})
+  ];
+  for(const [index,factory]of cases.entries()){
+    const hold=setTimeout(()=>{},100);
+    try{
+      const exchange=createNativeHttpsExchange(factory);
+      await assert.rejects(exchange(nativeTarget,nativeInput({
+        connectTimeoutMs:index===0?5:50,responseTimeoutMs:index===0?50:5
+      })));
+      assert.equal(factory.calls[0].request.destroyed,true);
+    }finally{clearTimeout(hold)}
+  }
 });
