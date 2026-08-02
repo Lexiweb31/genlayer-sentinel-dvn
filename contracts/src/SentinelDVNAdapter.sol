@@ -7,10 +7,13 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @notice ULN302-compatible job interface plus Sentinel policy-gated quorum execution. Testnet prototype; unaudited.
-contract SentinelDVNAdapter is ReentrancyGuard {
+/// @dev assignJob must be payable to implement ILayerZeroDVN, but this zero-fee adapter rejects every nonzero msg.value.
+// slither-disable-next-line locked-ether
+contract SentinelDVNAdapter is ILayerZeroDVN, ReentrancyGuard {
     using ECDSA for bytes32;
     error Unauthorized(); error InvalidQuorum(); error InvalidSigner(); error Replay(); error Expired();
     error InvalidSignatureOrder(); error UnsupportedDestination(); error VerificationCallFailed(bytes reason);
+    error UnexpectedNativeValue();
     event JobAssigned(bytes32 indexed jobId, uint32 indexed dstEid, bytes32 payloadHash, uint64 confirmations, address sender);
     event Verified(bytes32 indexed guid, bytes32 indexed packetDigest, bytes32 evidenceDigest, bytes32 executionDigest);
 
@@ -31,12 +34,13 @@ contract SentinelDVNAdapter is ReentrancyGuard {
         }
     }
 
-    function getFee(uint32 dstEid, uint64, address, bytes calldata) external view returns (uint256) {
+    function getFee(uint32 dstEid, uint64, address, bytes calldata) external view override returns (uint256) {
         if (dstEid != supportedDstEid) revert UnsupportedDestination(); return 0;
     }
 
-    function assignJob(ILayerZeroDVN.AssignJobParam calldata p, bytes calldata) external returns (uint256) {
+    function assignJob(ILayerZeroDVN.AssignJobParam calldata p, bytes calldata) external payable override returns (uint256) {
         if (msg.sender != messageLib) revert Unauthorized();
+        if (msg.value != 0) revert UnexpectedNativeValue();
         if (p.dstEid != supportedDstEid) revert UnsupportedDestination();
         bytes32 id = keccak256(abi.encode(p.dstEid, p.packetHeader, p.payloadHash, p.confirmations, p.sender));
         emit JobAssigned(id, p.dstEid, p.payloadHash, p.confirmations, p.sender); return 0;
