@@ -3,7 +3,7 @@
   "toolVersion": "sentinel-readiness/v1",
   "maximumAuditAgeDays": 7,
   "networkConfig": "config/networks.json",
-  "auditEvidence": "docs/research/2026-07-29-deployment-readiness-audit.md",
+  "auditEvidence": "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
   "buildManifest": "dist/contracts/build-manifest.json",
   "productionArtifacts": {
     "SentinelDVNAdapter": "dist/contracts/SentinelDVNAdapter.json",

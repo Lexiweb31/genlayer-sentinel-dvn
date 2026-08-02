@@ -273,7 +273,7 @@ test("real repository evidence produces a truthful blocked public bundle without
   await writeFile(operatingManifest,await readFile(example));
   const inputs=[
     "config/deployment-readiness.json","config/networks.json",
-    "docs/research/2026-07-29-deployment-readiness-audit.md",
+    "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     "dist/contracts/build-manifest.json","dist/contracts/SentinelDVNAdapter.json",
     "dist/contracts/TreasuryPolicyOApp.json","contracts/src/SentinelDVNAdapter.sol",
     "contracts/src/TreasuryPolicyOApp.sol"
@@ -285,7 +285,7 @@ test("real repository evidence produces a truthful blocked public bundle without
     readText:path=>readFile(path,"utf8"),
     gitState:async()=>({commit:"f".repeat(40),dirty:false}),
     compileProvenance:()=>compileDeploymentReadinessProvenance(root),
-    evaluationDate:()=>"2026-07-29",
+    evaluationDate:()=>"2026-08-02",
     writeExclusive:writeReadinessFileExclusive,
     inspect:inspectDeploymentReadinessBindings,
     build:buildDeploymentReadinessBundle,

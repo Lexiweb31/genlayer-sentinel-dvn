@@ -36,7 +36,7 @@ export interface DeploymentReadinessConfig{
   toolVersion:"sentinel-readiness/v1";
   maximumAuditAgeDays:number;
   networkConfig:"config/networks.json";
-  auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md";
+  auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md";
   buildManifest:"dist/contracts/build-manifest.json";
   productionArtifacts:{
     SentinelDVNAdapter:"dist/contracts/SentinelDVNAdapter.json";
@@ -170,7 +170,7 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
   if(root.schemaVersion!==1||root.toolVersion!=="sentinel-readiness/v1"||
     maximumAuditAgeDays<1||maximumAuditAgeDays>30||
     root.networkConfig!=="config/networks.json"||
-    root.auditEvidence!=="docs/research/2026-07-29-deployment-readiness-audit.md"||
+    root.auditEvidence!=="docs/research/2026-08-02-layerzero-interface-conformance-audit.md"||
     root.buildManifest!=="dist/contracts/build-manifest.json"||
     artifacts.SentinelDVNAdapter!=="dist/contracts/SentinelDVNAdapter.json"||
     artifacts.TreasuryPolicyOApp!=="dist/contracts/TreasuryPolicyOApp.json"||
@@ -196,7 +196,7 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
   return{
     schemaVersion:1,toolVersion:"sentinel-readiness/v1",maximumAuditAgeDays,
     networkConfig:"config/networks.json",
-    auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md",
+    auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     buildManifest:"dist/contracts/build-manifest.json",
     productionArtifacts:{
       SentinelDVNAdapter:"dist/contracts/SentinelDVNAdapter.json",

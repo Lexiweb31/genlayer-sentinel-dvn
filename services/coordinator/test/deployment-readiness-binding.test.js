@@ -20,7 +20,7 @@ function readinessConfig(){
     toolVersion:"sentinel-readiness/v1",
     maximumAuditAgeDays:7,
     networkConfig:"config/networks.json",
-    auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md",
+    auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     buildManifest:"dist/contracts/build-manifest.json",
     productionArtifacts:{
       SentinelDVNAdapter:"dist/contracts/SentinelDVNAdapter.json",
@@ -49,9 +49,9 @@ function readinessConfig(){
 
 function networkConfig(){
   return{
-    auditDate:"2026-07-29",
+    auditDate:"2026-08-02",
     status:"AUDITED_CONTRACT_METADATA_NOT_PATHWAY_VALIDATED",
-    auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md",
+    auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     pathway:{
       "ethereum-sepolia":{
         chainId:11155111,eid:40161,
@@ -133,7 +133,7 @@ function fixture(){
     classification:"LAYERZERO_DVN_CANDIDATE",
     sourceCommit:"1".repeat(40),
     audit:{
-      date:"2026-07-29",
+      date:"2026-08-02",
       evidenceSha256:sha256(auditEvidenceText),
       networkConfigSha256:sha256(networkConfigText)
     },
@@ -156,7 +156,7 @@ function fixture(){
     acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED"
   });
   return{
-    manifest,evaluationDate:"2026-07-29",
+    manifest,evaluationDate:"2026-08-02",
     git:{commit:"1".repeat(40),dirty:false},
     networkConfigText,auditEvidenceText,
     readinessConfigText:json(readinessConfig()),
@@ -183,7 +183,7 @@ test("binds clean source, compiler artifacts and audited network metadata",()=>{
   assert.equal(binding.gates.adapterConformance,"ILAYERZERO_DVN_INTERFACE_ADAPTER");
   assert.equal(binding.gates.payableAssignJobResolved,true);
   assert.equal(binding.gates.destinationVerificationTopologyResolved,false);
-  assert.equal(binding.audit.date,"2026-07-29");
+  assert.equal(binding.audit.date,"2026-08-02");
   assert.equal(binding.network.source.chainId,11155111);
   assert.equal(binding.network.source.eid,40161);
   assert.equal(binding.network.destination.chainId,421614);
@@ -218,7 +218,7 @@ test("reports every ordinary repository and audit drift as a sanitized blocker",
     ["READINESS_ARTIFACT_DRIFT",input=>{input.productionSources.SentinelDVNAdapter+="\n"}],
     ["READINESS_METADATA_MISMATCH",input=>{input.networkConfigText=input.networkConfigText.replace("40161","40162")}],
     ["READINESS_METADATA_MISMATCH",input=>{input.auditEvidenceText+="altered"}],
-    ["READINESS_METADATA_STALE",input=>{input.evaluationDate="2026-08-06"}]
+    ["READINESS_METADATA_STALE",input=>{input.evaluationDate="2026-08-10"}]
   ];
   for(const [code,mutate]of cases){
     const input=fixture();mutate(input);
@@ -251,6 +251,7 @@ test("rejects malformed readiness configuration and forbidden path fields",()=>{
     value=>{delete value.gates},
     value=>{value.maximumAuditAgeDays=0},
     value=>{value.networkConfig="../config/networks.json"},
+    value=>{value.auditEvidence="docs/research/2026-07-29-deployment-readiness-audit.md"},
     value=>{value.buildManifest="/tmp/build-manifest.json"},
     value=>{value.productionArtifacts.SentinelDVNAdapter="../SentinelDVNAdapter.json"},
     value=>{value.gates.adapterConformance="OFFICIAL_DVN"},
