@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "auditDate": "2026-08-02",
+  "status": "NO_PROVIDER_OPERATORS_REVIEWED",
+  "providers": [],
+  "sources": [],
+  "warning": "URL diversity is transport diversity, not operator independence."
+}

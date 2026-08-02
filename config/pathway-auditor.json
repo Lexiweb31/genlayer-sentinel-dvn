@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "toolVersion": "sentinel-pathway-auditor/v1",
+  "maximumProviderAuditAgeDays": 30,
+  "networkConfig": "config/networks.json",
+  "networkAuditEvidence": "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
+  "providerAudit": "config/rpc-provider-audit.json",
+  "pathway": {
+    "source": "ethereum-sepolia",
+    "destination": "arbitrum-sepolia"
+  },
+  "officialRuntimeCodeKeccak256": {
+    "sourceEndpointV2": null,
+    "sourceSendUln302": null,
+    "sourceExecutor": null,
+    "destinationEndpointV2": null,
+    "destinationReceiveUln302": null
+  }
+}
