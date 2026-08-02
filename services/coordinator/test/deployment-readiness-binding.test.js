@@ -32,8 +32,8 @@ function readinessConfig(){
     },
     pathway:{source:"ethereum-sepolia",destination:"arbitrum-sepolia"},
     gates:{
-      adapterConformance:"LOCAL_ADAPTER_PROTOTYPE",
-      payableAssignJobResolved:false,
+      adapterConformance:"ILAYERZERO_DVN_INTERFACE_ADAPTER",
+      payableAssignJobResolved:true,
       destinationVerificationTopologyResolved:false,
       layerZeroOnboardingConfirmed:false,
       independentDvnsSelected:false,
@@ -180,6 +180,9 @@ test("binds clean source, compiler artifacts and audited network metadata",()=>{
   });
   assert.equal(binding.artifacts.SentinelDVNAdapter.sourceSha256,buildManifest().contracts[0].sourceSha256);
   assert.equal(binding.artifacts.TreasuryPolicyOApp.abiSha256,buildManifest().contracts[1].abiSha256);
+  assert.equal(binding.gates.adapterConformance,"ILAYERZERO_DVN_INTERFACE_ADAPTER");
+  assert.equal(binding.gates.payableAssignJobResolved,true);
+  assert.equal(binding.gates.destinationVerificationTopologyResolved,false);
   assert.equal(binding.audit.date,"2026-07-29");
   assert.equal(binding.network.source.chainId,11155111);
   assert.equal(binding.network.source.eid,40161);

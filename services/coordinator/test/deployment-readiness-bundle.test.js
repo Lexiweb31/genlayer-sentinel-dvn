@@ -78,8 +78,8 @@ function binding(){
       }
     },
     gates:{
-      adapterConformance:"LOCAL_ADAPTER_PROTOTYPE",
-      payableAssignJobResolved:false,
+      adapterConformance:"ILAYERZERO_DVN_INTERFACE_ADAPTER",
+      payableAssignJobResolved:true,
       destinationVerificationTopologyResolved:false,
       layerZeroOnboardingConfirmed:false,
       independentDvnsSelected:false,
@@ -118,10 +118,12 @@ test("blocks the current adapter candidate and preserves every truth boundary",(
     "ESTABLISH_INDEPENDENT_RECOVERY_OPERATORS",
     "OBTAIN_DEPLOYMENT_SECURITY_APPROVAL",
     "RESOLVE_DESTINATION_VERIFICATION_TOPOLOGY",
-    "RESOLVE_PAYABLE_ASSIGN_JOB",
     "SELECT_INDEPENDENT_DVNS",
     "VALIDATE_LIVE_PATHWAY"
   ]);
+  assert(result.blockers.some(value=>value.remediation==="DESIGN_CONFORMANT_DVN_CONTRACT"));
+  assert.equal(result.blockers.some(value=>value.remediation==="RESOLVE_PAYABLE_ASSIGN_JOB"),false);
+  assert.deepEqual(result.transactions,[]);
 });
 
 test("never infers conformance from local classification or ABI selector names",()=>{

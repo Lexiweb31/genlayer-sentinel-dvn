@@ -16,7 +16,8 @@ export interface ReadinessBlocker{
   category:ReadinessBlockerCategory;
   remediation:string;
 }
-export type AdapterConformance="LOCAL_ADAPTER_PROTOTYPE"|"LAYERZERO_DVN_CANDIDATE";
+export type AdapterConformance=
+  "LOCAL_ADAPTER_PROTOTYPE"|"ILAYERZERO_DVN_INTERFACE_ADAPTER"|"LAYERZERO_DVN_CANDIDATE";
 export interface ReadinessGates{
   adapterConformance:AdapterConformance;
   payableAssignJobResolved:boolean;
@@ -176,7 +177,9 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
     sources.SentinelDVNAdapter!=="contracts/src/SentinelDVNAdapter.sol"||
     sources.TreasuryPolicyOApp!=="contracts/src/TreasuryPolicyOApp.sol"||
     pathway.source!=="ethereum-sepolia"||pathway.destination!=="arbitrum-sepolia"||
-    (gates.adapterConformance!=="LOCAL_ADAPTER_PROTOTYPE"&&gates.adapterConformance!=="LAYERZERO_DVN_CANDIDATE"))invalid();
+    (gates.adapterConformance!=="LOCAL_ADAPTER_PROTOTYPE"&&
+      gates.adapterConformance!=="ILAYERZERO_DVN_INTERFACE_ADAPTER"&&
+      gates.adapterConformance!=="LAYERZERO_DVN_CANDIDATE"))invalid();
   const parsedGates:ReadinessGates={
     adapterConformance:gates.adapterConformance,
     payableAssignJobResolved:bool(gates.payableAssignJobResolved),

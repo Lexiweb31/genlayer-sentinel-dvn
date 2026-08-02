@@ -18,8 +18,8 @@
     "destination": "arbitrum-sepolia"
   },
   "gates": {
-    "adapterConformance": "LOCAL_ADAPTER_PROTOTYPE",
-    "payableAssignJobResolved": false,
+    "adapterConformance": "ILAYERZERO_DVN_INTERFACE_ADAPTER",
+    "payableAssignJobResolved": true,
     "destinationVerificationTopologyResolved": false,
     "layerZeroOnboardingConfirmed": false,
     "independentDvnsSelected": false,
