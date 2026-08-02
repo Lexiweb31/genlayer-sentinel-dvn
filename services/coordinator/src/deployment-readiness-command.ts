@@ -1,9 +1,9 @@
 import{randomBytes}from"node:crypto";
 import{execFile}from"node:child_process";
+import{constants}from"node:fs";
 import{
   link as fsLink,
   open as fsOpen,
-  readFile,
   unlink as fsUnlink,
   type FileHandle
 }from"node:fs/promises";
@@ -25,6 +25,8 @@ import{
   ReadinessError,
   type DeploymentReadinessManifest
 }from"./deployment-readiness-manifest.js";
+import{compileDeploymentReadinessProvenance as compileProvenance}from"./deployment-readiness-compiler.js";
+export{compileDeploymentReadinessProvenance}from"./deployment-readiness-compiler.js";
 
 export interface ReadinessCommandIo{
   stdout(value:string):void;
@@ -33,6 +35,7 @@ export interface ReadinessCommandIo{
 export interface ReadinessCommandDependencies{
   readText(path:string):Promise<string>;
   repositoryRoot:string;
+  compileProvenance(repositoryRoot:string):Promise<string>;
   gitState():Promise<{commit:string;dirty:boolean}>;
   evaluationDate():string;
   writeExclusive(path:string,contents:string):Promise<void>;
@@ -90,23 +93,41 @@ export async function runDeploymentReadinessCommand(
     readinessConfigText=await dependencies.readText(join(dependencies.repositoryRoot,"config/deployment-readiness.json"));
     config=parseDeploymentReadinessConfig(readinessConfigText);
   }catch{return fail(io,"READINESS_INPUT_READ_FAILED")}
-  let git:BindingInput["git"];
-  try{git=await dependencies.gitState()}
+  let initialGit:BindingInput["git"];
+  try{initialGit=await dependencies.gitState()}
   catch{return fail(io,"READINESS_GIT_FAILED")}
+  let compiledBuildManifestText:string;
+  try{compiledBuildManifestText=await dependencies.compileProvenance(dependencies.repositoryRoot)}
+  catch{return fail(io,"READINESS_BUILD_FAILED")}
   let input:BindingInput;
   try{
-    const [networkConfigText,auditEvidenceText,buildManifestText,adapterSource,oappSource]=await Promise.all([
+    const [
+      networkConfigText,auditEvidenceText,buildManifestText,adapterArtifact,oappArtifact,
+      adapterSource,oappSource
+    ]=await Promise.all([
       dependencies.readText(join(dependencies.repositoryRoot,config.networkConfig)),
       dependencies.readText(join(dependencies.repositoryRoot,config.auditEvidence)),
       dependencies.readText(join(dependencies.repositoryRoot,config.buildManifest)),
+      dependencies.readText(join(dependencies.repositoryRoot,config.productionArtifacts.SentinelDVNAdapter)),
+      dependencies.readText(join(dependencies.repositoryRoot,config.productionArtifacts.TreasuryPolicyOApp)),
       dependencies.readText(join(dependencies.repositoryRoot,config.productionSources.SentinelDVNAdapter)),
       dependencies.readText(join(dependencies.repositoryRoot,config.productionSources.TreasuryPolicyOApp))
     ]);
     input={
-      manifest,evaluationDate,git,networkConfigText,auditEvidenceText,readinessConfigText,buildManifestText,
+      manifest,evaluationDate,git:{commit:"0".repeat(40),dirty:true},
+      networkConfigText,auditEvidenceText,readinessConfigText,buildManifestText,compiledBuildManifestText,
+      productionArtifacts:{SentinelDVNAdapter:adapterArtifact,TreasuryPolicyOApp:oappArtifact},
       productionSources:{SentinelDVNAdapter:adapterSource,TreasuryPolicyOApp:oappSource}
     };
   }catch{return fail(io,"READINESS_INPUT_READ_FAILED")}
+  try{
+    const finalGit=await dependencies.gitState();
+    input.git={
+      commit:finalGit.commit,
+      dirty:initialGit.dirty||finalGit.dirty||finalGit.commit!==initialGit.commit
+    };
+  }
+  catch{return fail(io,"READINESS_GIT_FAILED")}
   let binding:ReadinessBinding;
   try{binding=await dependencies.inspect(input)}
   catch{return fail(io,"READINESS_BINDING_FAILED")}
@@ -156,15 +177,22 @@ function defaultDependencies():ReadinessCommandDependencies{
   const repositoryRoot=process.cwd();
   return{
     repositoryRoot,
-    readText:path=>readFile(path,"utf8"),
-    gitState:()=>defaultGitState(repositoryRoot),
+    readText:readReadinessTextFile,
+    compileProvenance:async root=>compileProvenance(root),
+    gitState:()=>readDeploymentReadinessGitState(repositoryRoot),
     evaluationDate:()=>new Date().toISOString().slice(0,10),
     writeExclusive:writeReadinessFileExclusive,
     inspect:inspectDeploymentReadinessBindings,
     build:buildDeploymentReadinessBundle
   };
 }
-async function defaultGitState(repositoryRoot:string):Promise<{commit:string;dirty:boolean}>{
+export async function readDeploymentReadinessGitState(
+  repositoryRoot:string
+):Promise<{commit:string;dirty:boolean}>{
+  const configuration=await runGit(
+    ["config","--local","--no-includes","--null","--list"],repositoryRoot
+  );
+  validateLocalGitConfiguration(configuration);
   const revision=await runGit(
     ["rev-parse","--show-toplevel","HEAD"],repositoryRoot
   );
@@ -176,6 +204,32 @@ async function defaultGitState(repositoryRoot:string):Promise<{commit:string;dir
   );
   return{commit:lines[1]!,dirty:status.length>0};
 }
+export async function readReadinessTextFile(path:string):Promise<string>{
+  if(!validAbsolutePath(path))throw new ReadinessCommandError("READINESS_INPUT_READ_FAILED");
+  const maximumBytes=2_097_152;
+  let handle:FileHandle|undefined;
+  try{
+    handle=await fsOpen(
+      path,
+      constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0)
+    );
+    const stat=await handle.stat();
+    if(!stat.isFile()||stat.size<0||stat.size>maximumBytes)
+      throw new ReadinessCommandError("READINESS_INPUT_READ_FAILED");
+    const buffer=Buffer.alloc(Number(stat.size)+1);let offset=0;
+    while(offset<buffer.length){
+      const result=await handle.read(buffer,offset,buffer.length-offset,offset);
+      if(result.bytesRead===0)break;
+      offset+=result.bytesRead;
+    }
+    if(offset!==stat.size)throw new ReadinessCommandError("READINESS_INPUT_READ_FAILED");
+    return new TextDecoder("utf-8",{fatal:true}).decode(buffer.subarray(0,offset));
+  }catch{
+    throw new ReadinessCommandError("READINESS_INPUT_READ_FAILED");
+  }finally{
+    if(handle)try{await handle.close()}catch{}
+  }
+}
 function runGit(args:string[],cwd:string):Promise<string>{
   return new Promise((resolve,reject)=>{
     execFile("git",args,{
@@ -184,13 +238,35 @@ function runGit(args:string[],cwd:string):Promise<string>{
         PATH:"/usr/bin:/bin:/usr/local/bin",
         LC_ALL:"C",
         GIT_CONFIG_NOSYSTEM:"1",
-        GIT_CONFIG_GLOBAL:"/dev/null"
+        GIT_CONFIG_GLOBAL:"/dev/null",
+        GIT_NO_REPLACE_OBJECTS:"1",
+        GIT_OPTIONAL_LOCKS:"0"
       }
     },(error,stdout)=>{
       if(error){reject(new ReadinessCommandError("READINESS_GIT_FAILED"));return}
       resolve(stdout);
     });
   });
+}
+function validateLocalGitConfiguration(text:string):void{
+  const allowed=new Map<string,RegExp>([
+    ["core.repositoryformatversion",/^0$/],
+    ["core.filemode",/^(?:true|false)$/],
+    ["core.bare",/^false$/],
+    ["core.logallrefupdates",/^(?:true|false|always)$/],
+    ["core.ignorecase",/^(?:true|false)$/],
+    ["core.precomposeunicode",/^(?:true|false)$/],
+    ["extensions.objectformat",/^(?:sha1|sha256)$/]
+  ]);
+  const records=text.split("\0");
+  if(records.pop()!==""||new Set(records.map(record=>record.slice(0,record.indexOf("\n")))).size!==records.length)
+    throw new ReadinessCommandError("READINESS_GIT_FAILED");
+  for(const record of records){
+    const separator=record.indexOf("\n");
+    if(separator<1)throw new ReadinessCommandError("READINESS_GIT_FAILED");
+    const key=record.slice(0,separator),value=record.slice(separator+1),expected=allowed.get(key);
+    if(!expected?.test(value))throw new ReadinessCommandError("READINESS_GIT_FAILED");
+  }
 }
 function parseArguments(args:string[]):{manifest:string;output?:string}{
   if(args.length!==2&&args.length!==4)invalid();

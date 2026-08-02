@@ -1,6 +1,6 @@
 import{createHash}from"node:crypto";
 import{getAddress}from"ethers";
-import{canonicalJson}from"./canonical-json.js";
+import{canonicalJson,parseJsonDocument}from"./canonical-json.js";
 import{
   ReadinessError,
   type DeploymentReadinessManifest
@@ -37,6 +37,10 @@ export interface DeploymentReadinessConfig{
   networkConfig:"config/networks.json";
   auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md";
   buildManifest:"dist/contracts/build-manifest.json";
+  productionArtifacts:{
+    SentinelDVNAdapter:"dist/contracts/SentinelDVNAdapter.json";
+    TreasuryPolicyOApp:"dist/contracts/TreasuryPolicyOApp.json";
+  };
   productionSources:{
     SentinelDVNAdapter:"contracts/src/SentinelDVNAdapter.sol";
     TreasuryPolicyOApp:"contracts/src/TreasuryPolicyOApp.sol";
@@ -52,6 +56,8 @@ export interface BindingInput{
   auditEvidenceText:string;
   readinessConfigText:string;
   buildManifestText:string;
+  compiledBuildManifestText:string;
+  productionArtifacts:{SentinelDVNAdapter:string;TreasuryPolicyOApp:string};
   productionSources:{SentinelDVNAdapter:string;TreasuryPolicyOApp:string};
 }
 interface BoundContract{
@@ -117,10 +123,11 @@ interface ParsedBuildManifest{
   compiler:{version:string;evmVersion:string;optimizer:{enabled:boolean;runs:number}};
   contracts:Array<{name:string;source:string;sourceSha256:string;abiSha256:string;creationBytecodeSha256:string}>;
 }
+interface ParsedContractArtifact{abiSha256:string;creationBytecodeSha256:string}
 
 const readinessKeys=[
   "schemaVersion","toolVersion","maximumAuditAgeDays","networkConfig","auditEvidence",
-  "buildManifest","productionSources","pathway","gates"
+  "buildManifest","productionArtifacts","productionSources","pathway","gates"
 ];
 const gateKeys=[
   "adapterConformance","payableAssignJobResolved","destinationVerificationTopologyResolved",
@@ -153,7 +160,9 @@ const expectedNetworks={
 
 export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessConfig{
   const root=record(parseJson(text));exactKeys(root,readinessKeys);
-  const sources=record(root.productionSources),pathway=record(root.pathway),gates=record(root.gates);
+  const artifacts=record(root.productionArtifacts),sources=record(root.productionSources);
+  const pathway=record(root.pathway),gates=record(root.gates);
+  exactKeys(artifacts,["SentinelDVNAdapter","TreasuryPolicyOApp"]);
   exactKeys(sources,["SentinelDVNAdapter","TreasuryPolicyOApp"]);
   exactKeys(pathway,["source","destination"]);exactKeys(gates,gateKeys);
   const maximumAuditAgeDays=uint(root.maximumAuditAgeDays);
@@ -162,6 +171,8 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
     root.networkConfig!=="config/networks.json"||
     root.auditEvidence!=="docs/research/2026-07-29-deployment-readiness-audit.md"||
     root.buildManifest!=="dist/contracts/build-manifest.json"||
+    artifacts.SentinelDVNAdapter!=="dist/contracts/SentinelDVNAdapter.json"||
+    artifacts.TreasuryPolicyOApp!=="dist/contracts/TreasuryPolicyOApp.json"||
     sources.SentinelDVNAdapter!=="contracts/src/SentinelDVNAdapter.sol"||
     sources.TreasuryPolicyOApp!=="contracts/src/TreasuryPolicyOApp.sol"||
     pathway.source!=="ethereum-sepolia"||pathway.destination!=="arbitrum-sepolia"||
@@ -184,6 +195,10 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
     networkConfig:"config/networks.json",
     auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md",
     buildManifest:"dist/contracts/build-manifest.json",
+    productionArtifacts:{
+      SentinelDVNAdapter:"dist/contracts/SentinelDVNAdapter.json",
+      TreasuryPolicyOApp:"dist/contracts/TreasuryPolicyOApp.json"
+    },
     productionSources:{
       SentinelDVNAdapter:"contracts/src/SentinelDVNAdapter.sol",
       TreasuryPolicyOApp:"contracts/src/TreasuryPolicyOApp.sol"
@@ -196,11 +211,15 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
 export function inspectDeploymentReadinessBindings(input:BindingInput):ReadinessBinding{
   const config=parseDeploymentReadinessConfig(input.readinessConfigText);
   const network=parseNetworkConfig(input.networkConfigText),build=parseBuildManifest(input.buildManifestText);
+  const compiledBuild=parseBuildManifest(input.compiledBuildManifestText);
+  const adapterArtifact=parseContractArtifact(input.productionArtifacts.SentinelDVNAdapter);
+  const oappArtifact=parseContractArtifact(input.productionArtifacts.TreasuryPolicyOApp);
   const blockers:ReadinessBlocker[]=[];
   let artifactDrift=false,metadataMismatch=false;
   if(!/^[a-f0-9]{40}$/.test(input.git.commit)||input.git.commit!==input.manifest.sourceCommit)artifactDrift=true;
   if(input.git.dirty)addBlocker(blockers,"READINESS_SOURCE_DIRTY","ARTIFACT","COMMIT_OR_REMOVE_SOURCE_CHANGES");
-  if(build.compiler.version!=="0.8.30+commit.73712a01.Emscripten.clang"||
+  if(canonicalJson(build)!==canonicalJson(compiledBuild)||
+    build.compiler.version!=="0.8.30+commit.73712a01.Emscripten.clang"||
     build.compiler.evmVersion!=="shanghai"||build.compiler.optimizer.enabled!==true||
     build.compiler.optimizer.runs!==200)artifactDrift=true;
   const adapter=contract(build,0,"SentinelDVNAdapter","contracts/src/SentinelDVNAdapter.sol");
@@ -212,6 +231,10 @@ export function inspectDeploymentReadinessBindings(input:BindingInput):Readiness
     build.contracts[1]?.source!=="contracts/src/TreasuryPolicyOApp.sol"||
     sha256(input.productionSources.SentinelDVNAdapter)!==adapter.sourceSha256||
     sha256(input.productionSources.TreasuryPolicyOApp)!==oapp.sourceSha256||
+    adapterArtifact.abiSha256!==adapter.abiSha256||
+    adapterArtifact.creationBytecodeSha256!==adapter.creationBytecodeSha256||
+    oappArtifact.abiSha256!==oapp.abiSha256||
+    oappArtifact.creationBytecodeSha256!==oapp.creationBytecodeSha256||
     input.manifest.artifacts.SentinelDVNAdapter.abiSha256!==adapter.abiSha256||
     input.manifest.artifacts.SentinelDVNAdapter.creationBytecodeSha256!==adapter.creationBytecodeSha256||
     input.manifest.artifacts.TreasuryPolicyOApp.abiSha256!==oapp.abiSha256||
@@ -241,12 +264,18 @@ export function inspectDeploymentReadinessBindings(input:BindingInput):Readiness
     SentinelDVNAdapter:sha256(input.productionSources.SentinelDVNAdapter),
     TreasuryPolicyOApp:sha256(input.productionSources.TreasuryPolicyOApp)
   };
+  const artifactFileDigests={
+    SentinelDVNAdapter:sha256(input.productionArtifacts.SentinelDVNAdapter),
+    TreasuryPolicyOApp:sha256(input.productionArtifacts.TreasuryPolicyOApp)
+  };
   const repositoryInputSha256=sha256(canonicalJson({
     sourceCommit:input.git.commit,
     readinessConfigSha256:sha256(input.readinessConfigText),
     networkConfigSha256:actualNetworkDigest,
     auditEvidenceSha256:actualEvidenceDigest,
     buildManifestSha256:sha256(input.buildManifestText),
+    compiledBuildManifestSha256:sha256(input.compiledBuildManifestText),
+    productionArtifactFileSha256:artifactFileDigests,
     productionSourceSha256:sourceDigests
   }));
   return{
@@ -330,6 +359,19 @@ function parseBuildManifest(text:string):ParsedBuildManifest{
     contracts
   };
 }
+function parseContractArtifact(text:string):ParsedContractArtifact{
+  const root=record(parseJson(text));exactKeys(root,["abi","evm"]);
+  if(!Array.isArray(root.abi))invalid();
+  const evm=record(root.evm);exactKeys(evm,["bytecode"]);
+  const bytecode=record(evm.bytecode);exactKeys(bytecode,["object"]);
+  if(typeof bytecode.object!=="string"||!/^(?:[0-9a-f]{2})+$/.test(bytecode.object))invalid();
+  const abiText=JSON.stringify(root.abi);
+  if(typeof abiText!=="string")invalid();
+  return{
+    abiSha256:sha256(abiText),
+    creationBytecodeSha256:sha256(Buffer.from(bytecode.object,"hex"))
+  };
+}
 function contract(build:ParsedBuildManifest,index:number,name:string,source:string):BoundContract{
   const value=build.contracts[index];
   if(!value)return{source,sourceSha256:"0".repeat(64),abiSha256:"0".repeat(64),creationBytecodeSha256:"0".repeat(64)};
@@ -371,7 +413,7 @@ function validDate(value:unknown):string{
 function addBlocker(blockers:ReadinessBlocker[],code:ReadinessBlockerCode,category:ReadinessBlockerCategory,remediation:string):void{
   if(!blockers.some(item=>item.code===code&&item.category===category))blockers.push({code,category,remediation});
 }
-function parseJson(text:string):unknown{try{return JSON.parse(text)}catch{invalid()}}
+function parseJson(text:string):unknown{try{return parseJsonDocument(text)}catch{invalid()}}
 function record(value:unknown):Record<string,unknown>{
   if(!value||typeof value!=="object"||Array.isArray(value))invalid();
   return value as Record<string,unknown>;
@@ -394,5 +436,5 @@ function httpsUrl(value:unknown):string{
   if(parsed.protocol!=="https:"||parsed.username||parsed.password||parsed.hash)invalid();
   return text;
 }
-function sha256(value:string):string{return createHash("sha256").update(value).digest("hex")}
+function sha256(value:string|Uint8Array):string{return createHash("sha256").update(value).digest("hex")}
 function invalid():never{throw new ReadinessError("READINESS_MANIFEST_INVALID")}

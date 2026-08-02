@@ -1,12 +1,18 @@
 import test from"node:test";
 import assert from"node:assert/strict";
 import{createHash}from"node:crypto";
-import{mkdtemp,readFile,readdir,rm,writeFile}from"node:fs/promises";
+import{execFileSync}from"node:child_process";
+import{chmod,mkdtemp,readFile,readdir,rm,writeFile}from"node:fs/promises";
 import{tmpdir}from"node:os";
 import{join}from"node:path";
 import{getAddress}from"ethers";
 import{canonicalJson}from"../../../dist/services/coordinator/src/canonical-json.js";
+import{inspectDeploymentReadinessBindings}from"../../../dist/services/coordinator/src/deployment-readiness-binding.js";
+import{buildDeploymentReadinessBundle}from"../../../dist/services/coordinator/src/deployment-readiness-bundle.js";
 import{
+  compileDeploymentReadinessProvenance,
+  readDeploymentReadinessGitState,
+  readReadinessTextFile,
   runDeploymentReadinessCommand,
   writeReadinessFileExclusive
 }from"../../../dist/services/coordinator/src/deployment-readiness-command.js";
@@ -43,6 +49,7 @@ function dependencies(status="BLOCKED_DVN_CONFORMANCE"){
     repositoryRoot:root,
     readText:async path=>path===manifestPath?manifestText:readFile(path,"utf8"),
     gitState:async()=>({commit:"1".repeat(40),dirty:false}),
+    compileProvenance:async()=>readFile(join(root,"dist/contracts/build-manifest.json"),"utf8"),
     evaluationDate:()=>"2026-07-29",
     writeExclusive:writeReadinessFileExclusive,
     inspect:()=>({}),
@@ -113,6 +120,7 @@ test("rejects malformed or noncanonical manifest JSON without echoing it",async(
 test("maps dependency failures to stable sanitized codes",async()=>{
   const cases=[
     ["readText","READINESS_INPUT_READ_FAILED"],
+    ["compileProvenance","READINESS_BUILD_FAILED"],
     ["gitState","READINESS_GIT_FAILED"],
     ["inspect","READINESS_BINDING_FAILED"],
     ["build","READINESS_BUILD_FAILED"],
@@ -184,6 +192,58 @@ test("never accesses prohibited capability properties",async()=>{
   assert.equal(output.stderr.join(""),"");
 });
 
+test("default Git inspection refuses repository-local external helpers",async t=>{
+  const directory=await mkdtemp(join(tmpdir(),"sentinel-readiness-hostile-git-"));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  execFileSync("git",["init","--quiet"],{cwd:directory});
+  execFileSync("git",[
+    "-c","user.name=Sentinel","-c","user.email=sentinel@example.invalid",
+    "commit","--quiet","--allow-empty","-m","base"
+  ],{cwd:directory});
+  const marker=join(directory,"external-helper-ran"),helper=join(directory,"fsmonitor.sh");
+  await writeFile(helper,`#!/bin/sh\n: > '${marker}'\nexit 0\n`);
+  await chmod(helper,0o700);
+  execFileSync("git",["config","--local","core.fsmonitor",helper],{cwd:directory});
+  await assert.rejects(
+    readDeploymentReadinessGitState(directory),
+    error=>error.code==="READINESS_GIT_FAILED"
+  );
+  await assert.rejects(readFile(marker),error=>error.code==="ENOENT");
+});
+
+test("Git preflight fails before trusted compilation is invoked",async()=>{
+  const output=io(),deps=dependencies();let compilationCalls=0;
+  deps.gitState=async()=>{throw new Error("unsafe repository")};
+  deps.compileProvenance=async()=>{compilationCalls++;return"{}\n"};
+  assert.equal(await runDeploymentReadinessCommand(["--manifest",manifestPath],output.value,deps),1);
+  assert.equal(compilationCalls,0);
+  assert.equal(output.stderr.join(""),'{"error":"READINESS_GIT_FAILED"}\n');
+});
+
+test("a dirty preflight remains dirty even if the final Git snapshot is clean",async()=>{
+  const output=io(),deps=dependencies(),states=[
+    {commit:"1".repeat(40),dirty:true},
+    {commit:"1".repeat(40),dirty:false}
+  ];let inspected;
+  deps.gitState=async()=>states.shift();
+  deps.inspect=input=>{inspected=input;return{}};
+  assert.equal(await runDeploymentReadinessCommand(["--manifest",manifestPath],output.value,deps),2);
+  assert.equal(inspected.git.dirty,true);
+});
+
+test("default file reader refuses special files before reading",async()=>{
+  await assert.rejects(
+    readReadinessTextFile("/dev/null"),
+    error=>error.code==="READINESS_INPUT_READ_FAILED"
+  );
+});
+
+test("trusted readiness compilation matches the generated production manifest",async()=>{
+  const compiled=JSON.parse(await compileDeploymentReadinessProvenance(root));
+  const generated=JSON.parse(await readFile(join(root,"dist/contracts/build-manifest.json"),"utf8"));
+  assert.deepEqual(compiled,generated);
+});
+
 test("ambient secret-like variables cannot influence injected output",async()=>{
   const key="SENTINEL_TEST_PRIVATE_KEY",before=process.env[key];
   try{
@@ -205,6 +265,47 @@ test("readiness invocation leaves deployment records byte-identical",async()=>{
   assert.equal(await treeDigest(join(root,"deployments")),before);
 });
 
+test("real repository evidence produces a truthful blocked public bundle without dangerous capabilities",async t=>{
+  const directory=await mkdtemp(join(tmpdir(),"sentinel-readiness-integration-"));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  const example=join(root,"docs/examples/public-readiness-manifest.json");
+  const operatingManifest=join(directory,"public-readiness.json");
+  await writeFile(operatingManifest,await readFile(example));
+  const inputs=[
+    "config/deployment-readiness.json","config/networks.json",
+    "docs/research/2026-07-29-deployment-readiness-audit.md",
+    "dist/contracts/build-manifest.json","dist/contracts/SentinelDVNAdapter.json",
+    "dist/contracts/TreasuryPolicyOApp.json","contracts/src/SentinelDVNAdapter.sol",
+    "contracts/src/TreasuryPolicyOApp.sol"
+  ];
+  const before=await fileDigests(inputs),deploymentsBefore=await treeDigest(join(root,"deployments"));
+  let networkCalls=0,signingCalls=0,deploymentCalls=0;
+  const output=io(),deps={
+    repositoryRoot:root,
+    readText:path=>readFile(path,"utf8"),
+    gitState:async()=>({commit:"f".repeat(40),dirty:false}),
+    compileProvenance:()=>compileDeploymentReadinessProvenance(root),
+    evaluationDate:()=>"2026-07-29",
+    writeExclusive:writeReadinessFileExclusive,
+    inspect:inspectDeploymentReadinessBindings,
+    build:buildDeploymentReadinessBundle,
+    rpc:()=>networkCalls++,
+    sign:()=>signingCalls++,
+    deploy:()=>deploymentCalls++
+  };
+  const code=await runDeploymentReadinessCommand(["--manifest",operatingManifest],output.value,deps);
+  const result=JSON.parse(output.stdout.join(""));
+  assert.equal(code,2);
+  assert.equal(result.status,"BLOCKED_ARTIFACT_BINDING");
+  assert.equal(result.truthLabel,"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED");
+  assert.equal(result.userApprovalRequired,true);
+  assert.deepEqual(result.transactions,[]);
+  assert.equal(networkCalls,0);assert.equal(signingCalls,0);assert.equal(deploymentCalls,0);
+  assert.equal(output.stderr.join(""),"");
+  assert.deepEqual(await fileDigests(inputs),before);
+  assert.equal(await treeDigest(join(root,"deployments")),deploymentsBefore);
+});
+
 async function treeDigest(directory){
   const hash=createHash("sha256");
   async function walk(path,prefix=""){
@@ -215,4 +316,9 @@ async function treeDigest(directory){
     }
   }
   await walk(directory);return hash.digest("hex");
+}
+async function fileDigests(paths){
+  return Object.fromEntries(await Promise.all(paths.map(async path=>[
+    path,createHash("sha256").update(await readFile(join(root,path))).digest("hex")
+  ])));
 }

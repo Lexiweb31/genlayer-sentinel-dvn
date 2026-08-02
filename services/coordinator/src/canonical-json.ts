@@ -5,11 +5,75 @@ export function canonicalJson(value:unknown):string{
 }
 
 export function parseCanonicalJsonDocument(text:string):unknown{
-  if(typeof text!=="string"||text.includes("\0"))failure();
-  let value:unknown;
-  try{value=JSON.parse(text)}catch{failure()}
+  const value=parseJsonDocument(text);
   if(canonicalJson(value)!==text)failure();
   return value;
+}
+
+export function parseJsonDocument(text:string):unknown{
+  if(typeof text!=="string"||text.includes("\0"))failure();
+  let offset=0;
+  const whitespace=():void=>{while(offset<text.length&&/[ \t\r\n]/.test(text[offset]!))offset++};
+  const string=():string=>{
+    if(text[offset]!=='"')failure();
+    const start=offset++;
+    while(offset<text.length){
+      const character=text[offset++]!;
+      if(character==='"'){
+        try{return JSON.parse(text.slice(start,offset))}catch{failure()}
+      }
+      if(character==="\\"){
+        const escaped=text[offset++];
+        if(!escaped||!/^["\\/bfnrtu]$/.test(escaped))failure();
+        if(escaped==="u"){
+          if(!/^[0-9a-fA-F]{4}$/.test(text.slice(offset,offset+4)))failure();
+          offset+=4;
+        }
+      }else if(character.charCodeAt(0)<0x20)failure();
+    }
+    return failure();
+  };
+  const value=():unknown=>{
+    whitespace();
+    const character=text[offset];
+    if(character==='"')return string();
+    if(character==="{"){
+      offset++;whitespace();
+      const result={}as Record<string,unknown>,keys=new Set<string>();
+      if(text[offset]==="}"){offset++;return result}
+      while(true){
+        whitespace();const key=string();
+        if(keys.has(key))failure();keys.add(key);
+        whitespace();if(text[offset++]!==":")failure();
+        Object.defineProperty(result,key,{value:value(),enumerable:true,writable:true,configurable:true});
+        whitespace();
+        const separator=text[offset++];
+        if(separator==="}")return result;
+        if(separator!==",")failure();
+      }
+    }
+    if(character==="["){
+      offset++;whitespace();const result:unknown[]=[];
+      if(text[offset]==="]"){offset++;return result}
+      while(true){
+        result.push(value());whitespace();
+        const separator=text[offset++];
+        if(separator==="]")return result;
+        if(separator!==",")failure();
+      }
+    }
+    for(const [literal,parsed]of[["true",true],["false",false],["null",null]]as const){
+      if(text.startsWith(literal,offset)){offset+=literal.length;return parsed}
+    }
+    const match=/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(text.slice(offset));
+    if(!match)return failure();
+    offset+=match[0].length;
+    const parsed=Number(match[0]);if(!Number.isFinite(parsed))failure();
+    return parsed;
+  };
+  const result=value();whitespace();
+  if(offset!==text.length)failure();
+  return result;
 }
 
 function encode(value:unknown,active:Set<object>):string{

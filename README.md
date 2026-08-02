@@ -12,6 +12,29 @@ The only signer wire version is `sentinel-signer/v2`. It carries a bounded GenLa
 
 Normal transport verification answers “was this packet emitted?” It cannot answer “did governance authorize this exact transfer?” Sentinel keeps those questions separate. RPC quorum verifies inclusion, hashes, confirmations, pathway and replay. GenLayer validators interpret authoritative authorization and policy. Only a finalized `ALLOW` bound to the same GUID, packet digest and evidence digest can reach a threshold signer set.
 
+## Keyless deployment readiness (local only)
+
+`npm run readiness:bundle` is a read-only preparation command for a later, separately approved testnet deployment. It validates one canonical public manifest, binds it to the current Git commit and working-tree state, recompiles and fingerprints the two production contracts, checks the dated official-network evidence, and emits a canonical readiness bundle. It has no wallet, signer, provider, RPC, cloud, funding, transaction-building, deployment, or publication capability. Every bundle permanently says `UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED`, requires separate user approval, and contains `"transactions":[]`.
+
+```bash
+npm run readiness:bundle -- --manifest /absolute/path/public-readiness.json
+npm run readiness:bundle -- --manifest /absolute/path/public-readiness.json --output /absolute/path/readiness-bundle.json
+```
+
+The only accepted inputs are the exact absolute-path forms above. Output files use mode `0600`, are created atomically, and are never overwritten. Exit `0` means the local checks reached `READY_FOR_SEPARATE_DEPLOYMENT_APPROVAL`; it does not authorize or perform deployment. Exit `2` means the bundle was produced but remains blocked. Exit `1` means the input, repository evidence, Git inspection, bundle construction, or output failed; stderr contains only one stable error code. When using the npm wrapper, build logs precede command output, so use `--output` for machine consumption.
+
+The checked-in [`public readiness manifest`](docs/examples/public-readiness-manifest.json) is a schema example, not deployment authorization. Its historical source commit intentionally cannot match the final implementation commit. Running it is expected to return exit `2`, with output shaped like:
+
+```json
+{"status":"BLOCKED_ARTIFACT_BINDING","transactions":[],"truthLabel":"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED","userApprovalRequired":true}
+```
+
+The actual canonical bundle contains additional audited public metadata and sanitized blockers. It never infers LayerZero conformance from ABI selector names. At present, adapter conformance, the payable `assignJob` question, destination verification topology, LayerZero onboarding, independent DVN selection, live pathway validation, confirmation-policy approval, a live GenLayer finality reader, five isolated signer operators, five independent recovery operators, and deployment security approval all remain unresolved. Sentinel must initially be an additional or optional verifier beside independently operated LayerZero DVNs, never the sole production verifier.
+
+Deterministic checks and GenLayer consensus have separate jobs. Deterministic verification proves the exact PacketSent/pathway binding, payload hashes, confirmation depth, configuration, and replay state using independently operated RPC evidence. GenLayer semantic consensus decides whether that same canonical GUID/packet/evidence binding matches authoritative governance authorization and policy. A future signer may act only after both layers finalize; this readiness command performs neither layer and signs nothing.
+
+Rollback for this command is deletion of a generated local bundle. No chain rollback exists because it submits no transaction and changes no chain or deployment record. If any binding or audit is suspect, discard the bundle, refresh official evidence, rebuild from a clean reviewed commit, and rerun. Do not “repair” a blocked bundle by editing its output.
+
 ## Repository
 
 - `contracts/`: LayerZero-facing OApp core and prototype DVN adapter.
@@ -102,7 +125,7 @@ Apply revalidates quorum, timelock, deployment, current state and chain evidence
 5. Configure trusted peers and Sentinel as **additional/optional** beside independent DVNs; verify configuration from chain state.
 6. Bring up isolated signers and coordinator monitoring; run rejection, reorg, RPC disagreement and replay drills.
 
-No deployment, funds, cloud resource, GitHub publication or external message is authorized by this repository.
+No readiness bundle, deployment, funds, cloud resource, GitHub publication or external message is authorized by this repository.
 
 ## Monitoring and recovery
 

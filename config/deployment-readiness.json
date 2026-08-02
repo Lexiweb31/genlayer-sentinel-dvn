@@ -5,6 +5,10 @@
   "networkConfig": "config/networks.json",
   "auditEvidence": "docs/research/2026-07-29-deployment-readiness-audit.md",
   "buildManifest": "dist/contracts/build-manifest.json",
+  "productionArtifacts": {
+    "SentinelDVNAdapter": "dist/contracts/SentinelDVNAdapter.json",
+    "TreasuryPolicyOApp": "dist/contracts/TreasuryPolicyOApp.json"
+  },
   "productionSources": {
     "SentinelDVNAdapter": "contracts/src/SentinelDVNAdapter.sol",
     "TreasuryPolicyOApp": "contracts/src/TreasuryPolicyOApp.sol"

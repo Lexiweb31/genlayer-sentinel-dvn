@@ -22,6 +22,10 @@ function readinessConfig(){
     networkConfig:"config/networks.json",
     auditEvidence:"docs/research/2026-07-29-deployment-readiness-audit.md",
     buildManifest:"dist/contracts/build-manifest.json",
+    productionArtifacts:{
+      SentinelDVNAdapter:"dist/contracts/SentinelDVNAdapter.json",
+      TreasuryPolicyOApp:"dist/contracts/TreasuryPolicyOApp.json"
+    },
     productionSources:{
       SentinelDVNAdapter:"contracts/src/SentinelDVNAdapter.sol",
       TreasuryPolicyOApp:"contracts/src/TreasuryPolicyOApp.sol"
@@ -107,6 +111,19 @@ function buildManifest(){
   };
 }
 
+function productionArtifacts(){
+  return{
+    SentinelDVNAdapter:json({
+      abi:[{type:"constructor",inputs:[]}],
+      evm:{bytecode:{object:"6000"}}
+    }),
+    TreasuryPolicyOApp:json({
+      abi:[],
+      evm:{bytecode:{object:"6001"}}
+    })
+  };
+}
+
 function fixture(){
   const networkConfigText=json(networkConfig());
   const auditEvidenceText="# Deployment readiness audit\n\nAUDITED_METADATA_NOT_DEPLOYMENT_AUTHORIZATION\n";
@@ -144,6 +161,8 @@ function fixture(){
     networkConfigText,auditEvidenceText,
     readinessConfigText:json(readinessConfig()),
     buildManifestText,
+    compiledBuildManifestText:buildManifestText,
+    productionArtifacts:productionArtifacts(),
     productionSources:{...sourceText}
   };
 }
@@ -184,6 +203,15 @@ test("reports every ordinary repository and audit drift as a sanitized blocker",
     ["READINESS_ARTIFACT_DRIFT",input=>{input.buildManifestText=input.buildManifestText.replace("0.8.30","0.8.29")}],
     ["READINESS_ARTIFACT_DRIFT",input=>{const value=JSON.parse(input.buildManifestText);value.contracts[0].name="TreasuryPolicyOApp";input.buildManifestText=json(value)}],
     ["READINESS_ARTIFACT_DRIFT",input=>{const value=JSON.parse(input.buildManifestText);value.contracts[0].source="contracts/src/Other.sol";input.buildManifestText=json(value)}],
+    ["READINESS_ARTIFACT_DRIFT",input=>{
+      const value=JSON.parse(input.buildManifestText),forged="a".repeat(64);
+      value.contracts[0].abiSha256=forged;input.buildManifestText=json(value);
+      input.manifest.artifacts.SentinelDVNAdapter.abiSha256=forged;
+    }],
+    ["READINESS_ARTIFACT_DRIFT",input=>{
+      input.productionArtifacts.SentinelDVNAdapter=
+        input.productionArtifacts.SentinelDVNAdapter.replace("6000","6002");
+    }],
     ["READINESS_ARTIFACT_DRIFT",input=>{input.productionSources.SentinelDVNAdapter+="\n"}],
     ["READINESS_METADATA_MISMATCH",input=>{input.networkConfigText=input.networkConfigText.replace("40161","40162")}],
     ["READINESS_METADATA_MISMATCH",input=>{input.auditEvidenceText+="altered"}],
@@ -221,6 +249,7 @@ test("rejects malformed readiness configuration and forbidden path fields",()=>{
     value=>{value.maximumAuditAgeDays=0},
     value=>{value.networkConfig="../config/networks.json"},
     value=>{value.buildManifest="/tmp/build-manifest.json"},
+    value=>{value.productionArtifacts.SentinelDVNAdapter="../SentinelDVNAdapter.json"},
     value=>{value.gates.adapterConformance="OFFICIAL_DVN"},
     value=>{value.gates.independentDvnsSelected="false"}
   ];
@@ -228,4 +257,36 @@ test("rejects malformed readiness configuration and forbidden path fields",()=>{
     const value=readinessConfig();mutate(value);
     assert.throws(()=>parseDeploymentReadinessConfig(json(value)),/READINESS_MANIFEST_INVALID/);
   }
+});
+
+test("rejects duplicate keys throughout local readiness evidence",()=>{
+  const cases=[
+    input=>{input.readinessConfigText=input.readinessConfigText.replace(
+      '"schemaVersion": 1,','"schemaVersion": 1,\n  "schemaVersion": 1,'
+    )},
+    input=>{input.networkConfigText=input.networkConfigText.replace(
+      '"chainId": 11155111,','"chainId": 11155111, "chainId": 11155111,'
+    )},
+    input=>{input.buildManifestText=input.buildManifestText.replace(
+      '"runs": 200','"runs": 200, "runs": 200'
+    )},
+    input=>{input.productionArtifacts.SentinelDVNAdapter=
+      input.productionArtifacts.SentinelDVNAdapter.replace('"abi": [','"abi": [], "abi": [')}
+  ];
+  for(const mutate of cases){
+    const input=fixture();mutate(input);
+    assert.throws(()=>inspectDeploymentReadinessBindings(input),/READINESS_MANIFEST_INVALID/);
+  }
+});
+
+test("rejects synchronized public, ignored-manifest, and ignored-artifact forgery",()=>{
+  const input=fixture(),artifact=JSON.parse(input.productionArtifacts.SentinelDVNAdapter);
+  artifact.abi=[{type:"error",name:"Forged",inputs:[]}];
+  input.productionArtifacts.SentinelDVNAdapter=json(artifact);
+  const forged=sha256(JSON.stringify(artifact.abi)),manifest=JSON.parse(input.buildManifestText);
+  manifest.contracts[0].abiSha256=forged;
+  input.buildManifestText=json(manifest);
+  input.manifest.artifacts.SentinelDVNAdapter.abiSha256=forged;
+  const binding=inspectDeploymentReadinessBindings(input);
+  assert(binding.blockers.some(blocker=>blocker.code==="READINESS_ARTIFACT_DRIFT"));
 });

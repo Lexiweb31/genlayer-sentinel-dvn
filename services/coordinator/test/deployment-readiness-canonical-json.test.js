@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canonicalJson,
-  parseCanonicalJsonDocument
+  parseCanonicalJsonDocument,
+  parseJsonDocument
 } from "../../../dist/services/coordinator/src/canonical-json.js";
 
 test("encodes recursively sorted canonical JSON with one terminal newline",()=>{
@@ -33,4 +34,15 @@ test("rejects values outside the canonical JSON data model",()=>{
     undefined,NaN,Infinity,-Infinity,1n,new Date(0),{value:undefined},
     sparse,cyclic,accessor,symbol
   ])assert.throws(()=>canonicalJson(value),/canonical JSON/);
+});
+
+test("parses formatted JSON while rejecting duplicate decoded keys at every depth",()=>{
+  assert.deepEqual(parseJsonDocument(' { "outer": [ { "value": 1 } ] } \n'),{
+    outer:[{value:1}]
+  });
+  for(const text of[
+    '{"schemaVersion":1,"schemaVersion":1}',
+    '{"outer":{"gate":false,"gate":true}}',
+    '{"outer":{"a":1,"\\u0061":2}}'
+  ])assert.throws(()=>parseJsonDocument(text),/invalid canonical JSON/);
 });
