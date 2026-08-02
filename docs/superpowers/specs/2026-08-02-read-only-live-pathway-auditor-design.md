@@ -1,6 +1,6 @@
 # Read-only live pathway auditor design
 
-Status: approved in conversation on 2026-08-02 for a keyless, non-deployment M2 increment. Written specification awaiting final review approval.
+Status: approved in conversation on 2026-08-02 for a keyless, non-deployment M2 increment; self-reviewed for clock trust, block-hash binding, DNS rebinding, and evidence reproducibility. Written specification awaiting final review approval.
 
 ## Outcome
 
@@ -62,7 +62,7 @@ The CLI accepts one explicit absolute path to a UTF-8 JSON manifest. Standard in
 
 The versioned closed schema contains:
 
-- schema version, pathway direction, evaluation date, and expected repository network-audit digest;
+- schema version, pathway direction, and expected repository network-audit digest;
 - two source RPC entries and two destination RPC entries;
 - a public operator-family label and committed operator-evidence digest for each RPC entry;
 - expected chain IDs, EIDs, EndpointV2, send ULN302, receive ULN302, Executor, and Dead-DVN addresses;
@@ -80,7 +80,7 @@ OApp and adapter fields may be explicitly `null`. This supports an honest predep
 
 The transport exposes only an allowlist of read methods required by the existing source and destination verifiers, including chain identity, block headers, bytecode, and `eth_call`. It rejects batch methods not defined by the auditor, notifications, subscriptions, transaction methods, debug/admin namespaces, redirects, oversized responses, invalid JSON-RPC envelopes, mismatched response IDs, duplicate keys, and unexpected result shapes.
 
-Every request has bounded connect, response, and whole-operation deadlines plus a response-byte ceiling. HTTPS certificate verification remains enabled. Public-host validation rejects loopback, link-local, private, multicast, unspecified, and metadata-service targets. DNS results are checked before connection, and redirects are disabled. Failures are returned as stable sanitized error codes without raw URLs, headers, bodies, host paths, or exception objects.
+Every request has bounded connect, response, and whole-operation deadlines plus a response-byte ceiling. HTTPS certificate verification remains enabled. Public-host validation rejects loopback, link-local, private, multicast, unspecified, and metadata-service targets. DNS results are checked before connection, the connection is pinned through a lookup boundary to a checked public address, every retry resolves and checks again, and redirects are disabled. This prevents a successful preflight lookup from becoming permission to connect to a later private address. Failures are returned as stable sanitized error codes without raw URLs, headers, bodies, host paths, or exception objects.
 
 The auditor runs each provider independently. One provider's response is never reused as the other's evidence.
 
@@ -93,7 +93,7 @@ Each chain is observed independently:
 3. subtract the manifest's explicit observation lag from the lower head to choose a candidate block number;
 4. fetch that numbered block from both providers;
 5. require identical block number, block hash, parent hash, state root, and transactions root;
-6. use the exact agreed block number for all subsequent bytecode and `eth_call` requests; and
+6. use the exact agreed block hash with `requireCanonical: true` for all subsequent EIP-1898-capable bytecode and `eth_call` requests, rejecting providers that cannot honor the block-hash reference; and
 7. repeat the block-header query after all calls and reject the run if either provider no longer returns the same block identity.
 
 The observation lag reduces accidental tip instability but is not a message confirmation setting and is not evidence of finality. A reorganized, pruned, unavailable, or disagreeing block fails closed. Source and destination block numbers need not correspond in time; each receives its own identity and observation timestamp.
@@ -113,7 +113,7 @@ Only the reviewed state can satisfy the independence gate. The auditor does not 
 
 ### Contract-code evidence
 
-At the agreed block, the auditor reads code for every expected official and Sentinel address. It records non-emptiness, byte length, and Keccak-256 runtime-code digest from each provider. Empty code, disagreement, or a digest mismatch against an explicitly audited expected digest creates a stable blocker.
+At the agreed block hash, the auditor reads code for every expected official and Sentinel address. It records non-emptiness, byte length, and Keccak-256 runtime-code digest from each provider. Empty code, disagreement, or a digest mismatch against an explicitly audited expected digest creates a stable blocker.
 
 An address match and nonempty code do not prove official identity. If no reviewed expected runtime-code digest exists, the result is labeled `CODE_PRESENT_IDENTITY_UNPROVEN`. Proxy or immutable-configuration analysis is not inferred from bytecode alone. Any proxy expectation must be explicit in the manifest and its resolved implementation/admin evidence must be observed through approved read-only calls.
 
@@ -151,7 +151,7 @@ This audit observes configuration only. It does not prove that any DVN daemon is
 
 ### Evidence assembler
 
-The assembler combines normalized observations, never raw response bodies. It computes:
+The assembler combines schema-defined normalized observations, never raw response bodies. The bundle includes the decoded public configuration values needed for review as well as their digests; a digest alone is not presented as reproducible evidence. It computes:
 
 - per-chain block identity digests;
 - per-contract runtime-code digests;
@@ -161,7 +161,7 @@ The assembler combines normalized observations, never raw response bodies. It co
 - a repository network-audit binding; and
 - one final canonical evidence digest.
 
-Canonical JSON recursively sorts object keys, preserves only schema-defined array order, uses lowercase fixed-width hex where the schema requires bytes, uses checksummed addresses for presentation fields, contains one terminal newline, and contains no randomness or implicit clock reads. Identical manifest bytes and identical normalized RPC observations produce byte-identical output.
+Canonical JSON recursively sorts object keys, preserves only schema-defined array order, uses lowercase fixed-width hex where the schema requires bytes, uses checksummed addresses for presentation fields, contains one terminal newline, and contains no randomness or implicit clock reads. The CLI captures one UTC run timestamp through an injected clock boundary and supplies it explicitly to the pure assembler; tests use a fixed clock. Identical manifest bytes, repository binding, injected timestamp, and normalized RPC observations produce byte-identical output.
 
 The bundle is unsigned. It is evidence for review, not an attestation from an RPC provider, LayerZero, GenLayer, a signer, or Sentinel.
 
@@ -171,7 +171,7 @@ The existing keyless readiness system may ingest the auditor's canonical digest 
 
 The dashboard may display an explicitly loaded audit artifact with:
 
-- observation time and pinned blocks;
+- the explicit run timestamp and pinned blocks;
 - provider agreement and independence state;
 - official-contract code state;
 - source and destination pathway checks;
