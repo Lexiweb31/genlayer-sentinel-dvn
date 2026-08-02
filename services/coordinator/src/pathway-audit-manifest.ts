@@ -119,7 +119,7 @@ function nonempty(value:unknown):value is string{return typeof value==="string"&
 function origin(value:string):string{return new URL(value).origin.toLowerCase()}
 
 function url(value:unknown):value is string{
-  if(typeof value!=="string")return false;
+  if(typeof value!=="string"||/[\u0000-\u001f\u007f-\u009f]/.test(value))return false;
   try{
     const parsed=new URL(value),authority=/^https:\/\/([^/?#]*)/i.exec(value)?.[1];
     if(!authority||parsed.protocol!=="https:"||parsed.username||parsed.password||parsed.search||parsed.hash||

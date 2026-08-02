@@ -79,6 +79,8 @@ test("rejects malformed audit manifest boundaries",()=>{
     value=>{value.source.rpcs[0].url="https://rpc-a.example/#fragment"},
     value=>{value.source.rpcs[0].url="https://rpc-a.example:8443/"},
     value=>{value.source.rpcs[0].url="https://rpc-a.example/not-rpc"},
+    value=>{value.source.rpcs[0].url="https://rpc-a.example/\n"},
+    value=>{value.source.rpcs[0].url="https://rpc-a.example/\t"},
     value=>{value.source.rpcs[0].url="https://127.0.0.1/"},
     value=>{value.source.rpcs[0].url="https://node.localhost/"},
     value=>{value.source.rpcs=[value.source.rpcs[0]]},
@@ -106,6 +108,17 @@ test("rejects secret-shaped keys without echoing rejected values",()=>{
     assert.equal(outcome.message,"PATHWAY_AUDIT_SECRET_FIELD_REJECTED");
     assert.equal(outcome.message.includes(secret),false);
   }
+});
+
+test("rejects nested secret-shaped keys with the secret-specific error",()=>{
+  const value=fixture(),secret="nested-secret-value";
+  value.source.rpcs[0].privateKey=secret;
+  let outcome;
+  try{parsePathwayAuditManifest(value)}catch(error){outcome=error}
+  assert(outcome instanceof PathwayAuditError);
+  assert.equal(outcome.code,"PATHWAY_AUDIT_SECRET_FIELD_REJECTED");
+  assert.equal(outcome.message,"PATHWAY_AUDIT_SECRET_FIELD_REJECTED");
+  assert.equal(outcome.message.includes(secret),false);
 });
 
 test("requires canonical manifest text and hides all rejected input",()=>{
