@@ -8,14 +8,14 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 /// @notice ULN302-compatible job interface plus Sentinel policy-gated quorum execution. Testnet prototype; unaudited.
 /// @dev assignJob must be payable to implement ILayerZeroDVN, but this zero-fee adapter rejects every nonzero msg.value.
-// slither-disable-next-line locked-ether
 contract SentinelDVNAdapter is ILayerZeroDVN, ReentrancyGuard {
     using ECDSA for bytes32;
     error Unauthorized(); error InvalidQuorum(); error InvalidSigner(); error Replay(); error Expired();
     error InvalidSignatureOrder(); error UnsupportedDestination(); error VerificationCallFailed(bytes reason);
-    error UnexpectedNativeValue();
+    error UnexpectedNativeValue(); error NativeRecoveryFailed();
     event JobAssigned(bytes32 indexed jobId, uint32 indexed dstEid, bytes32 payloadHash, uint64 confirmations, address sender);
     event Verified(bytes32 indexed guid, bytes32 indexed packetDigest, bytes32 evidenceDigest, bytes32 executionDigest);
+    event NativeRecovered(address indexed recipient, uint256 amount);
 
     address public immutable messageLib;
     address public immutable verificationTarget;
@@ -44,6 +44,17 @@ contract SentinelDVNAdapter is ILayerZeroDVN, ReentrancyGuard {
         if (p.dstEid != supportedDstEid) revert UnsupportedDestination();
         bytes32 id = keccak256(abi.encode(p.dstEid, p.packetHeader, p.payloadHash, p.confirmations, p.sender));
         emit JobAssigned(id, p.dstEid, p.payloadHash, p.confirmations, p.sender); return 0;
+    }
+
+    /// @notice Returns force-sent native value to the immutable LayerZero message library.
+    /// @dev Permissionless triggering is safe because callers cannot redirect the recipient.
+    function recoverNative() external nonReentrant returns (uint256 amount) {
+        amount = address(this).balance;
+        if (amount > 0) {
+            (bool ok,) = payable(messageLib).call{value: amount}("");
+            if (!ok) revert NativeRecoveryFailed();
+            emit NativeRecovered(messageLib, amount);
+        }
     }
 
     function executionDigest(bytes32 guid, bytes32 packetDigest, bytes32 evidenceDigest, bytes calldata callData, uint64 expiry)

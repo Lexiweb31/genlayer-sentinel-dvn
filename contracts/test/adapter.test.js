@@ -6,6 +6,12 @@ import {executionDigest as coordinatorDigest} from "../../dist/services/coordina
 import {startLocalEvm} from "./local-evm.js";
 
 const artifact = name => JSON.parse(fs.readFileSync(`dist/contracts/${name}.json`, "utf8"));
+async function expectCustomError(operation, contract, errorName) {
+  await assert.rejects(operation, error => {
+    assert.equal(error.data?.slice(0,10),contract.interface.getError(errorName).selector);
+    return true;
+  });
+}
 async function fixture(t) {
   const {signers, close} = await startLocalEvm(6);
   t.after(close);
@@ -19,6 +25,7 @@ async function fixture(t) {
   return {
     adapter: adapter.connect(signers[5]),
     messageLibAdapter: adapter.connect(signers[0]),
+    provider: signers[0].provider,
     target,
     signerRecords,
   };
@@ -44,7 +51,7 @@ test("executes an approved verification once with sorted quorum signatures",asyn
 test("rejects insufficient quorum and reverts target failures atomically",async t=>{
   const {adapter,signerRecords}=await fixture(t);const callData=new Interface(["function fail()"]).encodeFunctionData("fail");const block=await adapter.runner.provider.getBlock("latest");const expiry=BigInt(block.timestamp+600);const args=[id("g"),id("p"),id("e"),callData,expiry];const digest=await adapter.executionDigest(...args);await assert.rejects(adapter.submitVerification(...args,[await signerRecords[0].signer.signMessage(getBytes(digest))]));const sigs=[];for(const record of signerRecords.slice(0,2))sigs.push({a:record.address,s:await record.signer.signMessage(getBytes(digest))});sigs.sort((x,y)=>x.a.localeCompare(y.a));await assert.rejects(adapter.submitVerification(...args,sigs.map(x=>x.s)));assert.equal(await adapter.used(digest),false);
 });
-test("accepts only authorized zero-fee LayerZero jobs without retaining value", async t => {
+test("accepts only authorized zero-fee LayerZero jobs with exact refusal precedence", async t => {
   const {adapter,messageLibAdapter} = await fixture(t);
   const job = {
     dstEid: 40231,
@@ -62,20 +69,40 @@ test("accepts only authorized zero-fee LayerZero jobs without retaining value", 
   assert.equal(event.args.payloadHash,job.payloadHash);
   assert.equal(event.args.confirmations,64n);
   assert.equal(event.args.sender.toLowerCase(),job.sender.toLowerCase());
-  await assert.rejects(async () => {
-    const transaction = await adapter.assignJob(job, "0x");
-    await transaction.wait();
-  });
-  await assert.rejects(async () => {
-    const transaction = await messageLibAdapter.assignJob({...job,dstEid:40161}, "0x");
-    await transaction.wait();
-  });
-  await assert.rejects(async () => {
-    const transaction = await messageLibAdapter.assignJob(job, "0x", {value: 1});
-    await transaction.wait();
-  });
+  await expectCustomError(
+    () => adapter.assignJob.staticCall({...job,dstEid:40161},"0x",{value:1}),
+    adapter,
+    "Unauthorized",
+  );
+  await expectCustomError(
+    () => messageLibAdapter.assignJob.staticCall({...job,dstEid:40161},"0x"),
+    adapter,
+    "UnsupportedDestination",
+  );
+  await expectCustomError(
+    () => messageLibAdapter.assignJob.staticCall({...job,dstEid:40161},"0x",{value:1}),
+    adapter,
+    "UnexpectedNativeValue",
+  );
   assert.equal(
     await messageLibAdapter.runner.provider.getBalance(await messageLibAdapter.getAddress()),
     0n,
   );
+});
+
+test("returns force-sent native value to the fixed message library", async t => {
+  const {adapter,messageLibAdapter,provider}=await fixture(t);
+  const adapterAddress=await adapter.getAddress();
+  const messageLib=await messageLibAdapter.runner.getAddress();
+  await provider.send("hardhat_setBalance",[adapterAddress,"0x07"]);
+  const before=BigInt(await provider.send("eth_getBalance",[messageLib,"latest"]));
+  const receipt=await(await adapter.recoverNative()).wait();
+  const event=receipt.logs.map(log=>{
+    try{return adapter.interface.parseLog(log)}catch{return undefined}
+  }).find(log=>log?.name==="NativeRecovered");
+  assert.equal(event.args.recipient.toLowerCase(),messageLib.toLowerCase());
+  assert.equal(event.args.amount,7n);
+  assert.equal(await provider.getBalance(adapterAddress),0n);
+  assert.equal(BigInt(await provider.send("eth_getBalance",[messageLib,"latest"])),before+7n);
+  assert.equal(await adapter.recoverNative.staticCall(),0n);
 });

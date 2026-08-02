@@ -1,6 +1,6 @@
 # LayerZero interface-conformant Sentinel adapter design
 
-Status: approved for a keyless, non-deployment M2 increment on 2026-08-02.
+Status: approved for a keyless, non-deployment M2 increment on 2026-08-02; amended after independent review to surface ignored analyzer findings and recover force-sent native value.
 
 ## Outcome
 
@@ -41,7 +41,7 @@ Adopt the complete Worker/DVN topology, including VID, price feed, fee library, 
 
 ### Exact interface-conformant policy adapter
 
-Explicitly inherit the pinned `ILayerZeroDVN`, implement both official functions with `override`, expose payable `assignJob`, and reject nonzero native value. Preserve the existing policy-quorum execution path and all current fail-closed restrictions. Record an intermediate readiness classification that is stronger than selector resemblance but still blocked from `LAYERZERO_DVN_CANDIDATE`. Selected.
+Explicitly inherit the pinned `ILayerZeroDVN`, implement both official functions with `override`, expose payable `assignJob`, and reject nonzero native value. Preserve the existing policy-quorum execution path and all current fail-closed restrictions. Return any force-sent native balance only to the immutable authorized message library through a permissionless, nonredirectable recovery call. Record an intermediate readiness classification that is stronger than selector resemblance but still blocked from `LAYERZERO_DVN_CANDIDATE`. Selected.
 
 ### Documentation-only recheck
 
@@ -61,7 +61,7 @@ Refresh official evidence but leave the known contract mismatch in place. This w
 4. derive and emit the existing immutable job binding; and
 5. return zero.
 
-The payable surface is interface compatibility, not permission to accept funds. No withdrawal path will be added.
+The payable surface is interface compatibility, not permission to accept funds. `recoverNative` exists only because native value can be force-sent independently of `assignJob`: any caller may trigger it, but the complete balance can go only to the immutable authorized message library. There is no caller-selected recipient, admin custody, fee accounting, `receive`, or `fallback` path.
 
 The verification quorum, replay key, expiration, signature ordering, destination target, and nonreentrancy behavior remain unchanged.
 
@@ -101,6 +101,8 @@ The red-green contract tests must prove:
 - the configured message library can assign a zero-value job and receives fee zero;
 - an unauthorized caller cannot assign a job;
 - a nonzero-value assignment reverts with no retained balance;
+- exact custom errors and refusal precedence remain stable for unauthorized, nonzero-value, and unsupported-destination inputs;
+- force-sent native value can only be returned to the immutable message library; and
 - unsupported destination EIDs still fail closed; and
 - existing quorum, replay, expiry, atomicity, OApp, and assurance tests remain green.
 
@@ -111,7 +113,7 @@ Readiness tests must prove:
 - `payableAssignJobResolved: true` removes only the payable blocker; and
 - synchronized source/artifact/build-manifest tampering still fails closed.
 
-Run the full `npm run check` gate after implementation. Any Slither fingerprint change must be reviewed and bound exactly; High or Medium production findings remain unallowlistable.
+Run the full `npm run check` gate after implementation. Slither must run with ignored findings shown so inline suppression cannot conceal a production result. Any Slither fingerprint change must be reviewed and bound exactly; High or Medium production findings remain unallowlistable.
 
 ## Failure and rollback
 

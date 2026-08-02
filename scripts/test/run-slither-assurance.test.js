@@ -62,6 +62,7 @@ test("builds an explicit native-solc invocation for one production target", () =
     reportPath,
     "--json-types",
     "detectors",
+    "--show-ignored-findings",
     "--disable-color",
     "--fail-none",
   ]);

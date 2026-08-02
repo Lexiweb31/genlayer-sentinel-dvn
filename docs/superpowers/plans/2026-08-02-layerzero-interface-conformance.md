@@ -4,7 +4,7 @@
 
 **Goal:** Make the zero-fee Sentinel policy adapter explicitly implement the pinned official LayerZero `ILayerZeroDVN` interface while keeping onboarding, destination topology, live pathway validation, and deployment blocked.
 
-**Architecture:** The Solidity adapter inherits the pinned official interface and exposes its required payable job hook, but rejects all nonzero native value so the existing no-fee prototype cannot trap funds. Deployment readiness gains an intermediate repository-evidence state that proves interface-level conformance only; it cannot satisfy the existing `LAYERZERO_DVN_CANDIDATE` gate. A dated primary-source audit refreshes unchanged chain metadata and records remaining documentation conflicts and external dependencies.
+**Architecture:** The Solidity adapter inherits the pinned official interface and exposes its required payable job hook, but rejects all nonzero native value. After independent review exposed Slither's structural locked-Ether warning, the design added a permissionless, nonredirectable recovery path that can return only force-sent balance to the immutable authorized message library, plus analyzer configuration that surfaces ignored findings. Deployment readiness gains an intermediate repository-evidence state that proves interface-level conformance only; it cannot satisfy the existing `LAYERZERO_DVN_CANDIDATE` gate. A dated primary-source audit refreshes unchanged chain metadata and records remaining documentation conflicts and external dependencies.
 
 **Tech Stack:** Solidity 0.8.30, `@layerzerolabs/lz-evm-messagelib-v2@3.0.168`, ethers 6.17.0, Node.js 22.13+, TypeScript 5.8.3, Node test runner, Slither 0.11.5, native solc 0.8.30.
 
@@ -14,6 +14,7 @@
 - Create no account, cloud resource, signer, RPC subscription, funding request, transaction, deployment, or publication.
 - Keep Sentinel additional/optional beside independently operated LayerZero DVNs; never claim it is the sole production verifier.
 - The payable `assignJob` surface exists only for interface compatibility and must reject nonzero `msg.value`.
+- Force-sent native balance may be recovered only to the immutable authorized message library; callers cannot choose a recipient, and no admin fee-custody path is introduced.
 - Only `LAYERZERO_DVN_CANDIDATE` can satisfy the candidate readiness gate; `ILAYERZERO_DVN_INTERFACE_ADAPTER` must remain blocked.
 - Do not claim Gasolina extra-context compatibility, LayerZero onboarding, live GenLayer finality, live pathway validation, signer isolation, audit completion, or mainnet readiness.
 - High and Medium production Slither findings remain unallowlistable.
@@ -109,23 +110,23 @@ contract SentinelDVNAdapter is ILayerZeroDVN, ReentrancyGuard {
 }
 ```
 
-Do not add `receive`, `fallback`, withdrawal, fee-accounting, admin, VID, price-feed, or multi-message-library behavior.
+Do not add `receive`, `fallback`, caller-selected withdrawal, fee-accounting, admin, VID, price-feed, or multi-message-library behavior. The post-review `recoverNative` correction may return the complete force-sent balance only to the immutable authorized message library.
 
 - [ ] **Step 4: Rebuild and verify GREEN**
 
 Run the same two commands from Step 2.
 
-Expected: build exits zero and every adapter test passes, including payable ABI, selector equality, zero-fee success, unauthorized refusal, unsupported EID, nonzero-value refusal, and zero retained balance.
+Expected: build exits zero and every adapter test passes, including payable ABI, selector equality, zero-fee success, exact refusal errors and precedence, unsupported EID, nonzero-value refusal, zero retained balance through `assignJob`, and fixed-recipient force-sent balance recovery.
 
 - [ ] **Step 5: Run focused contract assurance and review every changed finding**
 
-Run:
+Run Slither with ignored findings shown, then run:
 
 ```bash
 npm run analyze:contracts
 ```
 
-Expected before allowlist maintenance: exact-fingerprint failure caused by the changed adapter source. Inspect the generated finding report; reject the task if any High or Medium production finding exists. Remove the obsolete `missing-inheritance` entry. Refresh only the byte offsets/source hashes of unchanged reviewed `timestamp` and `low-level-calls` findings. If a locked-ether finding appears, do not allowlist it until the analyzer confirms the only payable path rejects nonzero value; document that reasoning exactly.
+Expected before allowlist maintenance: exact-fingerprint failure caused by the changed adapter source. Inspect the generated finding report; reject the task if any High or Medium production finding exists. Remove the obsolete `missing-inheritance` entry. Refresh only the byte offsets/source hashes of unchanged reviewed `timestamp` and `low-level-calls` findings. A `locked-ether` result must not be suppressed or allowlisted: resolve the actual force-sent-balance recovery boundary and keep ignored findings visible to the gate.
 
 - [ ] **Step 6: Re-run focused assurance**
 

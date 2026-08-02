@@ -50,6 +50,7 @@ export function slitherArguments(target, reportPath, root, paths) {
     reportPath,
     "--json-types",
     "detectors",
+    "--show-ignored-findings",
     "--disable-color",
     "--fail-none",
   ];
