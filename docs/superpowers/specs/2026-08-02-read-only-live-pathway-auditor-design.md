@@ -1,6 +1,6 @@
 # Read-only live pathway auditor design
 
-Status: approved in conversation on 2026-08-02 for a keyless, non-deployment M2 increment; self-reviewed for clock trust, block-hash binding, DNS rebinding, and evidence reproducibility. Written specification awaiting final review approval.
+Status: approved in conversation on 2026-08-02 for a keyless, non-deployment M2 increment; self-reviewed for clock trust, block-hash binding, DNS rebinding, evidence reproducibility, and the separate source/destination adapter topology required by the original scope.
 
 ## Outcome
 
@@ -66,7 +66,7 @@ The versioned closed schema contains:
 - two source RPC entries and two destination RPC entries;
 - a public operator-family label and committed operator-evidence digest for each RPC entry;
 - expected chain IDs, EIDs, EndpointV2, send ULN302, receive ULN302, Executor, and Dead-DVN addresses;
-- optional source OApp, destination OApp, and destination Sentinel adapter addresses;
+- an optional all-or-null deployment record containing source OApp, destination OApp, source Sentinel adapter, and destination Sentinel adapter addresses plus their deployment transaction hashes and public constructor expectations;
 - expected source and destination peers when the OApps exist;
 - the intended source observation lag and destination observation lag, explicitly labeled observation stability settings rather than message-confirmation policy;
 - an optional proposed confirmation policy, permanently labeled `UNAPPROVED_PROJECT_POLICY` until separately reviewed;
@@ -74,11 +74,11 @@ The versioned closed schema contains:
 
 RPC URLs are used only at runtime. Output records a bounded public label, canonical origin digest, operator-family label, and evidence digest; it never prints a complete RPC URL. The implementation must not accept credential-bearing URLs or persist transport inputs.
 
-OApp and adapter fields may be explicitly `null`. This supports an honest predeployment observation of official LayerZero contracts. A null deployment field creates stable pathway blockers and can never produce a configured-pathway result.
+The complete deployment record may be explicitly `null`. This supports an honest predeployment observation of official LayerZero contracts. A null deployment record creates stable pathway blockers and can never produce a configured-pathway result. Partial deployment records are invalid because they could conceal a missing half of the pathway.
 
 ### Restricted JSON-RPC transport
 
-The transport exposes only an allowlist of read methods required by the existing source and destination verifiers, including chain identity, block headers, bytecode, and `eth_call`. It rejects batch methods not defined by the auditor, notifications, subscriptions, transaction methods, debug/admin namespaces, redirects, oversized responses, invalid JSON-RPC envelopes, mismatched response IDs, duplicate keys, and unexpected result shapes.
+The transport exposes only an allowlist of read methods required by the existing source and destination verifiers: chain identity, block headers, bytecode, `eth_call`, deployment-transaction lookup, and deployment-receipt lookup. It rejects transaction-submission and signing methods, batch methods not defined by the auditor, notifications, subscriptions, debug/admin namespaces, redirects, oversized responses, invalid JSON-RPC envelopes, mismatched response IDs, duplicate keys, and unexpected result shapes.
 
 Every request has bounded connect, response, and whole-operation deadlines plus a response-byte ceiling. HTTPS certificate verification remains enabled. Public-host validation rejects loopback, link-local, private, multicast, unspecified, and metadata-service targets. DNS results are checked before connection, the connection is pinned through a lookup boundary to a checked public address, every retry resolves and checks again, and redirects are disabled. This prevents a successful preflight lookup from becoming permission to connect to a later private address. Failures are returned as stable sanitized error codes without raw URLs, headers, bodies, host paths, or exception objects.
 
@@ -115,7 +115,9 @@ Only the reviewed state can satisfy the independence gate. The auditor does not 
 
 At the agreed block hash, the auditor reads code for every expected official and Sentinel address. It records non-emptiness, byte length, and Keccak-256 runtime-code digest from each provider. Empty code, disagreement, or a digest mismatch against an explicitly audited expected digest creates a stable blocker.
 
-An address match and nonempty code do not prove official identity. If no reviewed expected runtime-code digest exists, the result is labeled `CODE_PRESENT_IDENTITY_UNPROVEN`. Proxy or immutable-configuration analysis is not inferred from bytecode alone. Any proxy expectation must be explicit in the manifest and its resolved implementation/admin evidence must be observed through approved read-only calls.
+For each non-null Sentinel deployment, both providers must also agree on the deployment transaction and successful receipt. The receipt contract address must match the manifest, the transaction must be contract creation, and its input must contain the repository-bound compiled creation bytecode followed by ABI-decodable constructor arguments. The decoded public arguments establish the OApp Endpoint/delegate bindings and both adapters' message library, verification target, supported destination EID, complete ordered signer list, and quorum. A runtime mapping query can prove that expected signers are authorized, but it cannot prove that no extra signer exists; exact signer membership therefore requires this constructor evidence. Missing, pruned, disagreeing, or artifact-mismatched creation evidence remains blocked.
+
+An address match and nonempty code do not prove official identity. If no reviewed expected runtime-code digest or repository-bound creation evidence exists, the result is labeled `CODE_PRESENT_IDENTITY_UNPROVEN`. Proxy or immutable-configuration analysis is not inferred from bytecode alone. Any proxy expectation must be explicit in the manifest and its resolved implementation/admin evidence must be observed through approved read-only calls.
 
 ### Source pathway observation
 
@@ -128,13 +130,14 @@ When the source OApp exists, the existing historical source-path verifier is use
 - raw ULN302 confirmations;
 - required DVNs;
 - optional DVNs and threshold; and
+- source Sentinel adapter message-library binding, supported destination EID, quorum, signer authorization, and constructor-proven exact signer membership; and
 - Dead-DVN absence.
 
 Inherited/default libraries or ULN values, unsorted or duplicated DVNs, an impossible optional threshold, an unsupported EID, a missing peer, an unexpected Executor, a Dead DVN, or provider disagreement fails closed.
 
 ### Destination pathway observation
 
-When the destination OApp and adapter exist, the existing destination-path verifier is used through the dual-provider boundary to observe at the exact destination block:
+When the destination OApp and destination adapter exist, the existing destination-path verifier is used through the dual-provider boundary to observe at the exact destination block:
 
 - selected receive library and default/inherited status;
 - destination raw ULN302 configuration for the source EID;
@@ -142,7 +145,7 @@ When the destination OApp and adapter exist, the existing destination-path verif
 - Sentinel adapter destination target;
 - supported source EID;
 - adapter quorum;
-- exact signer membership and ordering; and
+- signer authorization plus constructor-proven exact signer membership and ordering; and
 - adapter runtime-code digest.
 
 The source send ULN302 and destination receive ULN302 security configuration must match for the one-way pathway. Any mismatch produces a field-specific blocker. Sentinel must not be the sole verifier: the observed topology must contain at least one separately reviewed independent DVN, and the configured threshold must not make Sentinel a hidden single point of acceptance.
@@ -201,7 +204,7 @@ Every artifact permanently contains:
 READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED
 ```
 
-Before Sentinel OApp and adapter addresses exist, the expected honest status is `BLOCKED_PATHWAY_CONFIGURATION` with explicit missing-deployment blockers, assuming the earlier gates pass.
+Before Sentinel OApp and both adapter addresses exist, the expected honest status is `BLOCKED_PATHWAY_CONFIGURATION` with explicit missing-deployment blockers, assuming the earlier gates pass.
 
 ## CLI behavior
 
@@ -253,7 +256,7 @@ Unit and contract-boundary tests prove:
 - exact-block forwarding to every code and call request;
 - provider normalization and disagreement handling;
 - operator-evidence binding without URL-based independence claims;
-- runtime-code hashing and identity states;
+- runtime-code hashing, creation-transaction/receipt binding, constructor decoding, and identity states;
 - source/destination ULN, peer, Executor, quorum, and signer comparisons;
 - Dead-DVN, default/inherited config, and sole-verifier refusal;
 - canonical output determinism, blocker precedence, and redaction;
