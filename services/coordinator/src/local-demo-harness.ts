@@ -247,6 +247,7 @@ export async function startLocalDemo(rawOptions:LocalDemoOptions):Promise<LocalD
         await coordinator.restore();await planner.reconcile();
         const deliveries=new LocalExecutionDeliveryReader(outbox,executionAttempts);
         const server=createDashboardServer(coordinator,resolve("apps/dashboard"),recovery,deliveries,{presentationMode:"LOCAL_TEST"},capability,undefined,observation);
+        server.maxRequestsPerSocket=1;
         acquire(()=>closeServer(server));
         await listen(server,appPort,options.appHost);
         const addressInfo=server.address();
