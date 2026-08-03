@@ -14,6 +14,7 @@ export interface AuditContractArtifact{
   creationBytecode:string;
   deployedBytecode:string;
   immutableReferences:Record<string,AuditImmutableReference[]>;
+  abiSha256:string;
   creationBytecodeSha256:string;
   deployedBytecodeSha256:string;
   immutableReferencesSha256:string;
@@ -32,17 +33,23 @@ export interface AuditAdapterExpectation{
 export type AuditConstructorArguments=
   {endpoint:string;delegate:string}|
   {messageLib:string;verificationTarget:string;supportedDstEid:number;signers:[string,string,string,string,string];quorum:string};
+export interface AuditProviderIdentity{label:string;originSha256:string;operatorFamily:string}
 
 export interface VerifyDeploymentEvidenceInput{
   artifact:AuditContractArtifact;
+  buildManifestText:string;
   deployment:AuditOAppDeployment|AuditAdapterDeployment;
   clients:readonly[ReadOnlyRpcClient,ReadOnlyRpcClient];
   observationBlock:PinnedBlockObservation;
+  expectedChainId:11155111|421614;
   expected:AuditOAppExpectation|AuditAdapterExpectation;
 }
 export interface VerifiedDeploymentEvidence{
   contractName:AuditContractName;
+  chainId:string;
   address:string;
+  deployer:string;
+  providerIdentities:[AuditProviderIdentity,AuditProviderIdentity];
   deploymentTxHash:string;
   deploymentBlockNumber:string;
   deploymentBlockHash:string;
@@ -55,7 +62,7 @@ export interface VerifiedDeploymentEvidence{
 }
 
 interface CanonicalTransaction{
-  hash:string;blockHash:string;blockNumber:bigint;from:string;input:string;
+  hash:string;chainId:bigint;blockHash:string;blockNumber:bigint;from:string;input:string;
 }
 interface CanonicalReceipt{
   transactionHash:string;blockHash:string;blockNumber:bigint;status:bigint;contractAddress:string;
@@ -64,6 +71,15 @@ interface ProviderDeploymentEvidence{
   transaction:CanonicalTransaction;
   receipt:CanonicalReceipt;
   runtimeCode:string;
+}
+interface TrustedBuildContract{
+  name:AuditContractName;
+  source:string;
+  sourceSha256:string;
+  abiSha256:string;
+  creationBytecodeSha256:string;
+  deployedBytecodeSha256:string;
+  immutableReferencesSha256:string;
 }
 
 const coder=AbiCoder.defaultAbiCoder();
@@ -93,6 +109,7 @@ export function parseAuditContractArtifact(text:string,expectedName:AuditContrac
     rejectSecretKeys(parsed,new Set<object>());
     const root=plainRecord(parsed);exactKeys(root,["abi","evm"]);
     const abi=denseArray(field(root,"abi"));
+    const abiText=JSON.stringify(abi);if(typeof abiText!=="string")failure();
     const constructorInputs=parseAbi(abi,expectedName);
     const evm=plainRecord(field(root,"evm"));exactKeys(evm,["bytecode","deployedBytecode"]);
     const bytecode=plainRecord(field(evm,"bytecode"));exactKeys(bytecode,["object"]);
@@ -100,13 +117,16 @@ export function parseAuditContractArtifact(text:string,expectedName:AuditContrac
     exactKeys(deployed,["object","immutableReferences"]);
     const creationBytecode=bytecodeValue(field(bytecode,"object"));
     const deployedBytecode=bytecodeValue(field(deployed,"object"));
-    const immutableReferences=immutableReferenceValue(field(deployed,"immutableReferences"));
+    const immutableReferences=immutableReferenceValue(
+      field(deployed,"immutableReferences"),deployedBytecode.length/2
+    );
     return{
       name:expectedName,
       constructorInputs,
       creationBytecode,
       deployedBytecode,
       immutableReferences,
+      abiSha256:sha256(abiText),
       creationBytecodeSha256:sha256(Buffer.from(creationBytecode,"hex")),
       deployedBytecodeSha256:sha256(Buffer.from(deployedBytecode,"hex")),
       immutableReferencesSha256:sha256(canonicalJson(immutableReferences))
@@ -120,11 +140,20 @@ export function parseAuditContractArtifact(text:string,expectedName:AuditContrac
 export async function verifyDeploymentEvidence(input:VerifyDeploymentEvidenceInput):Promise<VerifiedDeploymentEvidence>{
   try{
     const root=plainRecord(input);
-    exactKeys(root,["artifact","deployment","clients","observationBlock","expected"]);
+    exactKeys(root,[
+      "artifact","buildManifestText","deployment","clients","observationBlock","expectedChainId","expected"
+    ]);
     const artifact=checkedArtifact(field(root,"artifact"));
-    const clients=checkedClients(field(root,"clients"));
+    const trustedBuild=trustedBuildContract(field(root,"buildManifestText"),artifact.name);
+    if(artifact.abiSha256!==trustedBuild.abiSha256||
+      artifact.creationBytecodeSha256!==trustedBuild.creationBytecodeSha256||
+      artifact.deployedBytecodeSha256!==trustedBuild.deployedBytecodeSha256||
+      artifact.immutableReferencesSha256!==trustedBuild.immutableReferencesSha256)failure();
+    const expectedChainId=pathwayChainId(field(root,"expectedChainId"));
+    const checked=checkedClients(field(root,"clients")),clients=checked.clients;
     const blockReference=eip1898(field(root,"observationBlock")as PinnedBlockObservation);
-    const observationNumber=observationBlockNumber(field(root,"observationBlock"));
+    const observation=observationIdentity(field(root,"observationBlock"));
+    if(observation.chainId!==expectedChainId)failure();
     const policy=deploymentPolicy(artifact.name,field(root,"deployment"),field(root,"expected"));
     const providerEvidence=await Promise.all(clients.map(async client=>{
       const transaction=transactionValue(await client.call("eth_getTransactionByHash",[policy.deploymentTxHash]));
@@ -135,12 +164,14 @@ export async function verifyDeploymentEvidence(input:VerifyDeploymentEvidenceInp
     const first=providerEvidence[0]!,second=providerEvidence[1]!;
     if(!sameProviderEvidence(first,second))failure();
     if(first.transaction.hash!==policy.deploymentTxHash||
+      first.transaction.chainId!==BigInt(expectedChainId)||
       first.receipt.transactionHash!==policy.deploymentTxHash||
       first.receipt.status!==1n||
       first.receipt.contractAddress!==policy.address||
       first.transaction.blockNumber!==first.receipt.blockNumber||
       first.transaction.blockHash!==first.receipt.blockHash||
-      first.receipt.blockNumber>observationNumber)failure();
+      first.receipt.blockNumber>observation.blockNumber)failure();
+    assertRuntimeMatchesArtifact(artifact,first.runtimeCode);
     const inputBytes=first.transaction.input.slice(2);
     if(!inputBytes.startsWith(artifact.creationBytecode))failure();
     const suffix=inputBytes.slice(artifact.creationBytecode.length);
@@ -148,7 +179,10 @@ export async function verifyDeploymentEvidence(input:VerifyDeploymentEvidenceInp
     const constructorArguments=decodeConstructor(artifact,suffix,policy);
     return{
       contractName:artifact.name,
+      chainId:String(expectedChainId),
       address:policy.address,
+      deployer:first.transaction.from,
+      providerIdentities:checked.identities,
       deploymentTxHash:policy.deploymentTxHash,
       deploymentBlockNumber:first.receipt.blockNumber.toString(),
       deploymentBlockHash:first.receipt.blockHash,
@@ -219,31 +253,37 @@ function parseParameters(value:unknown,eventInput:boolean):AbiParameter[]{
   });
 }
 
-function immutableReferenceValue(value:unknown):Record<string,AuditImmutableReference[]>{
+function immutableReferenceValue(value:unknown,byteLength:number):Record<string,AuditImmutableReference[]>{
   const root=plainRecord(value),result:Record<string,AuditImmutableReference[]>={};
+  const spans:AuditImmutableReference[]=[];
   for(const sourceId of Object.keys(root).sort()){
     if(!/^(?:0|[1-9][0-9]*)$/.test(sourceId))failure();
     const references=denseArray(field(root,sourceId));if(references.length===0)failure();
     result[sourceId]=references.map(raw=>{
       const reference=plainRecord(raw);exactKeys(reference,["start","length"]);
       const start=uint(field(reference,"start"),true),length=uint(field(reference,"length"),false);
+      if(length!==32||start>byteLength-length)failure();
+      spans.push({start,length});
       return{start,length};
     });
   }
+  spans.sort((left,right)=>left.start-right.start||left.length-right.length);
+  if(spans.some((span,index)=>index>0&&span.start<spans[index-1]!.start+spans[index-1]!.length))failure();
   return result;
 }
 
 function checkedArtifact(value:unknown):AuditContractArtifact{
   const artifact=plainRecord(value);exactKeys(artifact,[
     "name","constructorInputs","creationBytecode","deployedBytecode","immutableReferences",
-    "creationBytecodeSha256","deployedBytecodeSha256","immutableReferencesSha256"
+    "abiSha256","creationBytecodeSha256","deployedBytecodeSha256","immutableReferencesSha256"
   ]);
   const name=field(artifact,"name");
   if(name!=="SentinelDVNAdapter"&&name!=="TreasuryPolicyOApp")failure();
   const constructorInputs=parseConstructorInputs(field(artifact,"constructorInputs"),name);
   const creationBytecode=bytecodeValue(field(artifact,"creationBytecode"));
   const deployedBytecode=bytecodeValue(field(artifact,"deployedBytecode"));
-  const immutableReferences=immutableReferenceValue(field(artifact,"immutableReferences"));
+  const immutableReferences=immutableReferenceValue(field(artifact,"immutableReferences"),deployedBytecode.length/2);
+  const abiSha256=digest(field(artifact,"abiSha256"));
   const creationBytecodeSha256=digest(field(artifact,"creationBytecodeSha256"));
   const deployedBytecodeSha256=digest(field(artifact,"deployedBytecodeSha256"));
   const immutableReferencesSha256=digest(field(artifact,"immutableReferencesSha256"));
@@ -252,8 +292,43 @@ function checkedArtifact(value:unknown):AuditContractArtifact{
     immutableReferencesSha256!==sha256(canonicalJson(immutableReferences)))failure();
   return{
     name,constructorInputs,creationBytecode,deployedBytecode,immutableReferences,
-    creationBytecodeSha256,deployedBytecodeSha256,immutableReferencesSha256
+    abiSha256,creationBytecodeSha256,deployedBytecodeSha256,immutableReferencesSha256
   };
+}
+
+function trustedBuildContract(value:unknown,name:AuditContractName):TrustedBuildContract{
+  if(typeof value!=="string"||value.length===0||Buffer.byteLength(value,"utf8")>2_097_152)failure();
+  const parsed=parseJsonDocument(value);rejectSecretKeys(parsed,new Set<object>());
+  const root=plainRecord(parsed);exactKeys(root,["schemaVersion","compiler","contracts"]);
+  if(field(root,"schemaVersion")!==2)failure();
+  const compiler=plainRecord(field(root,"compiler"));exactKeys(compiler,["version","evmVersion","optimizer"]);
+  const optimizer=plainRecord(field(compiler,"optimizer"));exactKeys(optimizer,["enabled","runs"]);
+  if(field(compiler,"version")!=="0.8.30+commit.73712a01.Emscripten.clang"||
+    field(compiler,"evmVersion")!=="shanghai"||field(optimizer,"enabled")!==true||
+    field(optimizer,"runs")!==200)failure();
+  const rawContracts=denseArray(field(root,"contracts"));if(rawContracts.length!==2)failure();
+  const expected=[
+    ["SentinelDVNAdapter","contracts/src/SentinelDVNAdapter.sol"],
+    ["TreasuryPolicyOApp","contracts/src/TreasuryPolicyOApp.sol"]
+  ]as const;
+  const contracts=rawContracts.map((raw,index)=>{
+    const contract=plainRecord(raw);exactKeys(contract,[
+      "name","source","sourceSha256","abiSha256","creationBytecodeSha256",
+      "deployedBytecodeSha256","immutableReferencesSha256"
+    ]);
+    const wanted=expected[index],contractName=field(contract,"name"),source=field(contract,"source");
+    if(!wanted||contractName!==wanted[0]||source!==wanted[1])failure();
+    return{
+      name:contractName,
+      source,
+      sourceSha256:nonzeroDigest(field(contract,"sourceSha256")),
+      abiSha256:nonzeroDigest(field(contract,"abiSha256")),
+      creationBytecodeSha256:nonzeroDigest(field(contract,"creationBytecodeSha256")),
+      deployedBytecodeSha256:nonzeroDigest(field(contract,"deployedBytecodeSha256")),
+      immutableReferencesSha256:nonzeroDigest(field(contract,"immutableReferencesSha256"))
+    }as TrustedBuildContract;
+  });
+  const selected=contracts.find(contract=>contract.name===name);if(!selected)failure();return selected;
 }
 
 function parseConstructorInputs(value:unknown,name:AuditContractName):AuditConstructorInput[]{
@@ -323,6 +398,7 @@ function transactionValue(value:unknown):CanonicalTransaction{
   if(to!==null)failure();
   return{
     hash:transactionHash(field(transaction,"hash")),
+    chainId:quantity(field(transaction,"chainId")),
     blockHash:nonzeroHash(field(transaction,"blockHash")),
     blockNumber:quantity(field(transaction,"blockNumber")),
     from:decodedAddress(field(transaction,"from")),
@@ -343,6 +419,7 @@ function runtimeCodeValue(value:unknown):string{return data(value,false)}
 
 function sameProviderEvidence(left:ProviderDeploymentEvidence,right:ProviderDeploymentEvidence):boolean{
   return left.transaction.hash===right.transaction.hash&&
+    left.transaction.chainId===right.transaction.chainId&&
     left.transaction.blockHash===right.transaction.blockHash&&
     left.transaction.blockNumber===right.transaction.blockNumber&&
     left.transaction.from===right.transaction.from&&
@@ -355,15 +432,48 @@ function sameProviderEvidence(left:ProviderDeploymentEvidence,right:ProviderDepl
     left.runtimeCode===right.runtimeCode;
 }
 
-function checkedClients(value:unknown):readonly[ReadOnlyRpcClient,ReadOnlyRpcClient]{
+function checkedClients(value:unknown):{
+  clients:readonly[ReadOnlyRpcClient,ReadOnlyRpcClient];
+  identities:[AuditProviderIdentity,AuditProviderIdentity];
+}{
   if(!Array.isArray(value)||value.length!==2||!value.every(client=>
     !!client&&typeof client==="object"&&typeof client.call==="function"&&typeof client.descriptor==="function"))failure();
-  return value as[ReadOnlyRpcClient,ReadOnlyRpcClient];
+  if(value[0]===value[1])failure();
+  const clients=value as[ReadOnlyRpcClient,ReadOnlyRpcClient];
+  const identities=clients.map(client=>providerIdentity(client.descriptor()))as[AuditProviderIdentity,AuditProviderIdentity];
+  if(identities[0].label===identities[1].label||
+    identities[0].originSha256===identities[1].originSha256)failure();
+  return{clients,identities};
 }
-function observationBlockNumber(value:unknown):bigint{
-  const record=plainRecord(value),blockNumber=field(record,"blockNumber");
-  if(typeof blockNumber!=="string"||!(/^(?:0|[1-9][0-9]*)$/).test(blockNumber))failure();
-  return BigInt(blockNumber);
+function providerIdentity(value:unknown):AuditProviderIdentity{
+  const identity=plainRecord(value);exactKeys(identity,["label","originSha256","operatorFamily"]);
+  return{
+    label:text(field(identity,"label")),
+    originSha256:nonzeroDigest(field(identity,"originSha256")),
+    operatorFamily:text(field(identity,"operatorFamily"))
+  };
+}
+function observationIdentity(value:unknown):{chainId:number;blockNumber:bigint}{
+  const record=plainRecord(value),chainId=field(record,"chainId"),blockNumber=field(record,"blockNumber");
+  if(typeof chainId!=="string"||!(/^[1-9][0-9]*$/).test(chainId)||
+    typeof blockNumber!=="string"||!(/^(?:0|[1-9][0-9]*)$/).test(blockNumber))failure();
+  const parsedChainId=Number(chainId);
+  if(!Number.isSafeInteger(parsedChainId))failure();
+  return{chainId:parsedChainId,blockNumber:BigInt(blockNumber)};
+}
+function pathwayChainId(value:unknown):11155111|421614{
+  if(value!==11155111&&value!==421614)failure();return value;
+}
+function assertRuntimeMatchesArtifact(artifact:AuditContractArtifact,runtimeCode:string):void{
+  const compiled=Buffer.from(artifact.deployedBytecode,"hex"),observed=Buffer.from(runtimeCode.slice(2),"hex");
+  if(compiled.length!==observed.length)failure();
+  for(const references of Object.values(artifact.immutableReferences)){
+    for(const reference of references){
+      compiled.fill(0,reference.start,reference.start+reference.length);
+      observed.fill(0,reference.start,reference.start+reference.length);
+    }
+  }
+  if(!compiled.equals(observed))failure();
 }
 function signerTuple(value:unknown,strict=true):[string,string,string,string,string]{
   if(!Array.isArray(value)||value.length!==5)failure();
@@ -399,6 +509,9 @@ function bytecodeValue(value:unknown):string{
 }
 function digest(value:unknown):string{
   if(typeof value!=="string"||!/^[0-9a-f]{64}$/.test(value))failure();return value;
+}
+function nonzeroDigest(value:unknown):string{
+  const parsed=digest(value);if(/^0{64}$/.test(parsed))failure();return parsed;
 }
 function uint(value:unknown,allowZero:boolean):number{
   if(typeof value!=="number"||!Number.isSafeInteger(value)||value<0||(!allowZero&&value===0))failure();return value;

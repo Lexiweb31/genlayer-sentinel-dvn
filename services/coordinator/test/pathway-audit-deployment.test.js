@@ -13,7 +13,13 @@ const address=value=>getAddress(`0x${value.toString(16).padStart(40,"0")}`);
 const hash=value=>`0x${value.repeat(64)}`;
 const sha256Hex=value=>createHash("sha256").update(Buffer.from(value,"hex")).digest("hex");
 const creationBytecode="60006000556001600055";
-const runtimeCode="0x600160005260206000f3";
+const deployedBytecode="60".repeat(80);
+const runtimeCode=`0x${"60".repeat(4)}${"aa".repeat(32)}${"60".repeat(4)}${"bb".repeat(32)}${"60".repeat(8)}`;
+const creationBytecodeSha256="beb2f62ad4500955d53be414966b3e335ff7ad59a65e0220dc8f4c725860af52";
+const deployedBytecodeSha256="0f5fccb76795d77fa724ca02c519df211094217f36540682225e7847462e37dd";
+const immutableReferencesSha256="09344872e6b3261e86de513c6a0cd43a568a4aefbbdb0a39d65c161c27f107ee";
+const adapterAbiSha256="3e64eccbe458d8fa543fab64894d135f01fb03ba6774be9d69e3cad9a22efdc6";
+const oappAbiSha256="2ccd78bf241249ca715916f8525f3191a2b3facdfd34eb1442ac2131effb7a9c";
 const deploymentTxHash=hash("a");
 const deploymentAddress=address(0x901);
 const deployer=address(0x902);
@@ -46,13 +52,32 @@ function artifact(name){
     evm:{
       bytecode:{object:creationBytecode},
       deployedBytecode:{
-        object:"600160005260206000f3",
-        immutableReferences:name==="SentinelDVNAdapter"?{
-          "18":[{start:1,length:20}],
-          "19":[{start:22,length:32}]
-        }:{}
+        object:deployedBytecode,
+        immutableReferences:{
+          "18":[{start:4,length:32}],
+          "19":[{start:40,length:32}]
+        }
       }
     }
+  };
+}
+
+function buildManifest(){
+  const contract=(name,source,sourceSha256,abiSha256)=>({
+    name,source,sourceSha256,abiSha256,
+    creationBytecodeSha256,deployedBytecodeSha256,immutableReferencesSha256
+  });
+  return{
+    schemaVersion:2,
+    compiler:{
+      version:"0.8.30+commit.73712a01.Emscripten.clang",
+      evmVersion:"shanghai",
+      optimizer:{enabled:true,runs:200}
+    },
+    contracts:[
+      contract("SentinelDVNAdapter","contracts/src/SentinelDVNAdapter.sol","1".repeat(64),adapterAbiSha256),
+      contract("TreasuryPolicyOApp","contracts/src/TreasuryPolicyOApp.sol","2".repeat(64),oappAbiSha256)
+    ]
   };
 }
 
@@ -84,6 +109,7 @@ function oappSuffix(overrides={}){
 function transaction(input){
   return{
     hash:deploymentTxHash,
+    chainId:"0xaa36a7",
     blockHash,
     blockNumber:"0x64",
     from:deployer,
@@ -102,7 +128,10 @@ function receipt(){
   };
 }
 
-function client({tx,txReceipt,code=runtimeCode}={}){
+function client({
+  tx,txReceipt,code=runtimeCode,
+  identity={label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}
+}={}){
   const calls=[];
   return{
     calls,
@@ -114,7 +143,7 @@ function client({tx,txReceipt,code=runtimeCode}={}){
         if(method==="eth_getCode")return code;
         throw new Error("unexpected read-only call");
       },
-      descriptor(){return{label:"fixture",originSha256:"1".repeat(64),operatorFamily:"fixture"}}
+      descriptor(){return structuredClone(identity)}
     }
   };
 }
@@ -124,19 +153,23 @@ function adapterInput(overrides={}){
   const first=client({
     tx:overrides.firstTx??transaction(`${creationBytecode}${suffix}`),
     txReceipt:overrides.firstReceipt??receipt(),
-    code:overrides.firstCode??runtimeCode
+    code:overrides.firstCode??runtimeCode,
+    identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}
   });
   const second=client({
     tx:overrides.secondTx??transaction(`${creationBytecode}${suffix}`),
     txReceipt:overrides.secondReceipt??receipt(),
-    code:overrides.secondCode??runtimeCode
+    code:overrides.secondCode??runtimeCode,
+    identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}
   });
   return{
     input:{
       artifact:parseAuditContractArtifact(JSON.stringify(artifact("SentinelDVNAdapter")),"SentinelDVNAdapter"),
+      buildManifestText:JSON.stringify(buildManifest()),
       deployment:{address:deploymentAddress,deploymentTxHash},
       clients:[first.value,second.value],
       observationBlock:observation(),
+      expectedChainId:11155111,
       expected:{
         messageLib,verificationTarget,supportedDstEid:40231,
         signers:sortedSigners,quorum:3
@@ -156,12 +189,13 @@ test("parses a closed repository artifact and returns detached provenance",()=>{
   assert.equal(parsed.name,"SentinelDVNAdapter");
   assert.equal(parsed.creationBytecode,creationBytecode);
   assert.equal(parsed.creationBytecodeSha256,sha256Hex(creationBytecode));
+  assert.equal(parsed.abiSha256,adapterAbiSha256);
   assert.match(parsed.deployedBytecodeSha256,/^[0-9a-f]{64}$/);
   assert.match(parsed.immutableReferencesSha256,/^[0-9a-f]{64}$/);
   raw.abi[0].inputs[0].name="changed";
   raw.evm.deployedBytecode.immutableReferences["18"][0].length=1;
   assert.equal(parsed.constructorInputs[0].name,"lib");
-  assert.equal(parsed.immutableReferences["18"][0].length,20);
+  assert.equal(parsed.immutableReferences["18"][0].length,32);
 });
 
 test("rejects malformed, open, secret-bearing, or wrong-constructor artifacts",()=>{
@@ -172,6 +206,9 @@ test("rejects malformed, open, secret-bearing, or wrong-constructor artifacts",(
     value=>{value.evm.bytecode.object="0x6000"},
     value=>{value.evm.deployedBytecode.object=""},
     value=>{value.evm.deployedBytecode.immutableReferences["18"][0].length=0},
+    value=>{value.evm.deployedBytecode.immutableReferences["18"][0]={start:49,length:32}},
+    value=>{value.evm.deployedBytecode.immutableReferences["19"][0]={start:35,length:32}},
+    value=>{value.evm.deployedBytecode.immutableReferences["19"][0]={start:40,length:31}},
     value=>{value.abi[0].inputs.pop()},
     value=>{value.abi[0].inputs[0].extra=true}
   ];
@@ -205,9 +242,15 @@ test("proves exact adapter creation, receipt, runtime code, and constructor memb
   assert.equal(result.contractName,"SentinelDVNAdapter");
   assert.equal(result.address,deploymentAddress);
   assert.equal(result.deploymentTxHash,deploymentTxHash);
+  assert.equal(result.chainId,"11155111");
+  assert.equal(result.deployer,deployer);
+  assert.deepEqual(result.providerIdentities,[
+    {label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"},
+    {label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}
+  ]);
   assert.equal(result.deploymentBlockNumber,"100");
   assert.equal(result.deploymentBlockHash,blockHash);
-  assert.equal(result.creationBytecodeSha256,sha256Hex(creationBytecode));
+  assert.equal(result.creationBytecodeSha256,creationBytecodeSha256);
   assert.match(result.transactionInputSha256,/^[0-9a-f]{64}$/);
   assert.match(result.runtimeCodeKeccak256,/^0x[0-9a-f]{64}$/);
   assert.equal(JSON.stringify(result).includes(transaction(`${creationBytecode}${adapterSuffix()}`).input),false);
@@ -222,12 +265,18 @@ test("proves exact adapter creation, receipt, runtime code, and constructor memb
 });
 
 test("decodes and verifies the exact OApp Endpoint and manifest delegate",async()=>{
-  const inputSuffix=oappSuffix(),first=client({tx:transaction(`${creationBytecode}${inputSuffix}`),txReceipt:receipt()}),
-    second=client({tx:transaction(`${creationBytecode}${inputSuffix}`),txReceipt:receipt()});
+  const inputSuffix=oappSuffix(),first=client({
+    tx:transaction(`${creationBytecode}${inputSuffix}`),txReceipt:receipt(),
+    identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}
+  }),second=client({
+    tx:transaction(`${creationBytecode}${inputSuffix}`),txReceipt:receipt(),
+    identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}
+  });
   const input={
     artifact:parseAuditContractArtifact(JSON.stringify(artifact("TreasuryPolicyOApp")),"TreasuryPolicyOApp"),
+    buildManifestText:JSON.stringify(buildManifest()),
     deployment:{address:deploymentAddress,deploymentTxHash,delegate},
-    clients:[first.value,second.value],observationBlock:observation(),expected:{endpoint}
+    clients:[first.value,second.value],observationBlock:observation(),expectedChainId:11155111,expected:{endpoint}
   };
   const result=await verifyDeploymentEvidence(input);
   assert.deepEqual(result.constructorArguments,{endpoint,delegate});
@@ -236,8 +285,8 @@ test("decodes and verifies the exact OApp Endpoint and manifest delegate",async(
     await assert.rejects(verifyDeploymentEvidence({
       ...input,
       clients:[
-        client({tx:changed,txReceipt:receipt()}).value,
-        client({tx:changed,txReceipt:receipt()}).value
+        client({tx:changed,txReceipt:receipt(),identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}}).value,
+        client({tx:changed,txReceipt:receipt(),identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}}).value
       ]
     }),deploymentFailure);
   }
@@ -261,6 +310,33 @@ test("rejects invalid creation transaction and receipt evidence",async()=>{
   for(const[name,options,mutate]of cases){
     mutate(options);
     await assert.rejects(verifyDeploymentEvidence(adapterInput(options).input),deploymentFailure,name);
+  }
+});
+
+test("rejects equal-length runtime drift outside immutable spans",async()=>{
+  const drift=Buffer.from(runtimeCode.slice(2),"hex");drift[0]=0x61;
+  await assert.rejects(verifyDeploymentEvidence(adapterInput({
+    firstCode:`0x${drift.toString("hex")}`,secondCode:`0x${drift.toString("hex")}`
+  }).input),deploymentFailure);
+});
+
+test("binds the artifact to the exact trusted schema-v2 manifest entry",async()=>{
+  const cases=[
+    value=>{value.schemaVersion=1},
+    value=>{value.compiler.version="0.8.29+commit.invalid"},
+    value=>{value.compiler.evmVersion="cancun"},
+    value=>{value.compiler.optimizer.runs=201},
+    value=>{value.contracts[0].abiSha256="9".repeat(64)},
+    value=>{value.contracts[0].creationBytecodeSha256="9".repeat(64)},
+    value=>{value.contracts[0].deployedBytecodeSha256="9".repeat(64)},
+    value=>{value.contracts[0].immutableReferencesSha256="9".repeat(64)},
+    value=>{value.contracts.reverse()},
+    value=>{value.contracts[0].extra=true}
+  ];
+  for(const mutate of cases){
+    const fixture=adapterInput(),manifest=buildManifest();mutate(manifest);
+    fixture.input.buildManifestText=JSON.stringify(manifest);
+    await assert.rejects(verifyDeploymentEvidence(fixture.input),deploymentFailure);
   }
 });
 
@@ -290,4 +366,95 @@ test("rejects partial or open deployment metadata and expected policy",async()=>
     const input=adapterInput().input;mutate(input);
     await assert.rejects(verifyDeploymentEvidence(input),deploymentFailure);
   }
+});
+
+test("review probe rejects a self-hashed replacement artifact without trusted provenance",async()=>{
+  const fixture=adapterInput(),replacement=artifact("SentinelDVNAdapter");
+  replacement.evm.bytecode.object="6001";
+  replacement.evm.deployedBytecode.object="6002";
+  replacement.evm.deployedBytecode.immutableReferences={};
+  fixture.input.artifact=parseAuditContractArtifact(JSON.stringify(replacement),"SentinelDVNAdapter");
+  const replacedInput=transaction(`6001${adapterSuffix()}`);
+  fixture.input.clients=[
+    client({tx:replacedInput,txReceipt:receipt(),code:"0xdeadbeef",identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}}).value,
+    client({tx:replacedInput,txReceipt:receipt(),code:"0xdeadbeef",identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}}).value
+  ];
+  await assert.rejects(verifyDeploymentEvidence(fixture.input),deploymentFailure);
+});
+
+test("review probe rejects provider-equal runtime code unrelated to the compiled artifact",async()=>{
+  const fixture=adapterInput({firstCode:"0xdeadbeef",secondCode:"0xdeadbeef"});
+  await assert.rejects(verifyDeploymentEvidence(fixture.input),deploymentFailure);
+});
+
+test("review probe rejects two wrappers carrying the same provider identity",async()=>{
+  const fixture=adapterInput(),aliased={
+    call:(method,params)=>fixture.first.value.call(method,params),
+    descriptor:()=>fixture.first.value.descriptor()
+  };
+  fixture.input.clients=[fixture.first.value,aliased];
+  await assert.rejects(verifyDeploymentEvidence(fixture.input),deploymentFailure);
+});
+
+test("rejects repeated client objects and repeated provider origins",async()=>{
+  const repeatedClient=adapterInput();
+  repeatedClient.input.clients=[repeatedClient.first.value,repeatedClient.first.value];
+  await assert.rejects(verifyDeploymentEvidence(repeatedClient.input),deploymentFailure);
+
+  const repeatedOrigin=adapterInput(),suffix=adapterSuffix(),tx=transaction(`${creationBytecode}${suffix}`);
+  repeatedOrigin.input.clients=[
+    client({tx,txReceipt:receipt(),identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"operator-a"}}).value,
+    client({tx,txReceipt:receipt(),identity:{label:"fixture-b",originSha256:"1".repeat(64),operatorFamily:"operator-b"}}).value
+  ];
+  await assert.rejects(verifyDeploymentEvidence(repeatedOrigin.input),deploymentFailure);
+});
+
+test("review probe rejects a mismatched observation chain without transaction chain proof",async()=>{
+  const fixture=adapterInput();fixture.input.observationBlock.chainId="1";
+  await assert.rejects(verifyDeploymentEvidence(fixture.input),deploymentFailure);
+});
+
+test("requires transaction chain proof for only the two approved pathway chains",async()=>{
+  const cases=[
+    fixture=>{
+      const first=transaction(`${creationBytecode}${adapterSuffix()}`),second=structuredClone(first);
+      delete first.chainId;delete second.chainId;
+      fixture.input.clients=[
+        client({tx:first,txReceipt:receipt(),identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}}).value,
+        client({tx:second,txReceipt:receipt(),identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}}).value
+      ];
+    },
+    fixture=>{
+      const first=transaction(`${creationBytecode}${adapterSuffix()}`),second=structuredClone(first);
+      first.chainId="0x66eee";second.chainId="0x66eee";
+      fixture.input.clients=[
+        client({tx:first,txReceipt:receipt(),identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}}).value,
+        client({tx:second,txReceipt:receipt(),identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}}).value
+      ];
+    },
+    fixture=>{
+      const first=transaction(`${creationBytecode}${adapterSuffix()}`),second=structuredClone(first);
+      first.chainId="0x1";second.chainId="0x1";
+      fixture.input.expectedChainId=1;fixture.input.observationBlock.chainId="1";
+      fixture.input.clients=[
+        client({tx:first,txReceipt:receipt(),identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}}).value,
+        client({tx:second,txReceipt:receipt(),identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}}).value
+      ];
+    }
+  ];
+  for(const mutate of cases){
+    const fixture=adapterInput();mutate(fixture);
+    await assert.rejects(verifyDeploymentEvidence(fixture.input),deploymentFailure);
+  }
+});
+
+test("accepts exact transaction and observation proof for Arbitrum Sepolia",async()=>{
+  const fixture=adapterInput(),first=transaction(`${creationBytecode}${adapterSuffix()}`),second=structuredClone(first);
+  first.chainId="0x66eee";second.chainId="0x66eee";
+  fixture.input.expectedChainId=421614;fixture.input.observationBlock.chainId="421614";
+  fixture.input.clients=[
+    client({tx:first,txReceipt:receipt(),identity:{label:"fixture-a",originSha256:"1".repeat(64),operatorFamily:"fixture-a"}}).value,
+    client({tx:second,txReceipt:receipt(),identity:{label:"fixture-b",originSha256:"2".repeat(64),operatorFamily:"fixture-b"}}).value
+  ];
+  assert.equal((await verifyDeploymentEvidence(fixture.input)).chainId,"421614");
 });
