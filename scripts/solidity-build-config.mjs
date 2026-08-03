@@ -78,6 +78,8 @@ export function contractBuildManifest(input) {
         "sourceText",
         "abi",
         "creationBytecode",
+        "deployedBytecode",
+        "immutableReferences",
       ]);
       const expected = productionContracts[index];
       if (
@@ -87,10 +89,15 @@ export function contractBuildManifest(input) {
         typeof contract.sourceText !== "string" ||
         !Array.isArray(contract.abi) ||
         typeof contract.creationBytecode !== "string" ||
-        !/^(?:[0-9a-f]{2})+$/.test(contract.creationBytecode)
+        !/^(?:[0-9a-f]{2})+$/.test(contract.creationBytecode) ||
+        typeof contract.deployedBytecode !== "string" ||
+        !/^(?:[0-9a-f]{2})+$/.test(contract.deployedBytecode)
       ) {
         invalidManifest();
       }
+      const immutableReferences = checkedImmutableReferences(
+        contract.immutableReferences,
+      );
       const abiText = JSON.stringify(contract.abi);
       if (typeof abiText !== "string") invalidManifest();
       return {
@@ -101,10 +108,16 @@ export function contractBuildManifest(input) {
         creationBytecodeSha256: sha256(
           Buffer.from(contract.creationBytecode, "hex"),
         ),
+        deployedBytecodeSha256: sha256(
+          Buffer.from(contract.deployedBytecode, "hex"),
+        ),
+        immutableReferencesSha256: sha256(
+          Buffer.from(canonicalJson(immutableReferences), "utf8"),
+        ),
       };
     });
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       compiler: {
         version: solidityBuildConfig.solcJsVersion,
         evmVersion: solidityBuildConfig.evmVersion,
@@ -116,6 +129,54 @@ export function contractBuildManifest(input) {
     if (error?.message === "invalid contract build manifest") throw error;
     invalidManifest();
   }
+}
+
+function checkedImmutableReferences(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalidManifest();
+  }
+  const result = {};
+  for (const sourceId of Object.keys(value).sort()) {
+    if (!/^(?:0|[1-9][0-9]*)$/.test(sourceId)) invalidManifest();
+    const references = value[sourceId];
+    if (!Array.isArray(references) || references.length === 0) {
+      invalidManifest();
+    }
+    result[sourceId] = references.map((reference) => {
+      exactKeys(reference, ["start", "length"]);
+      if (
+        !Number.isSafeInteger(reference.start) ||
+        reference.start < 0 ||
+        !Number.isSafeInteger(reference.length) ||
+        reference.length < 1
+      ) {
+        invalidManifest();
+      }
+      return { start: reference.start, length: reference.length };
+    });
+  }
+  return result;
+}
+
+function canonicalJson(value) {
+  return `${canonicalEncode(value)}\n`;
+}
+
+function canonicalEncode(value) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) invalidManifest();
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalEncode).join(",")}]`;
+  }
+  if (!value || typeof value !== "object") invalidManifest();
+  return `{${Object.keys(value).sort().map((key) =>
+    `${JSON.stringify(key)}:${canonicalEncode(value[key])}`,
+  ).join(",")}}`;
 }
 
 function exactKeys(value, expected) {

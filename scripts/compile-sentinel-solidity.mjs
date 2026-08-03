@@ -40,7 +40,12 @@ export function compileSentinelSolidity(root){
   assertSolcJsVersion(solc.version());
   const input={
     language:"Solidity",sources,
-    settings:compilationSettings({"*":{"*":["abi","evm.bytecode.object"]}})
+    settings:compilationSettings({"*":{"*":[
+      "abi",
+      "evm.bytecode.object",
+      "evm.deployedBytecode.object",
+      "evm.deployedBytecode.immutableReferences"
+    ]}})
   };
   const output=JSON.parse(solc.compile(JSON.stringify(input),{import:findImports}));
   const errors=(output.errors??[]).filter(entry=>entry.severity==="error");
@@ -53,7 +58,10 @@ export function compileSentinelSolidity(root){
     if(!artifact)throw new Error("production contract artifact missing");
     return{
       name,source:file,sourceText:sources[file].content,
-      abi:artifact.abi,creationBytecode:artifact.evm.bytecode.object
+      abi:artifact.abi,
+      creationBytecode:artifact.evm.bytecode.object,
+      deployedBytecode:artifact.evm.deployedBytecode.object,
+      immutableReferences:artifact.evm.deployedBytecode.immutableReferences
     };
   });
   return{

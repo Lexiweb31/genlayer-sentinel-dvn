@@ -86,7 +86,7 @@ function networkConfig(){
 
 function buildManifest(){
   return{
-    schemaVersion:1,
+    schemaVersion:2,
     compiler:{
       version:"0.8.30+commit.73712a01.Emscripten.clang",
       evmVersion:"shanghai",
@@ -98,14 +98,18 @@ function buildManifest(){
         source:"contracts/src/SentinelDVNAdapter.sol",
         sourceSha256:"1474a0e5b5bae02c56b3ef48b068d394704b18aabe8fed91bbbca6ae3f1a5d83",
         abiSha256:"fd975e9dda11cf60a9e3a10f7f3d6b7ffd113696ff5e55d88c6e873254c77c8a",
-        creationBytecodeSha256:"f3df0a62b10f205b0f29768aa3d69e777154caaa179f64aabb0a4899c666b017"
+        creationBytecodeSha256:"f3df0a62b10f205b0f29768aa3d69e777154caaa179f64aabb0a4899c666b017",
+        deployedBytecodeSha256:"1a33f434c3fc58e156600f1814ef65f7c14ef8f9d2647208ff106b232120c871",
+        immutableReferencesSha256:"7d38f4f9868bae72125d965c5719f16f4695c9d62a11dec142df339840a70f85"
       },
       {
         name:"TreasuryPolicyOApp",
         source:"contracts/src/TreasuryPolicyOApp.sol",
         sourceSha256:"b0968d422e1765ca98e8e8b6f4b8caa90b3e19a9f16b94a437c95474da8a4c72",
         abiSha256:"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-        creationBytecodeSha256:"9e67b12fd8c58953460459cad7a6d4dd7d6d57594affce8206d1397c9c4db543"
+        creationBytecodeSha256:"9e67b12fd8c58953460459cad7a6d4dd7d6d57594affce8206d1397c9c4db543",
+        deployedBytecodeSha256:"07060149296c18b5684056facdb3e0172823fde3a737f2446b86d8b85cc6f1ba",
+        immutableReferencesSha256:"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
       }
     ]
   };
@@ -115,11 +119,20 @@ function productionArtifacts(){
   return{
     SentinelDVNAdapter:json({
       abi:[{type:"constructor",inputs:[]}],
-      evm:{bytecode:{object:"6000"}}
+      evm:{
+        bytecode:{object:"6000"},
+        deployedBytecode:{
+          object:"6002",
+          immutableReferences:{"12":[{start:1,length:32}],"3":[{start:33,length:20}]}
+        }
+      }
     }),
     TreasuryPolicyOApp:json({
       abi:[],
-      evm:{bytecode:{object:"6001"}}
+      evm:{
+        bytecode:{object:"6001"},
+        deployedBytecode:{object:"6003",immutableReferences:{}}
+      }
     })
   };
 }
@@ -183,6 +196,14 @@ test("binds clean source, compiler artifacts and audited network metadata",()=>{
   assert.equal(binding.gates.adapterConformance,"ILAYERZERO_DVN_INTERFACE_ADAPTER");
   assert.equal(binding.gates.payableAssignJobResolved,true);
   assert.equal(binding.gates.destinationVerificationTopologyResolved,false);
+  assert.equal(
+    binding.artifacts.SentinelDVNAdapter.deployedBytecodeSha256,
+    "1a33f434c3fc58e156600f1814ef65f7c14ef8f9d2647208ff106b232120c871"
+  );
+  assert.equal(
+    binding.artifacts.SentinelDVNAdapter.immutableReferencesSha256,
+    "7d38f4f9868bae72125d965c5719f16f4695c9d62a11dec142df339840a70f85"
+  );
   assert.equal(binding.audit.date,"2026-08-02");
   assert.equal(binding.network.source.chainId,11155111);
   assert.equal(binding.network.source.eid,40161);
@@ -203,6 +224,7 @@ test("reports every ordinary repository and audit drift as a sanitized blocker",
   const cases=[
     ["READINESS_SOURCE_DIRTY",input=>{input.git.dirty=true}],
     ["READINESS_ARTIFACT_DRIFT",input=>{input.git.commit="f".repeat(40)}],
+    ["READINESS_ARTIFACT_DRIFT",input=>{const value=JSON.parse(input.buildManifestText);value.schemaVersion=1;input.buildManifestText=json(value)}],
     ["READINESS_ARTIFACT_DRIFT",input=>{input.buildManifestText=input.buildManifestText.replace("0.8.30","0.8.29")}],
     ["READINESS_ARTIFACT_DRIFT",input=>{const value=JSON.parse(input.buildManifestText);value.contracts[0].name="TreasuryPolicyOApp";input.buildManifestText=json(value)}],
     ["READINESS_ARTIFACT_DRIFT",input=>{const value=JSON.parse(input.buildManifestText);value.contracts[0].source="contracts/src/Other.sol";input.buildManifestText=json(value)}],
@@ -214,6 +236,16 @@ test("reports every ordinary repository and audit drift as a sanitized blocker",
     ["READINESS_ARTIFACT_DRIFT",input=>{
       input.productionArtifacts.SentinelDVNAdapter=
         input.productionArtifacts.SentinelDVNAdapter.replace("6000","6002");
+    }],
+    ["READINESS_ARTIFACT_DRIFT",input=>{
+      const value=JSON.parse(input.productionArtifacts.SentinelDVNAdapter);
+      value.evm.deployedBytecode.object="6003";
+      input.productionArtifacts.SentinelDVNAdapter=json(value);
+    }],
+    ["READINESS_ARTIFACT_DRIFT",input=>{
+      const value=JSON.parse(input.productionArtifacts.SentinelDVNAdapter);
+      value.evm.deployedBytecode.immutableReferences["12"][0].length=33;
+      input.productionArtifacts.SentinelDVNAdapter=json(value);
     }],
     ["READINESS_ARTIFACT_DRIFT",input=>{input.productionSources.SentinelDVNAdapter+="\n"}],
     ["READINESS_METADATA_MISMATCH",input=>{input.networkConfigText=input.networkConfigText.replace("40161","40162")}],
@@ -279,6 +311,14 @@ test("rejects duplicate keys throughout local readiness evidence",()=>{
   ];
   for(const mutate of cases){
     const input=fixture();mutate(input);
+    assert.throws(()=>inspectDeploymentReadinessBindings(input),/READINESS_MANIFEST_INVALID/);
+  }
+});
+
+test("rejects build manifests that omit schema-v2 provenance fields",()=>{
+  for(const field of["deployedBytecodeSha256","immutableReferencesSha256"]){
+    const input=fixture(),value=JSON.parse(input.buildManifestText);
+    delete value.contracts[0][field];input.buildManifestText=json(value);
     assert.throws(()=>inspectDeploymentReadinessBindings(input),/READINESS_MANIFEST_INVALID/);
   }
 });

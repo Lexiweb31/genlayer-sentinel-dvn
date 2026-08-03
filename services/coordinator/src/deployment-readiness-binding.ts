@@ -66,6 +66,8 @@ interface BoundContract{
   sourceSha256:string;
   abiSha256:string;
   creationBytecodeSha256:string;
+  deployedBytecodeSha256:string;
+  immutableReferencesSha256:string;
 }
 interface BoundNetwork{
   name:string;
@@ -122,9 +124,17 @@ interface ParsedNetwork{
 interface ParsedBuildManifest{
   schemaVersion:number;
   compiler:{version:string;evmVersion:string;optimizer:{enabled:boolean;runs:number}};
-  contracts:Array<{name:string;source:string;sourceSha256:string;abiSha256:string;creationBytecodeSha256:string}>;
+  contracts:Array<{
+    name:string;source:string;sourceSha256:string;abiSha256:string;
+    creationBytecodeSha256:string;deployedBytecodeSha256:string;immutableReferencesSha256:string;
+  }>;
 }
-interface ParsedContractArtifact{abiSha256:string;creationBytecodeSha256:string}
+interface ParsedContractArtifact{
+  abiSha256:string;
+  creationBytecodeSha256:string;
+  deployedBytecodeSha256:string;
+  immutableReferencesSha256:string;
+}
 
 const readinessKeys=[
   "schemaVersion","toolVersion","maximumAuditAgeDays","networkConfig","auditEvidence",
@@ -227,7 +237,7 @@ export function inspectDeploymentReadinessBindings(input:BindingInput):Readiness
     build.compiler.optimizer.runs!==200)artifactDrift=true;
   const adapter=contract(build,0,"SentinelDVNAdapter","contracts/src/SentinelDVNAdapter.sol");
   const oapp=contract(build,1,"TreasuryPolicyOApp","contracts/src/TreasuryPolicyOApp.sol");
-  if(build.schemaVersion!==1||build.contracts.length!==2||
+  if(build.schemaVersion!==2||build.contracts.length!==2||
     build.contracts[0]?.name!=="SentinelDVNAdapter"||
     build.contracts[0]?.source!=="contracts/src/SentinelDVNAdapter.sol"||
     build.contracts[1]?.name!=="TreasuryPolicyOApp"||
@@ -236,8 +246,12 @@ export function inspectDeploymentReadinessBindings(input:BindingInput):Readiness
     sha256(input.productionSources.TreasuryPolicyOApp)!==oapp.sourceSha256||
     adapterArtifact.abiSha256!==adapter.abiSha256||
     adapterArtifact.creationBytecodeSha256!==adapter.creationBytecodeSha256||
+    adapterArtifact.deployedBytecodeSha256!==adapter.deployedBytecodeSha256||
+    adapterArtifact.immutableReferencesSha256!==adapter.immutableReferencesSha256||
     oappArtifact.abiSha256!==oapp.abiSha256||
     oappArtifact.creationBytecodeSha256!==oapp.creationBytecodeSha256||
+    oappArtifact.deployedBytecodeSha256!==oapp.deployedBytecodeSha256||
+    oappArtifact.immutableReferencesSha256!==oapp.immutableReferencesSha256||
     input.manifest.artifacts.SentinelDVNAdapter.abiSha256!==adapter.abiSha256||
     input.manifest.artifacts.SentinelDVNAdapter.creationBytecodeSha256!==adapter.creationBytecodeSha256||
     input.manifest.artifacts.TreasuryPolicyOApp.abiSha256!==oapp.abiSha256||
@@ -347,10 +361,15 @@ function parseBuildManifest(text:string):ParsedBuildManifest{
   exactKeys(compiler,["version","evmVersion","optimizer"]);exactKeys(optimizer,["enabled","runs"]);
   if(!Array.isArray(root.contracts))invalid();
   const contracts=root.contracts.map(value=>{
-    const item=record(value);exactKeys(item,["name","source","sourceSha256","abiSha256","creationBytecodeSha256"]);
+    const item=record(value);exactKeys(item,[
+      "name","source","sourceSha256","abiSha256","creationBytecodeSha256",
+      "deployedBytecodeSha256","immutableReferencesSha256"
+    ]);
     return{
       name:textValue(item.name),source:textValue(item.source),sourceSha256:digest(item.sourceSha256),
-      abiSha256:digest(item.abiSha256),creationBytecodeSha256:digest(item.creationBytecodeSha256)
+      abiSha256:digest(item.abiSha256),creationBytecodeSha256:digest(item.creationBytecodeSha256),
+      deployedBytecodeSha256:digest(item.deployedBytecodeSha256),
+      immutableReferencesSha256:digest(item.immutableReferencesSha256)
     };
   });
   return{
@@ -365,22 +384,49 @@ function parseBuildManifest(text:string):ParsedBuildManifest{
 function parseContractArtifact(text:string):ParsedContractArtifact{
   const root=record(parseJson(text));exactKeys(root,["abi","evm"]);
   if(!Array.isArray(root.abi))invalid();
-  const evm=record(root.evm);exactKeys(evm,["bytecode"]);
+  const evm=record(root.evm);exactKeys(evm,["bytecode","deployedBytecode"]);
   const bytecode=record(evm.bytecode);exactKeys(bytecode,["object"]);
-  if(typeof bytecode.object!=="string"||!/^(?:[0-9a-f]{2})+$/.test(bytecode.object))invalid();
+  const deployedBytecode=record(evm.deployedBytecode);
+  exactKeys(deployedBytecode,["object","immutableReferences"]);
+  if(typeof bytecode.object!=="string"||!/^(?:[0-9a-f]{2})+$/.test(bytecode.object)||
+    typeof deployedBytecode.object!=="string"||!/^(?:[0-9a-f]{2})+$/.test(deployedBytecode.object))invalid();
+  const immutableReferences=parseImmutableReferences(deployedBytecode.immutableReferences);
   const abiText=JSON.stringify(root.abi);
   if(typeof abiText!=="string")invalid();
   return{
     abiSha256:sha256(abiText),
-    creationBytecodeSha256:sha256(Buffer.from(bytecode.object,"hex"))
+    creationBytecodeSha256:sha256(Buffer.from(bytecode.object,"hex")),
+    deployedBytecodeSha256:sha256(Buffer.from(deployedBytecode.object,"hex")),
+    immutableReferencesSha256:sha256(canonicalJson(immutableReferences))
   };
+}
+function parseImmutableReferences(value:unknown):Record<string,Array<{start:number;length:number}>>{
+  const root=record(value),result:Record<string,Array<{start:number;length:number}>>={};
+  for(const sourceId of Object.keys(root).sort()){
+    if(!/^(?:0|[1-9][0-9]*)$/.test(sourceId))invalid();
+    const references=root[sourceId];
+    if(!Array.isArray(references)||references.length===0)invalid();
+    result[sourceId]=references.map(reference=>{
+      const item=record(reference);exactKeys(item,["start","length"]);
+      const start=uint(item.start),length=uint(item.length);
+      if(length===0)invalid();
+      return{start,length};
+    });
+  }
+  return result;
 }
 function contract(build:ParsedBuildManifest,index:number,name:string,source:string):BoundContract{
   const value=build.contracts[index];
-  if(!value)return{source,sourceSha256:"0".repeat(64),abiSha256:"0".repeat(64),creationBytecodeSha256:"0".repeat(64)};
+  if(!value)return{
+    source,sourceSha256:"0".repeat(64),abiSha256:"0".repeat(64),
+    creationBytecodeSha256:"0".repeat(64),deployedBytecodeSha256:"0".repeat(64),
+    immutableReferencesSha256:"0".repeat(64)
+  };
   return{
     source:value.source,sourceSha256:value.sourceSha256,
-    abiSha256:value.abiSha256,creationBytecodeSha256:value.creationBytecodeSha256
+    abiSha256:value.abiSha256,creationBytecodeSha256:value.creationBytecodeSha256,
+    deployedBytecodeSha256:value.deployedBytecodeSha256,
+    immutableReferencesSha256:value.immutableReferencesSha256
   };
 }
 function matchesNetwork(actual:ParsedNetwork,expected:typeof expectedNetworks[keyof typeof expectedNetworks]):boolean{

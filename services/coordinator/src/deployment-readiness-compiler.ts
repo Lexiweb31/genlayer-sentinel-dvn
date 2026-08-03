@@ -2,6 +2,7 @@ import{createHash}from"node:crypto";
 import fs from"node:fs";
 import path from"node:path";
 import solc from"solc";
+import{canonicalJson}from"./canonical-json.js";
 
 const sourceFiles=[
   "contracts/src/SentinelDVNAdapter.sol",
@@ -37,7 +38,10 @@ export function compileDeploymentReadinessProvenance(repositoryRoot:string):stri
     settings:{
       evmVersion:compiler.evmVersion,
       optimizer:{...compiler.optimizer},
-      outputSelection:{"*":{"*":["abi","evm.bytecode.object"]}}
+      outputSelection:{"*":{"*":[
+        "abi","evm.bytecode.object","evm.deployedBytecode.object",
+        "evm.deployedBytecode.immutableReferences"
+      ]}}
     }
   }),{import:(name:string)=>{
     for(const base of[repositoryRoot,path.join(repositoryRoot,"node_modules")]){
@@ -54,14 +58,21 @@ export function compileDeploymentReadinessProvenance(repositoryRoot:string):stri
     const artifact=output.contracts?.[source!]?.[name!];
     if(!artifact||!Array.isArray(artifact.abi)||
       typeof artifact.evm?.bytecode?.object!=="string"||
-      !/^(?:[0-9a-f]{2})+$/.test(artifact.evm.bytecode.object))invalid();
+      !/^(?:[0-9a-f]{2})+$/.test(artifact.evm.bytecode.object)||
+      typeof artifact.evm?.deployedBytecode?.object!=="string"||
+      !/^(?:[0-9a-f]{2})+$/.test(artifact.evm.deployedBytecode.object)||
+      !artifact.evm.deployedBytecode.immutableReferences||
+      typeof artifact.evm.deployedBytecode.immutableReferences!=="object"||
+      Array.isArray(artifact.evm.deployedBytecode.immutableReferences))invalid();
     return{
       name:name!,source:source!,sourceSha256:sha256(sources[source!]!.content),
       abiSha256:sha256(JSON.stringify(artifact.abi)),
-      creationBytecodeSha256:sha256(Buffer.from(artifact.evm.bytecode.object,"hex"))
+      creationBytecodeSha256:sha256(Buffer.from(artifact.evm.bytecode.object,"hex")),
+      deployedBytecodeSha256:sha256(Buffer.from(artifact.evm.deployedBytecode.object,"hex")),
+      immutableReferencesSha256:sha256(canonicalJson(artifact.evm.deployedBytecode.immutableReferences))
     };
   });
-  return`${JSON.stringify({schemaVersion:1,compiler,contracts})}\n`;
+  return`${JSON.stringify({schemaVersion:2,compiler,contracts})}\n`;
 }
 
 function sha256(value:string|Uint8Array):string{
