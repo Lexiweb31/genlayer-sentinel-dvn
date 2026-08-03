@@ -109,8 +109,9 @@ function manifest(deployment=true){
 
 function policyBinding(value){
   const codeHash=keccak256("0x6000");
+  const dvnSource="docs/research/reviewed-dvn-operators.md";
   return{
-    networkAuditSha256:value.networkAuditSha256,providerAuditSha256:"b".repeat(64),repositoryBindingSha256:"c".repeat(64),
+    networkAuditSha256:value.networkAuditSha256,providerAuditSha256:"b".repeat(64),dvnOperatorAuditSha256:"d".repeat(64),repositoryBindingSha256:"c".repeat(64),
     network:{
       source:{chainId:11155111,eid:40161,contracts:{endpointV2:contracts.source.endpoint,sendUln302:contracts.source.send,receiveUln302:contracts.source.receive,executor:contracts.source.executor,deadDvn:contracts.source.dead}},
       destination:{chainId:421614,eid:40231,contracts:{endpointV2:contracts.destination.endpoint,sendUln302:contracts.destination.send,receiveUln302:contracts.destination.receive,executor:contracts.destination.executor,deadDvn:contracts.destination.dead}}
@@ -122,6 +123,10 @@ function policyBinding(value){
     providerState:{
       source:value.source.rpcs.map(rpc=>({label:rpc.label,state:"OPERATOR_EVIDENCE_REVIEWED"})),
       destination:value.destination.rpcs.map(rpc=>({label:rpc.label,state:"OPERATOR_EVIDENCE_REVIEWED"}))
+    },
+    reviewedDvns:{
+      source:[{chain:"ethereum-sepolia",chainId:11155111,address:contracts.independentDvn,operatorFamily:"independent-dvn-a",operatorEvidenceSha256:"7".repeat(64),sources:[dvnSource]}],
+      destination:[{chain:"arbitrum-sepolia",chainId:421614,address:contracts.independentDvn,operatorFamily:"independent-dvn-a",operatorEvidenceSha256:"7".repeat(64),sources:[dvnSource]}]
     },
     rpcIndependence:{source:"OPERATOR_INDEPENDENCE_REVIEWED",destination:"OPERATOR_INDEPENDENCE_REVIEWED"},
     blockers:[]
@@ -152,7 +157,7 @@ function deploymentEvidence(value,chain,options={}){
 }
 
 function chainFixture(value,chain,options={}){
-  const isSource=chain==="source",headA=isSource?130:200,headB=isSource?128:198;
+  const isSource=chain==="source",baseHead=isSource?128:198,headA=options.headDisagreement?baseHead+2:baseHead,headB=baseHead;
   const selected=isSource?125:178,block=header(selected,chain);
   const network=isSource?contracts.source:contracts.destination;
   const pathUln=isSource?[15n,1,1,1,[contracts.independentDvn],[contracts.sourceAdapter]]:[64n,1,1,1,[contracts.independentDvn],[contracts.destinationAdapter]];
@@ -183,7 +188,9 @@ function chainFixture(value,chain,options={}){
           }
           if(method==="eth_getCode"){
             const target=lower(params[0]);
+            if(options.codeMissing&&index===1&&target===lower(network.endpoint))return"0x";
             if(options.codeDisagreement&&index===1&&target===lower(network.endpoint))return"0x6002";
+            if(options.deploymentCodeDisagreement&&index===1&&target===lower(isSource?contracts.sourceAdapter:contracts.destinationAdapter))return"0x6002";
             return codeByAddress.get(target)??"0x6000";
           }
           if(method==="eth_getTransactionByHash"){
@@ -201,9 +208,9 @@ function chainFixture(value,chain,options={}){
 
   function callResult(to,data){
     const target=lower(to);
-    if(data.startsWith(endpointInterface.getFunction("getSendLibrary").selector))return endpointInterface.encodeFunctionResult("getSendLibrary",[contracts.source.send]);
+    if(data.startsWith(endpointInterface.getFunction("getSendLibrary").selector))return endpointInterface.encodeFunctionResult("getSendLibrary",[options.sendLibrary??contracts.source.send]);
     if(data.startsWith(endpointInterface.getFunction("isDefaultSendLibrary").selector))return endpointInterface.encodeFunctionResult("isDefaultSendLibrary",[false]);
-    if(data.startsWith(endpointInterface.getFunction("getReceiveLibrary").selector))return endpointInterface.encodeFunctionResult("getReceiveLibrary",[contracts.destination.receive,false]);
+    if(data.startsWith(endpointInterface.getFunction("getReceiveLibrary").selector))return endpointInterface.encodeFunctionResult("getReceiveLibrary",[options.receiveLibrary??contracts.destination.receive,false]);
     if(data.startsWith(ulnInterface.getFunction("isSupportedEid").selector))return ulnInterface.encodeFunctionResult("isSupportedEid",[true]);
     if(data.startsWith(ulnInterface.getFunction("getAppUlnConfig").selector))return ulnInterface.encodeFunctionResult("getAppUlnConfig",[pathUln]);
     if(data.startsWith(ulnInterface.getFunction("getUlnConfig").selector))return ulnInterface.encodeFunctionResult("getUlnConfig",[pathUln]);
@@ -278,19 +285,30 @@ test("a null deployment still records all official code and never probes pathway
   }
 });
 
+test("predeployment missing-vs-code disagreement cannot be labeled transport agreement",async()=>{
+  const observation=await observePathway(fixture({deployment:false,source:{codeMissing:true}}).input);
+  assert.equal(observation.blockers.some(value=>value.code==="AUDIT_CODE_MISSING"),true);
+  assert.equal(observation.providerAgreement.source.state,"PROVIDER_DISAGREEMENT");
+  assert.notEqual(observation.status,"OBSERVED_PATHWAY_CONSISTENT");
+});
+
 test("orchestration failures map to deterministic sanitized consensus and provenance blockers",async t=>{
   const cases=[
-    ["chain equivocation",{source:{chainEquivocation:true}},"AUDIT_CHAIN_MISMATCH","RPC_CONSENSUS"],
-    ["block reorg",{source:{reorg:true}},"AUDIT_BLOCK_UNSTABLE","RPC_CONSENSUS"],
-    ["latest substituted for exact block",{source:{latestInstead:true}},"AUDIT_BLOCK_DISAGREEMENT","RPC_CONSENSUS"],
-    ["official code disagreement",{source:{codeDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS"],
-    ["deployment transaction disagreement",{source:{transactionDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS"],
-    ["creation bytecode drift",{source:{creationDrift:true}},"AUDIT_DEPLOYMENT_ARTIFACT_MISMATCH","CODE_IDENTITY"]
+    ["chain equivocation",{source:{chainEquivocation:true}},"AUDIT_CHAIN_MISMATCH","RPC_CONSENSUS","source"],
+    ["head result disagreement",{source:{headDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS","source"],
+    ["block reorg",{source:{reorg:true}},"AUDIT_BLOCK_UNSTABLE","RPC_CONSENSUS","source"],
+    ["latest substituted for exact block",{source:{latestInstead:true}},"AUDIT_BLOCK_DISAGREEMENT","RPC_CONSENSUS","source"],
+    ["one provider missing code",{source:{codeMissing:true}},"AUDIT_CODE_MISSING","CODE_IDENTITY","source"],
+    ["official runtime code disagreement",{source:{codeDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS","source"],
+    ["deployment transaction disagreement",{source:{transactionDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS","source"],
+    ["deployment runtime code disagreement",{destination:{deploymentCodeDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS","destination"],
+    ["creation bytecode drift",{source:{creationDrift:true}},"AUDIT_DEPLOYMENT_ARTIFACT_MISMATCH","CODE_IDENTITY","source"]
   ];
-  for(const[name,mutation,code,category]of cases)await t.test(name,async()=>{
+  for(const[name,mutation,code,category,chain]of cases)await t.test(name,async()=>{
     const observation=await observePathway(fixture(mutation).input);
     assert.notEqual(observation.status,"OBSERVED_PATHWAY_CONSISTENT");
     assert.equal(observation.blockers.some(blocker=>blocker.code===code&&blocker.category===category),true,JSON.stringify(observation.blockers));
+    if(category==="RPC_CONSENSUS"||name==="one provider missing code")assert.equal(observation.providerAgreement[chain].state,"PROVIDER_DISAGREEMENT");
     assert.equal(JSON.stringify(observation).includes("https://"),false);
   });
 });

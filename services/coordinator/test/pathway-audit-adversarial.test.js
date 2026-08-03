@@ -22,10 +22,15 @@ function manifest(){
 }
 
 function binding(){
+  const dvnSource="docs/research/reviewed-dvn-operators.md";
   return{
     network:{
       source:{contracts:{endpointV2:source.endpoint,sendUln302:source.send,receiveUln302:source.receive,executor:source.executor,deadDvn:source.dead}},
       destination:{contracts:{endpointV2:destination.endpoint,sendUln302:destination.send,receiveUln302:destination.receive,executor:destination.executor,deadDvn:destination.dead}}
+    },
+    reviewedDvns:{
+      source:[{chain:"ethereum-sepolia",chainId:11155111,address:independent,operatorFamily:"independent-dvn-a",operatorEvidenceSha256:"7".repeat(64),sources:[dvnSource]}],
+      destination:[{chain:"arbitrum-sepolia",chainId:421614,address:independent,operatorFamily:"independent-dvn-a",operatorEvidenceSha256:"7".repeat(64),sources:[dvnSource]}]
     },
     blockers:[]
   };
@@ -68,6 +73,8 @@ test("the pure evaluator accepts only the explicit optional-Sentinel, independen
 
 test("configuration mutations produce their exact stable blocker category and never a consistency claim",async t=>{
   const cases=[
+    ["unexpected source send library","AUDIT_ULN_MISMATCH","PATHWAY_CONFIGURATION",input=>{input.source.sendLibrary=address(98)}],
+    ["unexpected destination receive library","AUDIT_ULN_MISMATCH","PATHWAY_CONFIGURATION",input=>{input.destination.receiveLibrary=address(98)}],
     ["unexpected source adapter message library","AUDIT_ADAPTER_BINDING_MISMATCH","PATHWAY_CONFIGURATION",input=>{input.source.adapter.messageLib=address(99)}],
     ["unexpected destination adapter target","AUDIT_ADAPTER_BINDING_MISMATCH","PATHWAY_CONFIGURATION",input=>{input.destination.adapter.verificationTarget=address(99)}],
     ["unexpected adapter EID","AUDIT_ADAPTER_BINDING_MISMATCH","PATHWAY_CONFIGURATION",input=>{input.source.adapter.supportedDstEid=40161}],
@@ -97,6 +104,26 @@ test("configuration mutations produce their exact stable blocker category and ne
     const blockers=result.blockers.filter(blocker=>blocker.code===code);
     assert.deepEqual(blockers,[{code,category,remediation:remediation(code)}],JSON.stringify(result.blockers));
   });
+});
+
+test("an arbitrary second optional DVN cannot substitute for repository-reviewed independent identity",()=>{
+  const input=setup();
+  input.source.uln={confirmations:"15",requiredDvns:[],optionalDvns:[source.adapter,otherIndependent].sort(),optionalDvnThreshold:2};
+  input.destination.rawAppUln={confirmations:"64",requiredDvns:[],optionalDvns:[destination.adapter,otherIndependent].sort(),optionalDvnThreshold:2};
+  input.destination.resolvedUln=structuredClone(input.destination.rawAppUln);
+  const result=evaluatePathwayInvariants(input);
+  assert.notEqual(result.status,"OBSERVED_PATHWAY_CONSISTENT");
+  assert.deepEqual(result.blockers.filter(value=>value.code==="AUDIT_DVN_REVIEW_MISSING"),[
+    {code:"AUDIT_DVN_REVIEW_MISSING",category:"PATHWAY_CONFIGURATION",remediation:"SELECT_INDEPENDENT_DVNS"}
+  ]);
+});
+
+test("direct null invariant input is fail-closed even when a deployment manifest exists",()=>{
+  const input=setup();input.source=null;input.destination=null;input.deployments=null;
+  const result=evaluatePathwayInvariants(input);
+  assert.notEqual(result.status,"OBSERVED_PATHWAY_CONSISTENT");
+  assert.equal(result.blockers.length>0,true);
+  assert.equal(result.blockers.some(value=>value.code==="AUDIT_DEPLOYMENT_EVIDENCE_MISSING"),true);
 });
 
 test("earlier hardened policy blockers are preserved and retain status precedence",()=>{

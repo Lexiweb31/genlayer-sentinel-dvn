@@ -167,6 +167,7 @@ const blockerDefinitions:Record<PathwayAuditBlocker["code"],readonly[PathwayAudi
   AUDIT_EXECUTOR_MISMATCH:["PATHWAY_CONFIGURATION","CORRECT_EXECUTOR"],
   AUDIT_DVN_ORDER_INVALID:["PATHWAY_CONFIGURATION","SELECT_INDEPENDENT_DVNS"],
   AUDIT_DVN_THRESHOLD_INVALID:["PATHWAY_CONFIGURATION","SELECT_INDEPENDENT_DVNS"],
+  AUDIT_DVN_REVIEW_MISSING:["PATHWAY_CONFIGURATION","SELECT_INDEPENDENT_DVNS"],
   AUDIT_DEAD_DVN_PRESENT:["PATHWAY_CONFIGURATION","REMOVE_DEAD_DVN"],
   AUDIT_ULN_MISMATCH:["PATHWAY_CONFIGURATION","CONFIGURE_MATCHING_ULN"],
   AUDIT_SENTINEL_NOT_OPTIONAL:["PATHWAY_CONFIGURATION","CONFIGURE_SENTINEL_OPTIONAL"],
@@ -274,6 +275,9 @@ export async function observePathway(input:PathwayAuditObserverInput):Promise<Pa
   if(sourceBlock&&stability[0].status==="rejected"){addBlocker(blockers,"AUDIT_BLOCK_UNSTABLE");agreement.source=false}
   if(destinationBlock&&stability[1].status==="rejected"){addBlocker(blockers,"AUDIT_BLOCK_UNSTABLE");agreement.destination=false}
 
+  if(!transcriptsAgree(sourcePair)){addBlocker(blockers,"AUDIT_PROVIDER_RESULT_DISAGREEMENT");agreement.source=false}
+  if(!transcriptsAgree(destinationPair)){addBlocker(blockers,"AUDIT_PROVIDER_RESULT_DISAGREEMENT");agreement.destination=false}
+
   const evaluated=evaluatePathwayInvariants({
     manifest:input.manifest,policyBinding:input.policyBinding,source:sourcePath,destination:destinationPath,deployments,
     additionalBlockers:blockers.slice(input.policyBinding.blockers.length)
@@ -304,10 +308,13 @@ export function evaluatePathwayInvariants(input:PathwayInvariantInput):{status:P
   const blockers=[...input.policyBinding.blockers,...(input.additionalBlockers??[])];
   const deployment=input.manifest.deployment;
   if(deployment===null){addBlocker(blockers,"AUDIT_PATHWAY_DEPLOYMENTS_MISSING");return{status:status(blockers),blockers:sortBlockers(blockers)}}
+  if(!completeDeployments(input.deployments))addBlocker(blockers,"AUDIT_DEPLOYMENT_EVIDENCE_MISSING");
   const source=input.source,destination=input.destination;
-  if(!source||!destination)return{status:status(blockers),blockers:sortBlockers(blockers)};
+  if(!source||!destination){addBlocker(blockers,"AUDIT_ULN_MISMATCH");return{status:status(blockers),blockers:sortBlockers(blockers)}}
 
   if(source.isDefaultSendLibrary||destination.isDefaultReceiveLibrary)addBlocker(blockers,"AUDIT_DEFAULT_LIBRARY");
+  if(!sameAddress(source.sendLibrary,input.manifest.source.contracts.sendUln302)||
+    !sameAddress(destination.receiveLibrary,input.manifest.destination.contracts.receiveUln302))addBlocker(blockers,"AUDIT_ULN_MISMATCH");
   if(inherited(source.uln)||inherited(destination.rawAppUln))addBlocker(blockers,"AUDIT_INHERITED_ULN_CONFIG");
   if(!source.supportedEid||!destination.supportedEid)addBlocker(blockers,"AUDIT_UNSUPPORTED_EID");
   if(source.destinationPeer!==addressPeer(deployment.destinationOApp.address)||destination.sourcePeer!==addressPeer(deployment.sourceOApp.address))addBlocker(blockers,"AUDIT_PEER_MISMATCH");
@@ -319,6 +326,9 @@ export function evaluatePathwayInvariants(input:PathwayInvariantInput):{status:P
   const configurations=[source.uln,destination.rawAppUln,destination.resolvedUln];
   if(configurations.some(value=>!orderedDvnConfiguration(value)))addBlocker(blockers,"AUDIT_DVN_ORDER_INVALID");
   if(configurations.some(value=>!validThreshold(value)))addBlocker(blockers,"AUDIT_DVN_THRESHOLD_INVALID");
+  if(!reviewedDvnGuaranteed(source.uln,input.policyBinding.reviewedDvns.source,deployment.sourceAdapter.address)||
+    !reviewedDvnGuaranteed(destination.rawAppUln,input.policyBinding.reviewedDvns.destination,deployment.destinationAdapter.address)||
+    !reviewedDvnGuaranteed(destination.resolvedUln,input.policyBinding.reviewedDvns.destination,deployment.destinationAdapter.address))addBlocker(blockers,"AUDIT_DVN_REVIEW_MISSING");
   if(hasDead(source.uln,input.manifest.source.contracts.deadDvn)||
     hasDead(destination.rawAppUln,input.manifest.destination.contracts.deadDvn)||
     hasDead(destination.resolvedUln,input.manifest.destination.contracts.deadDvn))addBlocker(blockers,"AUDIT_DEAD_DVN_PRESENT");
@@ -441,6 +451,8 @@ function deploymentSignersMatch(value:PublicDeploymentEvidence|null|undefined,si
   if(!argumentsValue||!("signers"in argumentsValue)||argumentsValue.quorum!=="3"||argumentsValue.signers.length!==5)return false;
   return argumentsValue.signers.every((signer,index)=>sameAddress(signer,signers[index]!));
 }
+function completeDeployments(value:PathwayDeploymentObservations|null):value is PathwayDeploymentObservations{return value!==null&&
+  value.sourceOApp!==null&&value.destinationOApp!==null&&value.sourceAdapter!==null&&value.destinationAdapter!==null}
 function inherited(value:PublicUlnObservation):boolean{return value.confirmations==="0"&&value.requiredDvns.length===0&&value.optionalDvns.length===0&&value.optionalDvnThreshold===0}
 function sameUln(left:PublicUlnObservation,right:PublicUlnObservation):boolean{return canonicalJson(left)===canonicalJson(right)}
 function orderedDvnConfiguration(value:PublicUlnObservation):boolean{
@@ -449,6 +461,13 @@ function orderedDvnConfiguration(value:PublicUlnObservation):boolean{
 }
 function strictOrder(values:string[]):boolean{return values.every((value,index)=>index===0||lower(value)>lower(values[index-1]!))}
 function validThreshold(value:PublicUlnObservation):boolean{return value.optionalDvns.length===0?value.optionalDvnThreshold===0:value.optionalDvnThreshold>=1&&value.optionalDvnThreshold<=value.optionalDvns.length}
+function reviewedDvnGuaranteed(value:PublicUlnObservation,reviewed:PathwayAuditPolicyBinding["reviewedDvns"]["source"],sentinel:string):boolean{
+  const reviewedAddresses=reviewed.filter(entry=>!sameAddress(entry.address,sentinel)).map(entry=>entry.address);
+  if(value.requiredDvns.some(candidate=>reviewedAddresses.some(item=>sameAddress(candidate,item))))return true;
+  const reviewedOptional=value.optionalDvns.filter(candidate=>reviewedAddresses.some(item=>sameAddress(candidate,item))).length;
+  const unreviewedOptional=value.optionalDvns.length-reviewedOptional;
+  return reviewedOptional>0&&value.optionalDvnThreshold>unreviewedOptional;
+}
 function hasDead(value:PublicUlnObservation,dead:string):boolean{return[...value.requiredDvns,...value.optionalDvns].some(address=>sameAddress(address,dead))}
 function matchingCrossPath(source:PublicUlnObservation,destination:PublicUlnObservation,sourceSentinel:string,destinationSentinel:string):boolean{return sameAddresses(source.requiredDvns,destination.requiredDvns)&&
   sameAddresses(normalizedOptional(source.optionalDvns,sourceSentinel),normalizedOptional(destination.optionalDvns,destinationSentinel))&&
@@ -467,11 +486,17 @@ function chainResponses(pair:TrackedPair):bigint[]{
   return values;
 }
 function deploymentResultsDisagree(pair:TrackedPair):boolean{
-  for(const method of["eth_getTransactionByHash","eth_getTransactionReceipt"]as const){
+  for(const method of["eth_getTransactionByHash","eth_getTransactionReceipt","eth_getCode"]as const){
     const first=resultsByParameter(pair.records[0],method),second=resultsByParameter(pair.records[1],method);
     for(const[key,value]of first)if(second.has(key)&&stableUnknown(value)!==stableUnknown(second.get(key)))return true;
   }
   return false;
+}
+function transcriptsAgree(pair:TrackedPair):boolean{
+  if(pair.records.some(records=>records.some(record=>record.errorCode!==undefined)))return false;
+  const normalize=(records:RecordedRpcCall[]):string[]=>records.map(record=>stableUnknown(record)).sort();
+  const first=normalize(pair.records[0]),second=normalize(pair.records[1]);
+  return first.length===second.length&&first.every((value,index)=>value===second[index]);
 }
 function deploymentEvidenceMissing(pair:TrackedPair):boolean{return pair.records.some(records=>records.some(record=>(record.method==="eth_getTransactionByHash"||record.method==="eth_getTransactionReceipt")&&(record.result===null||record.result===undefined||record.errorCode!==undefined)))}
 function resultsByParameter(records:RecordedRpcCall[],method:ReadOnlyRpcMethod):Map<string,unknown>{

@@ -1,6 +1,6 @@
 import{createHash}from"node:crypto";
 import{getAddress}from"ethers";
-import{canonicalJson,parseJsonDocument}from"./canonical-json.js";
+import{canonicalJson,parseCanonicalJsonDocument,parseJsonDocument}from"./canonical-json.js";
 import{
   type PathwayAuditBlocker,
   type PathwayAuditManifest
@@ -13,6 +13,7 @@ export interface PathwayAuditorPolicy{
   networkConfig:"config/networks.json";
   networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md";
   providerAudit:"config/rpc-provider-audit.json";
+  dvnOperatorAudit:"config/dvn-operator-audit.json";
   pathway:{source:string;destination:string};
   officialRuntimeCodeKeccak256:{
     sourceEndpointV2:string|null;sourceSendUln302:string|null;sourceExecutor:string|null;
@@ -28,12 +29,22 @@ export interface ReviewedProvider{
   sources:string[];
 }
 
+export interface ReviewedDvn{
+  chain:"ethereum-sepolia"|"arbitrum-sepolia";
+  chainId:11155111|421614;
+  address:string;
+  operatorFamily:string;
+  operatorEvidenceSha256:string;
+  sources:string[];
+}
+
 export interface PathwayAuditPolicyInput{
   manifest:PathwayAuditManifest;
   policyText:string;
   networksText:string;
   networkAuditEvidenceText:string;
   providerAuditText:string;
+  dvnOperatorAuditText:string;
   evaluationDate:string;
 }
 
@@ -43,6 +54,7 @@ type OperatorIndependence="OPERATOR_INDEPENDENCE_UNPROVEN"|"OPERATOR_INDEPENDENC
 export interface PathwayAuditPolicyBinding{
   networkAuditSha256:string;
   providerAuditSha256:string;
+  dvnOperatorAuditSha256:string;
   repositoryBindingSha256:string;
   network:{
     source:NetworkValues;
@@ -54,6 +66,7 @@ export interface PathwayAuditPolicyBinding{
     destination:{label:string;state:ProviderEvidenceState}[];
   };
   rpcIndependence:{source:OperatorIndependence;destination:OperatorIndependence};
+  reviewedDvns:{source:ReviewedDvn[];destination:ReviewedDvn[]};
   blockers:PathwayAuditBlocker[];
 }
 
@@ -72,24 +85,35 @@ interface ProviderAudit{
   warning:string;
 }
 
+interface DvnOperatorAudit{
+  schemaVersion:1;
+  auditDate:string;
+  status:"NO_DVN_OPERATORS_REVIEWED"|"DVN_OPERATORS_REVIEWED";
+  dvns:ReviewedDvn[];
+  sources:string[];
+  warning:string;
+}
+
 const digestPattern=/^[a-f0-9]{64}$/;
 const expectedSource="ethereum-sepolia",expectedDestination="arbitrum-sepolia";
 
 export function parsePathwayAuditorPolicy(text:string):PathwayAuditorPolicy{
   try{
     const root=record(parseJsonDocument(text));
-    exactKeys(root,["schemaVersion","toolVersion","maximumProviderAuditAgeDays","networkConfig","networkAuditEvidence","providerAudit","pathway","officialRuntimeCodeKeccak256"]);
+    exactKeys(root,["schemaVersion","toolVersion","maximumProviderAuditAgeDays","networkConfig","networkAuditEvidence","providerAudit","dvnOperatorAudit","pathway","officialRuntimeCodeKeccak256"]);
     const pathway=record(root.pathway),official=record(root.officialRuntimeCodeKeccak256);
     exactKeys(pathway,["source","destination"]);
     exactKeys(official,["sourceEndpointV2","sourceSendUln302","sourceExecutor","destinationEndpointV2","destinationReceiveUln302"]);
     if(root.schemaVersion!==1||root.toolVersion!=="sentinel-pathway-auditor/v1"||
       !positiveInteger(root.maximumProviderAuditAgeDays)||root.networkConfig!=="config/networks.json"||
       root.networkAuditEvidence!=="docs/research/2026-08-02-layerzero-interface-conformance-audit.md"||
-      root.providerAudit!=="config/rpc-provider-audit.json"||!nonempty(pathway.source)||!nonempty(pathway.destination))invalid();
+      root.providerAudit!=="config/rpc-provider-audit.json"||root.dvnOperatorAudit!=="config/dvn-operator-audit.json"||
+      !nonempty(pathway.source)||!nonempty(pathway.destination))invalid();
     return{
       schemaVersion:1,toolVersion:"sentinel-pathway-auditor/v1",maximumProviderAuditAgeDays:root.maximumProviderAuditAgeDays,
       networkConfig:"config/networks.json",networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
-      providerAudit:"config/rpc-provider-audit.json",pathway:{source:pathway.source,destination:pathway.destination},
+      providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",
+      pathway:{source:pathway.source,destination:pathway.destination},
       officialRuntimeCodeKeccak256:{
         sourceEndpointV2:codeHash(official.sourceEndpointV2),sourceSendUln302:codeHash(official.sourceSendUln302),sourceExecutor:codeHash(official.sourceExecutor),
         destinationEndpointV2:codeHash(official.destinationEndpointV2),destinationReceiveUln302:codeHash(official.destinationReceiveUln302)
@@ -101,6 +125,7 @@ export function parsePathwayAuditorPolicy(text:string):PathwayAuditorPolicy{
 export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAuditPolicyBinding{
   const policy=parsePathwayAuditorPolicy(input.policyText),evaluationDate=date(input.evaluationDate);
   const networks=parseNetworks(input.networksText),providerAudit=parseProviderAudit(input.providerAuditText);
+  const dvnOperatorAudit=parseDvnOperatorAudit(input.dvnOperatorAuditText);
   const networkAuditSha256=sha256(canonicalJson({
     destination:expectedDestination,
     networkAuditEvidenceSha256:sha256(input.networkAuditEvidenceText),
@@ -108,8 +133,9 @@ export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAud
     source:expectedSource
   }));
   const providerAuditSha256=sha256(input.providerAuditText);
+  const dvnOperatorAuditSha256=sha256(input.dvnOperatorAuditText);
   const repositoryBindingSha256=sha256(canonicalJson({
-    networkAuditSha256,pathwayAuditorPolicySha256:sha256(input.policyText),providerAuditSha256
+    dvnOperatorAuditSha256,networkAuditSha256,pathwayAuditorPolicySha256:sha256(input.policyText),providerAuditSha256
   }));
   const blockers:PathwayAuditBlocker[]=[];
   const metadataMatches=policy.pathway.source===expectedSource&&policy.pathway.destination===expectedDestination&&
@@ -123,11 +149,15 @@ export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAud
   const source=providerBinding(input.manifest.source.rpcs,providerAudit,providerStale,blockers);
   const destination=providerBinding(input.manifest.destination.rpcs,providerAudit,providerStale,blockers);
   return{
-    networkAuditSha256,providerAuditSha256,repositoryBindingSha256,
+    networkAuditSha256,providerAuditSha256,dvnOperatorAuditSha256,repositoryBindingSha256,
     network:{source:networks.source,destination:networks.destination},
     officialRuntimeCodeKeccak256:{...policy.officialRuntimeCodeKeccak256},
     providerState:{source:source.state,destination:destination.state},
     rpcIndependence:{source:source.independence,destination:destination.independence},
+    reviewedDvns:{
+      source:dvnOperatorAudit.dvns.filter(value=>value.chain===expectedSource).map(detachDvn),
+      destination:dvnOperatorAudit.dvns.filter(value=>value.chain===expectedDestination).map(detachDvn)
+    },
     blockers:sortBlockers(blockers)
   };
 }
@@ -136,14 +166,18 @@ function providerBinding(endpoints:PathwayAuditManifest["source"]["rpcs"],audit:
   state:{label:string;state:ProviderEvidenceState}[];independence:OperatorIndependence;
 }{
   const matched=endpoints.map(endpoint=>audit.providers.find(provider=>
-    provider.label===endpoint.label&&provider.originSha256===endpoint.originSha256&&provider.operatorEvidenceSha256!=="0".repeat(64)
+    provider.label===endpoint.label&&provider.originSha256===endpoint.originSha256&&
+    provider.operatorFamily===endpoint.operatorFamily&&provider.operatorEvidenceSha256!=="0".repeat(64)
   ));
   const state=endpoints.map((endpoint,index)=>({
     label:endpoint.label,state:matched[index]&&!stale?"OPERATOR_EVIDENCE_REVIEWED":"OPERATOR_EVIDENCE_MISSING" as ProviderEvidenceState
   }));
   if(!stale)for(const value of state)if(value.state==="OPERATOR_EVIDENCE_MISSING")blockers.push(blocker("AUDIT_PROVIDER_EVIDENCE_MISSING","RPC_INDEPENDENCE","REVIEW_RPC_OPERATORS"));
   const matchedFamilies=matched.map(value=>value?.operatorFamily).filter((value):value is string=>Boolean(value));
-  if(matchedFamilies.length===2&&new Set(matchedFamilies).size!==2){
+  const auditedFamilies=endpoints.map(endpoint=>audit.providers.find(provider=>
+    provider.label===endpoint.label&&provider.originSha256===endpoint.originSha256&&provider.operatorEvidenceSha256!=="0".repeat(64)
+  )?.operatorFamily).filter((value):value is string=>Boolean(value));
+  if(auditedFamilies.length===2&&new Set(auditedFamilies).size!==2){
     blockers.push(blocker("AUDIT_PROVIDER_OPERATOR_DUPLICATED","RPC_INDEPENDENCE","REVIEW_RPC_OPERATORS"));
   }
   return{state,independence:!stale&&matchedFamilies.length===2&&new Set(matchedFamilies).size===2?"OPERATOR_INDEPENDENCE_REVIEWED":"OPERATOR_INDEPENDENCE_UNPROVEN"};
@@ -179,6 +213,40 @@ function parseProviderAudit(text:string):ProviderAudit{
   return{schemaVersion:1,auditDate:date(root.auditDate),status:root.status,providers,sources,warning:root.warning};
 }
 
+function parseDvnOperatorAudit(text:string):DvnOperatorAudit{
+  try{
+    const root=record(parseCanonicalJsonDocument(text));
+    exactKeys(root,["schemaVersion","auditDate","status","dvns","sources","warning"]);
+    if(root.schemaVersion!==1||!nonempty(root.warning)||!Array.isArray(root.dvns)||!Array.isArray(root.sources)||
+      (root.status!=="NO_DVN_OPERATORS_REVIEWED"&&root.status!=="DVN_OPERATORS_REVIEWED"))invalid();
+    const dvns=root.dvns.map(dvn),sources=root.sources.map(source);
+    if(new Set(sources).size!==sources.length||!strictStrings(sources)||
+      new Set(dvns.map(value=>`${value.chain}:${lowerAddress(value.address)}`)).size!==dvns.length||
+      dvns.some(value=>value.sources.some(item=>!sources.includes(item)))||
+      (root.status==="NO_DVN_OPERATORS_REVIEWED"&&(dvns.length!==0||sources.length!==0))||
+      (root.status==="DVN_OPERATORS_REVIEWED"&&(dvns.length===0||sources.length===0)))invalid();
+    return{schemaVersion:1,auditDate:date(root.auditDate),status:root.status,dvns,sources,warning:root.warning};
+  }catch(error){if(error instanceof PathwayAuditPolicyError)throw error;return invalid()}
+}
+
+function dvn(value:unknown):ReviewedDvn{
+  const root=record(value);
+  exactKeys(root,["chain","chainId","address","operatorFamily","operatorEvidenceSha256","sources"]);
+  const chain=root.chain,chainId=root.chainId;
+  if((chain!==expectedSource&&chain!==expectedDestination)||
+    (chain===expectedSource&&chainId!==11155111)||(chain===expectedDestination&&chainId!==421614)||
+    typeof root.operatorFamily!=="string"||root.operatorFamily.length<1||root.operatorFamily.length>128||
+    !/^[a-z0-9](?:[a-z0-9._ -]*[a-z0-9])?$/.test(root.operatorFamily)||!Array.isArray(root.sources))invalid();
+  const sources=root.sources.map(source);
+  if(sources.length===0||new Set(sources).size!==sources.length||!strictStrings(sources))invalid();
+  return{
+    chain,chainId:chainId as 11155111|421614,address:address(root.address),operatorFamily:root.operatorFamily,
+    operatorEvidenceSha256:nonzeroDigest(root.operatorEvidenceSha256),sources
+  };
+}
+
+function detachDvn(value:ReviewedDvn):ReviewedDvn{return{...value,sources:[...value.sources]}}
+
 function provider(value:unknown):ReviewedProvider{
   const root=record(value);exactKeys(root,["label","operatorFamily","originSha256","operatorEvidenceSha256","sources"]);
   if(!nonempty(root.label)||!nonempty(root.operatorFamily)||!Array.isArray(root.sources))invalid();
@@ -188,6 +256,8 @@ function provider(value:unknown):ReviewedProvider{
 }
 
 function source(value:unknown):string{if(!nonempty(value))invalid();return value}
+function strictStrings(values:string[]):boolean{return values.every((value,index)=>index===0||value>values[index-1]!)}
+function lowerAddress(value:string):string{return value.toLowerCase()}
 
 function manifestMatchesNetwork(manifest:PathwayAuditManifest,networks:{source:NetworkValues;destination:NetworkValues}):boolean{
   const source=manifest.source,destination=manifest.destination;
@@ -208,6 +278,7 @@ function exactKeys(value:Record<string,unknown>,expected:string[]):void{const ac
 function nonempty(value:unknown):value is string{return typeof value==="string"&&value.length>0}
 function positiveInteger(value:unknown):value is number{return typeof value==="number"&&Number.isSafeInteger(value)&&value>0}
 function digest(value:unknown):string{if(typeof value!=="string"||!digestPattern.test(value))invalid();return value}
+function nonzeroDigest(value:unknown):string{const result=digest(value);if(result==="0".repeat(64))invalid();return result}
 function codeHash(value:unknown):string|null{if(value===null)return null;if(typeof value!=="string"||!/^0x[0-9a-f]{64}$/.test(value))invalid();return value}
 function address(value:unknown):string{if(typeof value!=="string")invalid();try{if(getAddress(value)!==value)invalid();return value}catch{return invalid()}}
 function date(value:unknown):string{if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(value))invalid();const parsed=new Date(`${value}T00:00:00.000Z`);if(Number.isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==value)invalid();return value}

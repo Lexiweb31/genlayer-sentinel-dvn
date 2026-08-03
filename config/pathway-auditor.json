@@ -5,6 +5,7 @@
   "networkConfig": "config/networks.json",
   "networkAuditEvidence": "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
   "providerAudit": "config/rpc-provider-audit.json",
+  "dvnOperatorAudit": "config/dvn-operator-audit.json",
   "pathway": {
     "source": "ethereum-sepolia",
     "destination": "arbitrum-sepolia"

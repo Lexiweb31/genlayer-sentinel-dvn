@@ -58,6 +58,7 @@ function policy(){
     networkConfig:"config/networks.json",
     networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     providerAudit:"config/rpc-provider-audit.json",
+    dvnOperatorAudit:"config/dvn-operator-audit.json",
     pathway:{source:"ethereum-sepolia",destination:"arbitrum-sepolia"},
     officialRuntimeCodeKeccak256:{
       sourceEndpointV2:null,sourceSendUln302:null,sourceExecutor:null,
@@ -87,7 +88,27 @@ async function inputs(){
       schemaVersion:1,auditDate:"2026-08-02",status:"NO_PROVIDER_OPERATORS_REVIEWED",providers:[],sources:[],
       warning:"URL diversity is transport diversity, not operator independence."
     },null,2)+"\n",
+    dvnOperatorAuditText:canonicalJson(emptyDvnAudit()),
     evaluationDate:"2026-08-02"
+  };
+}
+
+function emptyDvnAudit(){
+  return{
+    schemaVersion:1,auditDate:"2026-08-03",status:"NO_DVN_OPERATORS_REVIEWED",dvns:[],sources:[],
+    warning:"No LayerZero DVN operator identity or independence evidence has been reviewed."
+  };
+}
+
+function reviewedDvnAudit(){
+  const source="docs/research/reviewed-dvn-operators.md";
+  return{
+    schemaVersion:1,auditDate:"2026-08-03",status:"DVN_OPERATORS_REVIEWED",
+    dvns:[
+      {chain:"ethereum-sepolia",chainId:11155111,address:address(201),operatorFamily:"independent-dvn-a",operatorEvidenceSha256:digest("7"),sources:[source]},
+      {chain:"arbitrum-sepolia",chainId:421614,address:address(201),operatorFamily:"independent-dvn-a",operatorEvidenceSha256:digest("7"),sources:[source]}
+    ],
+    sources:[source],warning:"Reviewed entries prove only repository-bound public operator identity evidence, not liveness."
   };
 }
 
@@ -178,4 +199,56 @@ test("blocks each altered provider-evidence field without exposing raw URLs",asy
     assert.equal(binding.blockers.some(value=>value.code===want),true,name);
     assert.equal(JSON.stringify(binding).includes("https://"),false,name);
   }
+});
+
+test("binds exact manifest operator families to reviewed provider records instead of trusting a forged assertion",async()=>{
+  const input=await reviewedInputs();
+  input.manifest.source.rpcs[0].operatorFamily="forged-family";
+  const binding=bindPathwayAuditPolicy(input);
+  assert.equal(binding.providerState.source[0].state,"OPERATOR_EVIDENCE_MISSING");
+  assert.equal(binding.rpcIndependence.source,"OPERATOR_INDEPENDENCE_UNPROVEN");
+  assert.equal(binding.blockers.some(value=>value.code==="AUDIT_PROVIDER_EVIDENCE_MISSING"),true);
+});
+
+test("parses only canonical closed DVN reviews and exposes exact validated chain entries",async()=>{
+  const input=await reviewedInputs(),audit=reviewedDvnAudit();
+  input.dvnOperatorAuditText=canonicalJson(audit);
+  const binding=bindPathwayAuditPolicy(input);
+  assert.equal(binding.dvnOperatorAuditSha256,sha256(input.dvnOperatorAuditText));
+  assert.deepEqual(binding.reviewedDvns.source,audit.dvns.slice(0,1));
+  assert.deepEqual(binding.reviewedDvns.destination,audit.dvns.slice(1));
+  audit.dvns[0].operatorFamily="changed-after-binding";
+  assert.equal(binding.reviewedDvns.source[0].operatorFamily,"independent-dvn-a");
+});
+
+test("the committed DVN registry is canonical, honest, and empty until identities are reviewed",async()=>{
+  const text=await readFile(new URL("config/dvn-operator-audit.json",root),"utf8");
+  assert.equal(text,canonicalJson(emptyDvnAudit()));
+  const input=await reviewedInputs();input.dvnOperatorAuditText=text;
+  const binding=bindPathwayAuditPolicy(input);
+  assert.deepEqual(binding.reviewedDvns,{source:[],destination:[]});
+});
+
+test("rejects noncanonical, open, duplicate, malformed, unknown-chain, and unsafe DVN review records",async()=>{
+  const cases=[
+    ["noncanonical",audit=>JSON.stringify(audit,null,2)+"\n"],
+    ["unknown field",audit=>{audit.extra=true;return canonicalJson(audit)}],
+    ["duplicate identity",audit=>{audit.dvns.push(structuredClone(audit.dvns[0]));return canonicalJson(audit)}],
+    ["non-digest evidence",audit=>{audit.dvns[0].operatorEvidenceSha256="not-a-digest";return canonicalJson(audit)}],
+    ["unknown chain",audit=>{audit.dvns[0].chain="ethereum-mainnet";audit.dvns[0].chainId=1;return canonicalJson(audit)}],
+    ["unsafe field",audit=>{audit.dvns[0].privateKey="forbidden";return canonicalJson(audit)}]
+  ];
+  for(const[name,encode]of cases){
+    const input=await reviewedInputs();input.dvnOperatorAuditText=encode(reviewedDvnAudit());
+    assert.throws(()=>bindPathwayAuditPolicy(input),/PATHWAY_AUDIT_POLICY_INVALID/,name);
+  }
+});
+
+test("binds raw DVN registry bytes into the repository digest",async()=>{
+  const input=await reviewedInputs(),first=bindPathwayAuditPolicy(input);
+  const changed=emptyDvnAudit();changed.warning="No DVN identities reviewed; replacement registry bytes.";
+  input.dvnOperatorAuditText=canonicalJson(changed);
+  const second=bindPathwayAuditPolicy(input);
+  assert.notEqual(second.dvnOperatorAuditSha256,first.dvnOperatorAuditSha256);
+  assert.notEqual(second.repositoryBindingSha256,first.repositoryBindingSha256);
 });
