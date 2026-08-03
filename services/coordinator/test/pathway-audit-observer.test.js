@@ -157,7 +157,7 @@ function deploymentEvidence(value,chain,options={}){
 }
 
 function chainFixture(value,chain,options={}){
-  const isSource=chain==="source",baseHead=isSource?128:198,headA=options.headDisagreement?baseHead+2:baseHead,headB=baseHead;
+  const isSource=chain==="source",baseHead=isSource?128:198,headA=options.unequalHeads?baseHead+2:baseHead,headB=baseHead;
   const selected=isSource?125:178,block=header(selected,chain);
   const network=isSource?contracts.source:contracts.destination;
   const pathUln=isSource?[15n,1,1,1,[contracts.independentDvn],[contracts.sourceAdapter]]:[64n,1,1,1,[contracts.independentDvn],[contracts.destinationAdapter]];
@@ -292,10 +292,17 @@ test("predeployment missing-vs-code disagreement cannot be labeled transport agr
   assert.notEqual(observation.status,"OBSERVED_PATHWAY_CONSISTENT");
 });
 
+test("valid unequal heads remain provider agreement when both providers prove the selected canonical block",async()=>{
+  const observation=await observePathway(fixture({source:{unequalHeads:true}}).input);
+  assert.equal(observation.blocks.source.blockNumber,"125");
+  assert.equal(observation.providerAgreement.source.state,"TWO_TRANSPORTS_AGREE");
+  assert.deepEqual(observation.blockers,[]);
+  assert.equal(observation.status,"OBSERVED_PATHWAY_CONSISTENT");
+});
+
 test("orchestration failures map to deterministic sanitized consensus and provenance blockers",async t=>{
   const cases=[
     ["chain equivocation",{source:{chainEquivocation:true}},"AUDIT_CHAIN_MISMATCH","RPC_CONSENSUS","source"],
-    ["head result disagreement",{source:{headDisagreement:true}},"AUDIT_PROVIDER_RESULT_DISAGREEMENT","RPC_CONSENSUS","source"],
     ["block reorg",{source:{reorg:true}},"AUDIT_BLOCK_UNSTABLE","RPC_CONSENSUS","source"],
     ["latest substituted for exact block",{source:{latestInstead:true}},"AUDIT_BLOCK_DISAGREEMENT","RPC_CONSENSUS","source"],
     ["one provider missing code",{source:{codeMissing:true}},"AUDIT_CODE_MISSING","CODE_IDENTITY","source"],

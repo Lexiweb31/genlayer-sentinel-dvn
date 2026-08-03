@@ -494,7 +494,9 @@ function deploymentResultsDisagree(pair:TrackedPair):boolean{
 }
 function transcriptsAgree(pair:TrackedPair):boolean{
   if(pair.records.some(records=>records.some(record=>record.errorCode!==undefined)))return false;
-  const normalize=(records:RecordedRpcCall[]):string[]=>records.map(record=>stableUnknown(record)).sort();
+  const normalize=(records:RecordedRpcCall[]):string[]=>records.map(record=>stableUnknown(
+    record.method==="eth_blockNumber"?{method:record.method,params:record.params}:record
+  )).sort();
   const first=normalize(pair.records[0]),second=normalize(pair.records[1]);
   return first.length===second.length&&first.every((value,index)=>value===second[index]);
 }
