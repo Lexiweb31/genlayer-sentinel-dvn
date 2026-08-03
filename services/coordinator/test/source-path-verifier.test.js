@@ -16,6 +16,13 @@ const sendInterface=new Interface([
   "function executorConfigs(address oapp,uint32 remoteEid) view returns(uint32 maxMessageSize,address executor)"
 ]);
 const oappInterface=new Interface(["function peers(uint32 eid) view returns(bytes32 peer)"]);
+const adapterInterface=new Interface([
+  "function messageLib() view returns(address)",
+  "function verificationTarget() view returns(address)",
+  "function supportedDstEid() view returns(uint32)",
+  "function quorum() view returns(uint256)",
+  "function signer(address) view returns(bool)"
+]);
 
 const config={
   name:"sepolia-arbitrum-sepolia",
@@ -61,7 +68,7 @@ function rpc(options={}){
       if(data.startsWith(endpointInterface.getFunction("getSendLibrary").selector))return endpointInterface.encodeFunctionResult("getSendLibrary",[options.sendLibrary??config.sendLibrary]);
       if(data.startsWith(endpointInterface.getFunction("isDefaultSendLibrary").selector))return endpointInterface.encodeFunctionResult("isDefaultSendLibrary",[options.isDefault??false]);
     }
-    if(to.toLowerCase()===config.sendLibrary.toLowerCase()){
+    if(to.toLowerCase()===(options.sendLibrary??config.sendLibrary).toLowerCase()){
       if(data.startsWith(sendInterface.getFunction("isSupportedEid").selector))return sendInterface.encodeFunctionResult("isSupportedEid",[options.supported??true]);
       if(data.startsWith(sendInterface.getFunction("getAppUlnConfig").selector)){
         const required=options.requiredDvns??config.requiredDvns;
@@ -78,6 +85,13 @@ function rpc(options={}){
       if(data.startsWith(sendInterface.getFunction("executorConfigs").selector))return sendInterface.encodeFunctionResult("executorConfigs",[options.maxMessageSize??config.maxMessageSize,options.executor??config.executor]);
     }
     if(to.toLowerCase()===config.sourceOAppAddress.toLowerCase()&&data.startsWith(oappInterface.getFunction("peers").selector))return oappInterface.encodeFunctionResult("peers",[options.peer??config.destinationOApp]);
+    if(to.toLowerCase()===config.sentinelDvn.toLowerCase()){
+      if(data.startsWith(adapterInterface.getFunction("messageLib").selector))return adapterInterface.encodeFunctionResult("messageLib",[config.sendLibrary]);
+      if(data.startsWith(adapterInterface.getFunction("verificationTarget").selector))return adapterInterface.encodeFunctionResult("verificationTarget",[config.sourceOAppAddress]);
+      if(data.startsWith(adapterInterface.getFunction("supportedDstEid").selector))return adapterInterface.encodeFunctionResult("supportedDstEid",[config.dstEid]);
+      if(data.startsWith(adapterInterface.getFunction("quorum").selector))return adapterInterface.encodeFunctionResult("quorum",[3]);
+      if(data.startsWith(adapterInterface.getFunction("signer").selector))return adapterInterface.encodeFunctionResult("signer",[true]);
+    }
     throw new Error(`unexpected calldata ${data}`);
   };
   return{value,calls};

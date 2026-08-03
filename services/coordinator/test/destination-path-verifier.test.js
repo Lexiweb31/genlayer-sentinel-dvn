@@ -11,7 +11,8 @@ const receiveInterface=new Interface([
   "function getUlnConfig(address oapp,uint32 remoteEid) view returns(tuple(uint64 confirmations,uint8 requiredDVNCount,uint8 optionalDVNCount,uint8 optionalDVNThreshold,address[] requiredDVNs,address[] optionalDVNs))",
   "function getAppUlnConfig(address oapp,uint32 remoteEid) view returns(tuple(uint64 confirmations,uint8 requiredDVNCount,uint8 optionalDVNCount,uint8 optionalDVNThreshold,address[] requiredDVNs,address[] optionalDVNs))"
 ]);
-const adapterInterface=new Interface(["function verificationTarget() view returns(address)","function quorum() view returns(uint256)","function signer(address) view returns(bool)"]);
+const adapterInterface=new Interface(["function messageLib() view returns(address)","function verificationTarget() view returns(address)","function supportedDstEid() view returns(uint32)","function quorum() view returns(uint256)","function signer(address) view returns(bool)"]);
+const oappInterface=new Interface(["function peers(uint32 eid) view returns(bytes32 peer)"]);
 const config={rpcUrls:["https://dst-a.example/v1/key","https://dst-b.example/v1/key"],chainId:421614,srcEid:40161,endpoint:a("7"),receiveLibrary:a("8"),oapp:a("4"),adapter:a("9"),useDefaultReceiveLibrary:false,confirmations:64n,requiredDvns:[a("a")],optionalDvns:[a("9"),a("b")],optionalDvnThreshold:1,authorizedSigners:[a("1"),a("2"),a("3"),a("4"),a("5")],quorum:3,signatureTtlSeconds:300};
 
 function rpc(options={}){
@@ -35,9 +36,12 @@ function rpc(options={}){
       const inherited=options.inherited??false,required=inherited?[]:(options.requiredDvns??config.requiredDvns),optional=inherited?[]:(options.optionalDvns??config.optionalDvns),threshold=inherited?0:(options.threshold??config.optionalDvnThreshold),confirmations=inherited?0n:(options.confirmations??config.confirmations);
       return receiveInterface.encodeFunctionResult("getAppUlnConfig",[[confirmations,required.length,optional.length,threshold,required,optional]]);
     }
+    if(data.startsWith(adapterInterface.getFunction("messageLib").selector))return adapterInterface.encodeFunctionResult("messageLib",[config.receiveLibrary]);
     if(data.startsWith(adapterInterface.getFunction("verificationTarget").selector))return adapterInterface.encodeFunctionResult("verificationTarget",[options.adapterTarget??config.receiveLibrary]);
+    if(data.startsWith(adapterInterface.getFunction("supportedDstEid").selector))return adapterInterface.encodeFunctionResult("supportedDstEid",[40231]);
     if(data.startsWith(adapterInterface.getFunction("quorum").selector))return adapterInterface.encodeFunctionResult("quorum",[options.quorum??3]);
     if(data.startsWith(adapterInterface.getFunction("signer").selector))return adapterInterface.encodeFunctionResult("signer",[options.signersAuthorized??true]);
+    if(data.startsWith(oappInterface.getFunction("peers").selector))return oappInterface.encodeFunctionResult("peers",[options.sourcePeer??h("a")]);
     throw new Error(`unexpected calldata ${data}`);
   };
 }
