@@ -1,5 +1,5 @@
 import {isIP} from "node:net";
-import {AbiCoder,Interface,keccak256,toQuantity} from "ethers";
+import {AbiCoder,checkResultErrors,Interface,keccak256,toQuantity} from "ethers";
 import type {Hex,PolicyRequest} from "../../../packages/core/src/types.js";
 import{safeJsonRpc}from"./json-rpc.js";
 import{PathwayAuditError}from"./pathway-audit-model.js";
@@ -14,6 +14,7 @@ export interface PinnedStateReader{
 }
 
 export interface UlnObservation{confirmations:bigint;requiredDvns:Hex[];optionalDvns:Hex[];optionalDvnThreshold:number}
+export interface DvnCodeObservation{address:Hex;codeKeccak256:Hex}
 export interface AdapterObservation{
   address:Hex;
   messageLib:Hex;
@@ -38,6 +39,7 @@ export interface SourcePathObservation{
   isDefaultSendLibrary:boolean;
   supportedEid:boolean;
   uln:UlnObservation;
+  dvnCodeKeccak256:DvnCodeObservation[];
   executor:{maxMessageSize:number;address:Hex};
   destinationPeer:Hex;
   adapter:AdapterObservation;
@@ -93,25 +95,26 @@ class RpcUnavailable extends Error {}
 export async function readSourcePathObservation(input:SourcePathObservationInput,reader:PinnedStateReader):Promise<SourcePathObservation>{
   const checked=sourceInput(input),endpoint=checked.endpoint,sourceOApp=checked.sourceOApp;
   await code(reader,endpoint);await code(reader,sourceOApp);await code(reader,checked.adapter);
-  const sendLibrary=address(result(endpointInterface,"getSendLibrary",await call(reader,endpoint,endpointInterface.encodeFunctionData("getSendLibrary",[sourceOApp,checked.dstEid])))[0]);
+  const sendLibrary=address(result(endpointInterface,"getSendLibrary",await call(reader,endpoint,data(endpointInterface,"getSendLibrary",[sourceOApp,checked.dstEid])))[0]);
   await code(reader,sendLibrary);
-  const isDefaultSendLibrary=boolean(result(endpointInterface,"isDefaultSendLibrary",await call(reader,endpoint,endpointInterface.encodeFunctionData("isDefaultSendLibrary",[sourceOApp,checked.dstEid])))[0]);
-  const supportedEid=boolean(result(sendInterface,"isSupportedEid",await call(reader,sendLibrary,sendInterface.encodeFunctionData("isSupportedEid",[checked.dstEid])))[0]);
-  const uln=ulnObservation(result(sendInterface,"getAppUlnConfig",await call(reader,sendLibrary,sendInterface.encodeFunctionData("getAppUlnConfig",[sourceOApp,checked.dstEid])))[0]);
-  const executorResult=result(sendInterface,"executorConfigs",await call(reader,sendLibrary,sendInterface.encodeFunctionData("executorConfigs",[sourceOApp,checked.dstEid])));
+  const isDefaultSendLibrary=boolean(result(endpointInterface,"isDefaultSendLibrary",await call(reader,endpoint,data(endpointInterface,"isDefaultSendLibrary",[sourceOApp,checked.dstEid])))[0]);
+  const supportedEid=boolean(result(sendInterface,"isSupportedEid",await call(reader,sendLibrary,data(sendInterface,"isSupportedEid",[checked.dstEid])))[0]);
+  const uln=ulnObservation(result(sendInterface,"getAppUlnConfig",await call(reader,sendLibrary,data(sendInterface,"getAppUlnConfig",[sourceOApp,checked.dstEid])))[0]);
+  const dvnCodeKeccak256=await Promise.all([...uln.requiredDvns,...uln.optionalDvns].map(async target=>({address:target,codeKeccak256:keccak256(await code(reader,target)) as Hex})));
+  const executorResult=result(sendInterface,"executorConfigs",await call(reader,sendLibrary,data(sendInterface,"executorConfigs",[sourceOApp,checked.dstEid])));
   const executor={maxMessageSize:number(executorResult[0]),address:address(executorResult[1])};await code(reader,executor.address);
-  const destinationPeer=bytes32(result(oappInterface,"peers",await call(reader,sourceOApp,oappInterface.encodeFunctionData("peers",[checked.dstEid])))[0]);
-  return{endpoint,sourceOApp,dstEid:checked.dstEid,sendLibrary,isDefaultSendLibrary,supportedEid,uln,executor,destinationPeer,adapter:await readAdapterObservation(checked.adapter,checked.authorizedSigners,reader)};
+  const destinationPeer=bytes32(result(oappInterface,"peers",await call(reader,sourceOApp,data(oappInterface,"peers",[checked.dstEid])))[0]);
+  return{endpoint,sourceOApp,dstEid:checked.dstEid,sendLibrary,isDefaultSendLibrary,supportedEid,uln,dvnCodeKeccak256,executor,destinationPeer,adapter:await readAdapterObservation(checked.adapter,checked.authorizedSigners,reader)};
 }
 
 /** Reads immutable/public adapter bindings and, when supplied, every authorized signer mapping. */
 export async function readAdapterObservation(adapter:Hex,authorizedSigners:readonly Hex[]|undefined,reader:PinnedStateReader):Promise<AdapterObservation>{
   const checkedAdapter=address(adapter),signers=signerInput(authorizedSigners);await code(reader,checkedAdapter);
-  const messageLib=address(result(adapterInterface,"messageLib",await call(reader,checkedAdapter,adapterInterface.encodeFunctionData("messageLib")))[0]);
-  const verificationTarget=address(result(adapterInterface,"verificationTarget",await call(reader,checkedAdapter,adapterInterface.encodeFunctionData("verificationTarget")))[0]);
-  const supportedDstEid=number(result(adapterInterface,"supportedDstEid",await call(reader,checkedAdapter,adapterInterface.encodeFunctionData("supportedDstEid")))[0]);
-  const quorum=uint(result(adapterInterface,"quorum",await call(reader,checkedAdapter,adapterInterface.encodeFunctionData("quorum")))[0]);
-  const signersAuthorized=await Promise.all((signers??[]).map(async signer=>boolean(result(adapterInterface,"signer",await call(reader,checkedAdapter,adapterInterface.encodeFunctionData("signer",[signer])))[0])));
+  const messageLib=address(result(adapterInterface,"messageLib",await call(reader,checkedAdapter,data(adapterInterface,"messageLib")))[0]);
+  const verificationTarget=address(result(adapterInterface,"verificationTarget",await call(reader,checkedAdapter,data(adapterInterface,"verificationTarget")))[0]);
+  const supportedDstEid=uint32(result(adapterInterface,"supportedDstEid",await call(reader,checkedAdapter,data(adapterInterface,"supportedDstEid")))[0]);
+  const quorum=uint(result(adapterInterface,"quorum",await call(reader,checkedAdapter,data(adapterInterface,"quorum")))[0]);
+  const signersAuthorized=await Promise.all((signers??[]).map(async signer=>boolean(result(adapterInterface,"signer",await call(reader,checkedAdapter,data(adapterInterface,"signer",[signer])))[0])));
   return{address:checkedAdapter,messageLib,verificationTarget,supportedDstEid,quorum,signersAuthorized};
 }
 
@@ -132,7 +135,7 @@ export class IndependentSourcePathVerifier implements SourcePathVerifier {
     const heads=await Promise.all(this.urls.map(url=>this.head(url,blockTag)));
     if(heads.some(head=>stable(head)!==stable(heads[0])))throw new Error("source provider disagreement");
     if(heads[0]!.chainId!==BigInt(this.config.sourceChainId)||heads[0]!.blockHash!==packet.blockHash.toLowerCase())throw new Error("source pathway configuration drift");
-    const observations=await Promise.all(this.urls.map(url=>this.observation(url,blockTag)));
+    const observations=await Promise.all(this.urls.map(url=>this.observation(url,heads[0]!.blockHash)));
     if(observations.some(value=>stable(value)!==stable(observations[0])))throw new Error("source provider disagreement");
     const value=observations[0]!;this.assertPinned(value);
     const requiredHash=keccak256(coder.encode(["address[]"],[value.uln.requiredDvns])),optionalHash=keccak256(coder.encode(["address[]"],[value.uln.optionalDvns]));
@@ -142,23 +145,26 @@ export class IndependentSourcePathVerifier implements SourcePathVerifier {
 
   private assertPacket(packet:PolicyRequest["packet"]):void{if(packet.srcEid!==this.config.srcEid||packet.dstEid!==this.config.dstEid||packet.sender.toLowerCase()!==this.config.sourceOApp.toLowerCase()||packet.receiver.toLowerCase()!==this.config.destinationOApp.toLowerCase())throw new Error("source packet pathway mismatch");hash(packet.blockHash)}
   private async head(url:string,blockTag:string):Promise<Head>{try{const chainId=quantity(await this.rpc(url,"eth_chainId",[]));const block=await this.rpc(url,"eth_getBlockByNumber",[blockTag,false]);if(!block||typeof block!=="object")throw new Error();return{chainId,blockHash:hash((block as {hash?:unknown}).hash)}}catch{throw new RpcUnavailable()}}
-  private async observation(url:string,blockTag:string):Promise<SourcePathObservation>{
-    const reader:PinnedStateReader={getCode:async target=>{try{return await this.rpc(url,"eth_getCode",[target,blockTag]) as Hex}catch{throw new RpcUnavailable()}},call:async(to,data)=>{try{return await this.rpc(url,"eth_call",[{to,data},blockTag]) as Hex}catch{throw new RpcUnavailable()}}};
+  private async observation(url:string,blockHash:Hex):Promise<SourcePathObservation>{
+    const reference={blockHash,requireCanonical:true};
+    const reader:PinnedStateReader={getCode:async target=>{try{return await this.rpc(url,"eth_getCode",[target,reference]) as Hex}catch{throw new RpcUnavailable()}},call:async(to,data)=>{try{return await this.rpc(url,"eth_call",[{to,data},reference]) as Hex}catch{throw new RpcUnavailable()}}};
     try{return await readSourcePathObservation({endpoint:normalizeAddress(this.config.endpoint),sourceOApp:normalizeAddress(this.config.sourceOAppAddress),dstEid:this.config.dstEid,adapter:normalizeAddress(this.config.sentinelDvn)},reader)}catch(error){if(error instanceof RpcUnavailable)throw error;throw new Error("source pathway configuration drift")}
   }
   private assertPinned(value:SourcePathObservation):void{const required=this.config.requiredDvns.map(normalizeAddress),optional=this.config.optionalDvns.map(normalizeAddress);if(value.sendLibrary!==normalizeAddress(this.config.sendLibrary)||value.isDefaultSendLibrary||!value.supportedEid||value.uln.confirmations!==this.config.confirmations||stable(value.uln.requiredDvns)!==stable(required)||stable(value.uln.optionalDvns)!==stable(optional)||value.uln.optionalDvnThreshold!==this.config.optionalDvnThreshold||value.executor.maxMessageSize!==this.config.maxMessageSize||value.executor.address!==normalizeAddress(this.config.executor)||value.destinationPeer!==this.config.destinationOApp.toLowerCase())throw new Error("source pathway configuration drift")}
 }
 
-function sourceInput(value:SourcePathObservationInput):SourcePathObservationInput{if(!value||typeof value!=="object")invalid();const endpoint=address(value.endpoint),sourceOApp=address(value.sourceOApp),adapter=address(value.adapter),dstEid=number(value.dstEid);return{endpoint,sourceOApp,adapter,dstEid,authorizedSigners:signerInput(value.authorizedSigners)}}
+function sourceInput(value:SourcePathObservationInput):SourcePathObservationInput{if(!value||typeof value!=="object")invalid();const endpoint=address(value.endpoint),sourceOApp=address(value.sourceOApp),adapter=address(value.adapter),dstEid=uint32(value.dstEid);return{endpoint,sourceOApp,adapter,dstEid,authorizedSigners:signerInput(value.authorizedSigners)}}
 function signerInput(value:readonly Hex[]|undefined):Hex[]|undefined{if(value===undefined)return undefined;if(!Array.isArray(value)||value.length!==5)invalid();const result=value.map(address);sortedUnique(result);return result}
 function ulnObservation(value:unknown):UlnObservation{if(!value||typeof value!=="object")invalid();const uln=value as {confirmations?:unknown;requiredDVNCount?:unknown;optionalDVNCount?:unknown;optionalDVNThreshold?:unknown;requiredDVNs?:unknown;optionalDVNs?:unknown};const confirmations=uint(uln.confirmations),requiredDvns=addresses(uln.requiredDVNs),optionalDvns=addresses(uln.optionalDVNs),optionalDvnThreshold=number(uln.optionalDVNThreshold);if(number(uln.requiredDVNCount)!==requiredDvns.length||number(uln.optionalDVNCount)!==optionalDvns.length||optionalDvnThreshold>optionalDvns.length)invalid();sortedUnique(requiredDvns);sortedUnique(optionalDvns);if(new Set([...requiredDvns,...optionalDvns]).size!==requiredDvns.length+optionalDvns.length)invalid();return{confirmations,requiredDvns,optionalDvns,optionalDvnThreshold}}
 function addresses(value:unknown):Hex[]{if(!Array.isArray(value))invalid();return value.map(address)}
-function result(contract:Interface,name:string,data:Hex):readonly unknown[]{try{if(typeof data!=="string"||!/^0x(?:[0-9a-fA-F]{2})*$/.test(data))invalid();return contract.decodeFunctionResult(name,data)}catch(error){if(error instanceof PathwayAuditError)throw error;invalid()}}
+function result(contract:Interface,name:string,value:Hex):readonly unknown[]{try{if(typeof value!=="string"||!/^0x(?:[0-9a-fA-F]{2})*$/.test(value))invalid();const decoded=contract.decodeFunctionResult(name,value);if(checkResultErrors(decoded).length!==0||contract.encodeFunctionResult(name,decoded).toLowerCase()!==value.toLowerCase())invalid();return decoded}catch(error){if(error instanceof PathwayAuditError)throw error;invalid()}}
+function data(contract:Interface,name:string,args:readonly unknown[]=[]):Hex{try{return contract.encodeFunctionData(name,args) as Hex}catch{invalid()}}
 async function call(reader:PinnedStateReader,to:Hex,data:string):Promise<Hex>{return await reader.call(to,data as Hex)}
-async function code(reader:PinnedStateReader,target:Hex):Promise<void>{const value=await reader.getCode(target);if(typeof value!=="string"||!/^0x(?:[0-9a-fA-F]{2})*$/.test(value)||/^0x0*$/i.test(value))invalid()}
+async function code(reader:PinnedStateReader,target:Hex):Promise<Hex>{const value=await reader.getCode(target);if(typeof value!=="string"||!/^0x(?:[0-9a-fA-F]{2})*$/.test(value)||/^0x0*$/i.test(value))invalid();return value.toLowerCase() as Hex}
 function boolean(value:unknown):boolean{if(typeof value!=="boolean")invalid();return value}
 function uint(value:unknown):bigint{try{const result=BigInt(value as bigint);if(result<0n)invalid();return result}catch{invalid()}}
 function number(value:unknown):number{const result=uint(value);if(result>BigInt(Number.MAX_SAFE_INTEGER))invalid();return Number(result)}
+function uint32(value:unknown):number{const result=number(value);if(result>0xffffffff)invalid();return result}
 function address(value:unknown):Hex{if(typeof value!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(value)||/^0x0{40}$/i.test(value))invalid();return value.toLowerCase() as Hex}
 function bytes32(value:unknown):Hex{if(typeof value!=="string"||!/^0x[0-9a-fA-F]{64}$/.test(value)||/^0x0{64}$/i.test(value))invalid();return value.toLowerCase() as Hex}
 function sortedUnique(values:Hex[]):void{for(let index=1;index<values.length;index++)if(values[index]!.toLowerCase()<=values[index-1]!.toLowerCase())invalid()}

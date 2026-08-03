@@ -60,9 +60,13 @@ function rpc(options={}){
     if(options.throwRpc)throw new Error("secret provider path /v1/key");
     if(method==="eth_chainId")return `0x${BigInt(options.chainId??config.sourceChainId).toString(16)}`;
     if(method==="eth_getBlockByNumber")return{number:params[0],hash:second&&options.disagreeBlock?h("f"):(options.blockHash??packet.blockHash)};
-    if(method==="eth_getCode")return options.emptyCode&&params[0].toLowerCase()===(options.emptyCodeTarget??config.executor).toLowerCase()?"0x":"0x6000";
+    if(method==="eth_getCode"){
+      if(options.emptyCode&&params[0].toLowerCase()===(options.emptyCodeTarget??config.executor).toLowerCase())return "0x";
+      if(second&&options.dvnCodeB&&params[0].toLowerCase()===config.requiredDvns[0].toLowerCase())return options.dvnCodeB;
+      return "0x6000";
+    }
     if(method!=="eth_call")throw new Error(`unexpected method ${method}`);
-    assert.equal(params[1],"0x7f");
+    assert.deepEqual(params[1],{blockHash:packet.blockHash,requireCanonical:true});
     const {to,data}=params[0];
     if(to.toLowerCase()===config.endpoint.toLowerCase()){
       if(data.startsWith(endpointInterface.getFunction("getSendLibrary").selector))return endpointInterface.encodeFunctionResult("getSendLibrary",[options.sendLibrary??config.sendLibrary]);
@@ -112,11 +116,12 @@ test("proves the complete explicit source pathway at the packet block",async()=>
   assert.deepEqual(verified.requiredDvns,config.requiredDvns);
   assert.deepEqual(verified.optionalDvns,config.optionalDvns);
   assert.match(verified.configurationDigest,/^0x[0-9a-f]{64}$/);
-  assert.equal(fixture.calls.filter(call=>["eth_getBlockByNumber","eth_getCode","eth_call"].includes(call.method)).every(call=>call.params.at(-1)==="0x7f"||call.params[0]==="0x7f"),true);
+  for(const call of fixture.calls.filter(call=>["eth_getCode","eth_call"].includes(call.method)))assert.deepEqual(call.params.at(-1),{blockHash:packet.blockHash,requireCanonical:true});
 });
 
 test("rejects provider disagreement and sanitizes transport failures",async()=>{
   await assert.rejects(new IndependentSourcePathVerifier(config,rpc({disagreeBlock:true}).value).verify(packet),/source provider disagreement/);
+  await assert.rejects(new IndependentSourcePathVerifier(config,rpc({dvnCodeB:"0x6001"}).value).verify(packet),/source provider disagreement/);
   await assert.rejects(new IndependentSourcePathVerifier(config,rpc({throwRpc:true}).value).verify(packet),error=>{
     assert.equal(error.message,"source pathway RPC unavailable");
     assert.doesNotMatch(error.message,/secret|\/v1\/key/);

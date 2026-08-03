@@ -17,6 +17,7 @@ const config={rpcUrls:["https://dst-a.example/v1/key","https://dst-b.example/v1/
 
 function rpc(options={}){
   return async(url,method,params)=>{
+    options.calls?.push({url,method,params});
     const second=url.includes("dst-b");
     if(options.throwRpc)throw new Error("secret provider path /v1/key");
     if(method==="eth_chainId")return `0x${BigInt(options.chainId??config.chainId).toString(16)}`;
@@ -24,7 +25,7 @@ function rpc(options={}){
     if(method==="eth_getBlockByNumber")return{number:params[0],hash:second&&options.disagreeBlock?h("e"):h("d")};
     if(method==="eth_getCode")return options.emptyCode&&params[0].toLowerCase()===config.adapter.toLowerCase()?"0x":"0x6000";
     if(method!=="eth_call")throw new Error(`unexpected method ${method}`);
-    assert.equal(params[1],"0x7f");
+    assert.deepEqual(params[1],{blockHash:h("d"),requireCanonical:true});
     const data=params[0].data;
     if(data.startsWith(endpointInterface.getFunction("getReceiveLibrary").selector))return endpointInterface.encodeFunctionResult("getReceiveLibrary",[options.receiveLibrary??config.receiveLibrary,options.isDefault??false]);
     if(data.startsWith(receiveInterface.getFunction("isSupportedEid").selector))return receiveInterface.encodeFunctionResult("isSupportedEid",[options.supported??true]);
@@ -47,7 +48,8 @@ function rpc(options={}){
 }
 
 test("requires two providers to agree on one pinned destination configuration at a shared block",async()=>{
-  const verified=await new IndependentDestinationPathVerifier(config,rpc()).verify();
+  const calls=[];
+  const verified=await new IndependentDestinationPathVerifier(config,rpc({calls})).verify();
   assert.equal(verified.observedBlockNumber,127n);
   assert.equal(verified.observedBlockHash,h("d"));
   assert.equal(verified.chainId,421614n);
@@ -55,6 +57,7 @@ test("requires two providers to agree on one pinned destination configuration at
   assert.equal(verified.confirmations,64n);
   assert.match(verified.configurationDigest,/^0x[0-9a-f]{64}$/);
   assert.equal(verified.optionalDvns.includes(config.adapter.toLowerCase()),true);
+  for(const call of calls.filter(call=>["eth_getCode","eth_call"].includes(call.method)))assert.deepEqual(call.params.at(-1),{blockHash:h("d"),requireCanonical:true});
 });
 
 test("rejects provider disagreement and sanitizes transport failures",async()=>{
