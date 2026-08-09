@@ -63,10 +63,14 @@
     <section class="pathway-evidence" id="evidence" aria-labelledby="evidence-title">
       <div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div>
       <div class="section-head pathway-evidence-head">
-        <div><p>LOCAL FILE · CLOSED VALIDATION</p><h2 id="evidence-title">Pathway evidence</h2></div>
+        <div><p>LOCAL FILE · CLOSED VALIDATION</p><h2 id="evidence-title">Verification desk</h2></div>
         <span class="status">READ ONLY</span>
       </div>
       <p class="evidence-intro">The selected JSON stays in this browser tab. Sentinel verifies its canonical digest and closed presentation schema before showing the allowlisted fields below. It never becomes coordinator packet, delivery, signer, or demo state.</p>
+      <div class="evidence-boundaries" aria-label="Evidence scope">
+        <p><strong>What Sentinel can establish</strong> Canonical configuration binding, deterministic source and destination observations, and explicit blockers carried by the reviewed artifact.</p>
+        <p><strong>What it cannot establish from this file</strong> A live GenLayer result, signer authorization, destination execution, or production pathway readiness.</p>
+      </div>
       <div class="pathway-evidence-grid">
         <article id="pathway-audit-configuration">
           <p>PATHWAY CONFIGURATION</p>

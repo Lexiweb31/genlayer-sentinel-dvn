@@ -81,6 +81,7 @@ test("renders every allowlisted pathway evidence field before coordinator operat
     "pathway-audit-configuration-digest","pathway-audit-notice"
   ])assert.match(html,new RegExp(`\\bid="${id}"`,`i`),`missing pathway target ${id}`);
   assert.ok(html.indexOf('id="evidence"')<html.indexOf('id="demo-workspace"'));
+  for(const text of["Verification desk","What Sentinel can establish","What it cannot establish from this file"])assert.ok(html.includes(text),`missing evidence workspace copy: ${text}`);
 });
 
 test("implements the exact glass composition and resilient responsive states",()=>{
