@@ -16,9 +16,9 @@ Run from a clean reviewed repository checkout after `npm install --legacy-peer-d
 npm run audit:pathway -- --manifest /absolute/path/to/public-pathway-observation.json --output /absolute/path/to/new-pathway-evidence.json
 ```
 
-The accepted grammar is exactly `--manifest ABSOLUTE_PATH`, optionally followed by `--output ABSOLUTE_PATH`. The command reads bounded regular files without following symlinks. Output mode creates a new mode-`0600` file atomically and refuses to overwrite an existing path. Without `--output`, canonical JSON is written to standard output after npm build logs; use `--output` for machine consumption.
+The accepted grammar is exactly `--manifest ABSOLUTE_PATH`, optionally followed by `--output ABSOLUTE_PATH`. The command reads bounded regular files without following symlinks. Output mode creates a new mode-`0600` file atomically and refuses to overwrite an existing path. The npm script runs the repository build before starting the pathway CLI. Without `--output`, canonical JSON is written to standard output after npm build logs; use `--output` for machine consumption.
 
-Exit codes are stable:
+Once that build succeeds and the pathway CLI starts, its exit codes are stable:
 
 | Exit | Meaning | Operator action |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Exit codes are stable:
 | `2` | A canonical artifact was produced, but one or more fail-closed blockers remain. | Archive the artifact, resolve its categorized remediation, and run again with fresh immutable inputs. |
 | `1` | The command could not safely trust its manifest, repository inputs, transports, observation, build, or output path. | Use only the allowlisted stderr code; do not infer partial evidence or repair output by hand. |
 
-Exit `1` writes one sanitized JSON error with one of:
+After the pathway CLI has started, exit `1` writes one sanitized JSON error with one of:
 
 - `PATHWAY_AUDIT_MANIFEST_INVALID`
 - `PATHWAY_AUDIT_SECRET_FIELD_REJECTED`
@@ -37,6 +37,8 @@ Exit `1` writes one sanitized JSON error with one of:
 - `PATHWAY_AUDIT_BUILD_FAILED`
 - `PATHWAY_AUDIT_OUTPUT_FAILED`
 - `PATHWAY_AUDIT_OUTPUT_EXISTS`
+
+This single-code guarantee does not cover the npm wrapper's prerequisite build. If TypeScript, Solidity, Intelligent Contract, dashboard, npm, or another pre-CLI build step fails, the wrapper stops before `runPathwayAuditCommand` starts. That failure may emit ordinary build/npm diagnostics and use non-CLI exit behavior; it produces no pathway artifact and must not be interpreted as a `PATHWAY_AUDIT_*` result. Repair the build, rerun the reviewed gate, and invoke the unchanged audit command again before applying the CLI exit table above.
 
 The command can issue only `eth_chainId`, `eth_blockNumber`, `eth_getBlockByNumber`, `eth_getCode`, `eth_call`, `eth_getTransactionByHash`, and `eth_getTransactionReceipt`. Parameter shapes are closed. State reads use EIP-1898 `{blockHash, requireCanonical:true}` references. The HTTPS client uses no credentials, redirect, retry, decompression, connection pool, caller-supplied headers, or custom port.
 
@@ -53,7 +55,7 @@ Choose two public endpoints for each chain under all of these conditions:
 3. Each pair is documented as a different `operatorFamily` only after reviewing ownership, control plane, infrastructure, upstream dependencies, and failure domains.
 4. Each endpoint supports the seven allowlisted methods, EIP-1898 block-hash state reads, the target chain, the configured observation lag, and responses below 2 MiB.
 5. DNS for every endpoint resolves entirely to globally routable addresses. If any answer is loopback, private, link-local, documentation, multicast, unspecified, metadata-service, or otherwise nonpublic, the request is rejected. DNS is resolved again for every call.
-6. The operator has explicitly approved the four outbound public network requests before invoking the live command.
+6. The operator has explicitly approved every outbound HTTPS JSON-RPC request that the complete audit will make to all four declared endpoints. One audit may make many separately DNS-resolved requests to each endpoint for block selection, code, deployment, pathway, and stability evidence; approval covers that full audit and is not a four-request allowance.
 
 `originSha256` is the reviewed public identity digest carried by both the manifest and provider registry. Define the reviewed procedure before recording it; the recommended procedure is SHA-256 of the lowercase WHATWG URL origin, encoded as UTF-8 without a trailing newline. Record the exact procedure and evidence source in the provider review. The auditor checks equality of this field; it does not derive operator ownership from it.
 
