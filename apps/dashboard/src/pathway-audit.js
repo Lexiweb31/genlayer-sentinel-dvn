@@ -94,29 +94,44 @@ export function renderPathwayAuditUnavailable(elements,reason){
 }
 
 export function createPathwayAuditFileController({fileInput,inspectButton,status,elements,formatTime}){
-  let selected=null,disposed=false;
+  let selected=null,inFlightGeneration=null,generation=0,disposed=false;
   inspectButton.disabled=true;
-  const forget=()=>{selected=null;inspectButton.disabled=true;fileInput.value=""};
+  const forgetSelection=()=>{selected=null;inspectButton.disabled=true;fileInput.value=""};
+  const active=token=>!disposed&&generation===token&&inFlightGeneration===token;
   const onChange=()=>{
     if(disposed)return;
+    if(inFlightGeneration!==null){forgetSelection();status.textContent="INSPECTION IN PROGRESS";return}
+    generation++;
     selected=fileInput.files?.length===1?fileInput.files[0]:null;
     inspectButton.disabled=selected===null;
     status.textContent=selected?"READY TO INSPECT":"NOT OBSERVED";
   };
   const onInspect=async()=>{
-    if(disposed||!selected)return;
-    const file=selected;
-    forget();
+    if(disposed||inFlightGeneration!==null||!selected)return;
+    let file=selected;
+    forgetSelection();
+    const token=++generation;inFlightGeneration=token;status.textContent="INSPECTION IN PROGRESS";
+    let textPromise;
+    try{textPromise=Promise.resolve(file.text())}catch(error){textPromise=Promise.reject(error)}
+    file=null;
+    let view;
     try{
-      const text=await file.text();
-      renderPathwayAudit(elements,await parsePathwayAuditViewText(text),formatTime);
+      const text=await textPromise;if(!active(token))return;
+      view=await parsePathwayAuditViewText(text);if(!active(token))return;
     }catch{
+      if(!active(token))return;
+      inFlightGeneration=null;
       renderPathwayAuditUnavailable(elements,"ARTIFACT REJECTED");
+      status.textContent="ARTIFACT REJECTED";
+      return;
     }
+    inFlightGeneration=null;
+    renderPathwayAudit(elements,view,formatTime);
+    status.textContent="INSPECTED LOCALLY";
   };
   fileInput.addEventListener("change",onChange);
   inspectButton.addEventListener("click",onInspect);
-  return{dispose(){if(disposed)return;disposed=true;forget();fileInput.removeEventListener("change",onChange);inspectButton.removeEventListener("click",onInspect)}};
+  return{dispose(){if(disposed)return;disposed=true;generation++;inFlightGeneration=null;forgetSelection();fileInput.removeEventListener("change",onChange);inspectButton.removeEventListener("click",onInspect)}};
 }
 
 async function bundleValue(value){
@@ -382,10 +397,15 @@ function encodeCanonical(value,active){
   if(typeof value==="number"){if(!Number.isFinite(value))fail();return JSON.stringify(value)}
   if(!value||typeof value!=="object"||active.has(value))fail();active.add(value);
   try{
-    if(Array.isArray(value))return`[${value.map(item=>encodeCanonical(item,active)).join(",")}]`;
+    if(Array.isArray(value))return encodeCanonicalArray(value,active);
     const keys=Reflect.ownKeys(value);if(keys.some(key=>typeof key!=="string"))fail();
     return`{${keys.sort().map(key=>{const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value"in descriptor)||!descriptor.enumerable)fail();return`${JSON.stringify(key)}:${encodeCanonical(descriptor.value,active)}`}).join(",")}}`;
   }finally{active.delete(value)}
+}
+function encodeCanonicalArray(value,active){
+  const values=exactArrayValues(value),encoded=[];
+  for(let index=0;index<values.length;index++)encoded.push(encodeCanonical(values[index],active));
+  return`[${encoded.join(",")}]`;
 }
 
 function rejectUnsafeGraph(value,active){
@@ -395,14 +415,12 @@ function rejectUnsafeGraph(value,active){
   if(isArray?prototype!==Array.prototype:prototype!==Object.prototype&&prototype!==null)fail();
   active.add(value);
   try{
-    const keys=Reflect.ownKeys(value);
-    if(keys.some(key=>typeof key!=="string"))fail();
     if(isArray){
-      if(keys.some(key=>key!=="length"&&!/^(?:0|[1-9][0-9]*)$/.test(key)))fail();
-      for(let index=0;index<value.length;index++)if(!Object.hasOwn(value,index))fail();
+      for(const item of exactArrayValues(value))rejectUnsafeGraph(item,active);
+      return;
     }
+    const keys=Reflect.ownKeys(value);if(keys.some(key=>typeof key!=="string"))fail();
     for(const key of keys){
-      if(isArray&&key==="length")continue;
       if(FORBIDDEN_KEYS.has(key.replace(/[^A-Za-z0-9]/g,"").toLowerCase()))fail();
       const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value"in descriptor)||!descriptor.enumerable)fail();
       rejectUnsafeGraph(descriptor.value,active);
@@ -411,7 +429,19 @@ function rejectUnsafeGraph(value,active){
 }
 
 function record(value){if(!value||typeof value!=="object"||Array.isArray(value))fail();const prototype=Object.getPrototypeOf(value);if(prototype!==Object.prototype&&prototype!==null)fail();return value}
-function denseArray(value){if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)fail();const keys=Reflect.ownKeys(value);if(keys.some(key=>key!=="length"&&(typeof key!=="string"||!/^(?:0|[1-9][0-9]*)$/.test(key))))fail();for(let index=0;index<value.length;index++)if(!Object.hasOwn(value,index))fail();return value}
+function denseArray(value){return exactArrayValues(value)}
+function exactArrayValues(value){
+  if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype)fail();
+  const keys=Reflect.ownKeys(value),lengthDescriptor=Object.getOwnPropertyDescriptor(value,"length");
+  if(!lengthDescriptor||!("value"in lengthDescriptor)||lengthDescriptor.value!==value.length||lengthDescriptor.enumerable||keys.length!==value.length+1)fail();
+  const result=[];
+  for(let index=0;index<value.length;index++){
+    const descriptor=Object.getOwnPropertyDescriptor(value,String(index));
+    if(!descriptor||!("value"in descriptor)||!descriptor.enumerable)fail();
+    result.push(descriptor.value);
+  }
+  return result;
+}
 function exactKeys(value,expected){const keys=Reflect.ownKeys(value);if(keys.length!==expected.length||keys.some(key=>typeof key!=="string"||!expected.includes(key)))fail()}
 function field(value,key){const descriptor=Object.getOwnPropertyDescriptor(value,key);if(!descriptor||!("value"in descriptor)||!descriptor.enumerable)fail();return descriptor.value}
 function isoTimestamp(value){if(typeof value!=="string"||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/.test(value))fail();const parsed=new Date(value);if(Number.isNaN(parsed.getTime())||parsed.toISOString()!==value)fail();return value}

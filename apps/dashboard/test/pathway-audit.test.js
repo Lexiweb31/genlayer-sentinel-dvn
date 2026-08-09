@@ -8,6 +8,7 @@ import {
   renderPathwayAuditUnavailable,
   validatePathwayAuditView
 } from "../src/pathway-audit.js";
+import {buildPathwayAuditBundle,encodePathwayAuditBundle} from "../../../dist/services/coordinator/src/pathway-audit-bundle.js";
 
 const digest=digit=>digit.repeat(64);
 const hash=digit=>`0x${digit.repeat(64)}`;
@@ -28,6 +29,56 @@ function encode(value,active){
 }
 
 function provider(label,digit){return{label,originSha256:digest(digit),operatorFamily:`operator-${label}`}}
+const providers=(chain,a,b)=>[provider(`${chain}-a`,a),provider(`${chain}-b`,b)];
+const pinnedBlock=(chainId,number,digit)=>({chainId:String(chainId),blockNumber:String(number),blockHash:hash(digit),parentHash:hash("c"),stateRoot:hash("d"),transactionsRoot:hash("e"),timestamp:"1710000000"});
+const runtimeCode=(name,value,digit)=>({name,address:value,byteLength:2,runtimeCodeKeccak256:hash(digit),identity:"CODE_IDENTITY_REVIEWED"});
+const uln=(confirmations,required,optional)=>({confirmations,requiredDvns:[required],optionalDvns:[optional],optionalDvnThreshold:1});
+const observedAdapter=(value,library,target)=>({address:value,messageLib:library,verificationTarget:target,supportedDstEid:40231,quorum:"3",signersAuthorized:[true,true,true,true,true]});
+const completeSource={endpoint:address(1),send:address(2),receive:address(3),executor:address(4),oapp:address(5),adapter:address(6),dvn:address(7)};
+const completeDestination={endpoint:address(11),send:address(12),receive:address(13),oapp:address(14),adapter:address(15),dvn:completeSource.dvn};
+const completeSigners=[21,22,23,24,25].map(address);
+
+function completeDeployment(contractName,chainId,value,providerIdentities,digit,constructorArguments){
+  return{contractName,chainId:String(chainId),address:value,deployer:address(chainId===11155111?31:32),providerIdentities:structuredClone(providerIdentities),deploymentTxHash:hash(digit),deploymentBlockNumber:"90",deploymentBlockHash:hash(chainId===11155111?"8":"9"),creationBytecodeSha256:digest("1"),deployedBytecodeSha256:digest("2"),immutableReferencesSha256:digest("3"),transactionInputSha256:digest("4"),runtimeCodeKeccak256:hash("5"),constructorArguments};
+}
+
+function completeObservation(){
+  const sourceProviders=providers("source","1","2"),destinationProviders=providers("destination","3","4");
+  const source={
+    endpoint:completeSource.endpoint,sourceOApp:completeSource.oapp,dstEid:40231,sendLibrary:completeSource.send,isDefaultSendLibrary:false,supportedEid:true,
+    uln:uln("15",completeSource.dvn,completeSource.adapter),
+    dvnCodeKeccak256:[{address:completeSource.dvn,codeKeccak256:hash("6")},{address:completeSource.adapter,codeKeccak256:hash("5")}],
+    executor:{maxMessageSize:10000,address:completeSource.executor},destinationPeer:`0x${"0".repeat(24)}${completeDestination.oapp.slice(2)}`,
+    adapter:observedAdapter(completeSource.adapter,completeSource.send,completeSource.receive)
+  };
+  const destinationUln=uln("64",completeDestination.dvn,completeDestination.adapter);
+  const destination={
+    endpoint:completeDestination.endpoint,oapp:completeDestination.oapp,srcEid:40161,receiveLibrary:completeDestination.receive,isDefaultReceiveLibrary:false,supportedEid:true,
+    rawAppUln:destinationUln,resolvedUln:structuredClone(destinationUln),sourcePeer:`0x${"0".repeat(24)}${completeSource.oapp.slice(2)}`,
+    adapter:observedAdapter(completeDestination.adapter,completeDestination.send,completeDestination.receive)
+  };
+  return rebindComplete({
+    status:"OBSERVED_PATHWAY_CONSISTENT",truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",repositoryBindingSha256:digest("a"),
+    rpcIndependence:{source:"OPERATOR_INDEPENDENCE_REVIEWED",destination:"OPERATOR_INDEPENDENCE_REVIEWED"},
+    providerAgreement:{source:{state:"TWO_TRANSPORTS_AGREE",providers:sourceProviders,resultSha256:digest("b")},destination:{state:"TWO_TRANSPORTS_AGREE",providers:destinationProviders,resultSha256:digest("c")}},
+    blocks:{source:pinnedBlock(11155111,100,"a"),destination:pinnedBlock(421614,200,"b")},
+    officialCode:{source:[runtimeCode("sourceEndpointV2",completeSource.endpoint,"1"),runtimeCode("sourceSendUln302",completeSource.send,"2"),runtimeCode("sourceExecutor",completeSource.executor,"3")],destination:[runtimeCode("destinationEndpointV2",completeDestination.endpoint,"4"),runtimeCode("destinationReceiveUln302",completeDestination.receive,"5")]},
+    deployments:{
+      sourceOApp:completeDeployment("TreasuryPolicyOApp",11155111,completeSource.oapp,sourceProviders,"1",{endpoint:completeSource.endpoint,delegate:address(41)}),
+      destinationOApp:completeDeployment("TreasuryPolicyOApp",421614,completeDestination.oapp,destinationProviders,"2",{endpoint:completeDestination.endpoint,delegate:address(42)}),
+      sourceAdapter:completeDeployment("SentinelDVNAdapter",11155111,completeSource.adapter,sourceProviders,"3",{messageLib:completeSource.send,verificationTarget:completeSource.receive,supportedDstEid:40231,signers:[...completeSigners],quorum:"3"}),
+      destinationAdapter:completeDeployment("SentinelDVNAdapter",421614,completeDestination.adapter,destinationProviders,"4",{messageLib:completeDestination.send,verificationTarget:completeDestination.receive,supportedDstEid:40231,signers:[...completeSigners],quorum:"3"})
+    },
+    source,destination,configurationSha256:digest("d"),blockers:[]
+  });
+}
+
+function rebindComplete(value){
+  value.configurationSha256=value.source&&value.destination?sha256(canonical({destination:value.destination,source:value.source})):null;
+  value.providerAgreement.source.resultSha256=value.blocks.source?sha256(canonical({block:value.blocks.source,deployments:value.deployments?{adapter:value.deployments.sourceAdapter,oapp:value.deployments.sourceOApp}:null,officialCode:value.officialCode.source,path:value.source})):null;
+  value.providerAgreement.destination.resultSha256=value.blocks.destination?sha256(canonical({block:value.blocks.destination,deployments:value.deployments?{adapter:value.deployments.destinationAdapter,oapp:value.deployments.destinationOApp}:null,officialCode:value.officialCode.destination,path:value.destination})):null;
+  return value;
+}
 
 function bundleBody(){
   return{
@@ -160,6 +211,28 @@ test("accepts lowercase or EIP-55 addresses and rejects incorrect mixed-case che
   await assert.rejects(validatePathwayAuditView(rebind(wrong)),/PATHWAY_AUDIT_ARTIFACT_REJECTED/);
 });
 
+test("accepts a real server-encoded complete artifact and rejects re-digested consistency contradictions",async()=>{
+  const serverBundle=buildPathwayAuditBundle({observation:completeObservation(),runTimestamp:"2026-08-09T12:34:56.789Z"});
+  const view=await parsePathwayAuditViewText(encodePathwayAuditBundle(serverBundle));
+  assert.equal(view.status,"OBSERVED_PATHWAY_CONSISTENT");
+  assert.deepEqual(view.blockers,[]);
+  assert.notEqual(view.configurationSha256,null);
+  assert.notEqual(view.pathway.source,null);assert.notEqual(view.pathway.destination,null);
+  const contradictions=[
+    value=>{value.providerAgreement.source.providers[1].label=value.providerAgreement.source.providers[0].label},
+    value=>{value.deployments.sourceOApp.address=address(50)},
+    value=>{value.source.uln.confirmations="16"},
+    value=>{value.source.destinationPeer=hash("f")},
+    value=>{value.deployments.sourceAdapter.constructorArguments.signers[0]=address(20)},
+    value=>{value.source.dvnCodeKeccak256[1].codeKeccak256=hash("f")},
+    value=>{value.deployments.sourceOApp.deploymentBlockNumber="101"}
+  ];
+  for(const contradict of contradictions){
+    const artifact=structuredClone(serverBundle);contradict(artifact);rebindComplete(artifact);delete artifact.evidenceSha256;
+    await assert.rejects(validatePathwayAuditView(bindOuter(artifact)),/PATHWAY_AUDIT_ARTIFACT_REJECTED/);
+  }
+});
+
 test("recursively refuses URL, raw transaction, secret, filesystem, packet, GenLayer, signer-share, and execution fields",async()=>{
   const forbidden=[
     ["rpcUrl","https://rpc.example"],["url","https://example"],["transactionInput","0x1234"],
@@ -182,6 +255,14 @@ test("rejects unknown fields, accessors, custom prototypes, symbols, sparse arra
   await assert.rejects(validatePathwayAuditView(rebind(unknown)),/PATHWAY_AUDIT_ARTIFACT_REJECTED/);
   for(const value of[accessor,prototype,symbol,sparse,cycle]){
     await assert.rejects(validatePathwayAuditView(value),/PATHWAY_AUDIT_ARTIFACT_REJECTED/);
+  }
+});
+
+test("rejects every array own key outside length and the exact dense index range",async()=>{
+  for(const key of["4294967295","5","999999999999999999999999999999999999999999999999"]){
+    const artifact=validBundle();
+    Object.defineProperty(artifact.blockers,key,{value:{smuggled:true},enumerable:true,configurable:true,writable:true});
+    await assert.rejects(validatePathwayAuditView(artifact),/PATHWAY_AUDIT_ARTIFACT_REJECTED/,key);
   }
 });
 
@@ -257,4 +338,41 @@ test("rejects invalid local files with a fixed message and forgets the File",asy
   assert.equal(calls,1);assert.equal(elements.status.textContent,"NOT OBSERVED");assert.equal(elements.notice.textContent,"ARTIFACT REJECTED");
   assert.equal(Object.values(elements).some(element=>element.textContent.includes("attacker")||element.textContent.includes("img")),false);
   controller.dispose();
+});
+
+test("ignores reselection while inspection is busy and never starts a second File read",async()=>{
+  let releaseA,readsA=0,readsB=0;
+  const gate=new Promise(resolve=>{releaseA=resolve}),fileInput=fakeTarget(),inspectButton=fakeTarget(),status=fakeElement("NOT OBSERVED"),elements=renderElements();
+  const artifactA=validBundle(),fileA={text:async()=>{readsA++;await gate;return canonical(artifactA)}},fileB={text:async()=>{readsB++;return canonical(validBundle())}};
+  const controller=createPathwayAuditFileController({fileInput,inspectButton,status,elements,formatTime:value=>value});
+  fileInput.files=[fileA];await fileInput.emit("change");
+  const inspection=inspectButton.emit("click");
+  fileInput.files=[fileB];fileInput.value="selected-b";await fileInput.emit("change");await inspectButton.emit("click");
+  assert.equal(status.textContent,"INSPECTION IN PROGRESS");assert.equal(inspectButton.disabled,true);assert.equal(fileInput.value,"");
+  assert.equal(readsA,1);assert.equal(readsB,0);
+  releaseA();await inspection;
+  assert.equal(elements.evidenceDigest.textContent,artifactA.evidenceSha256);assert.equal(status.textContent,"INSPECTED LOCALLY");
+  controller.dispose();
+});
+
+test("dispose invalidates a pending File read and prevents post-dispose rendering",async()=>{
+  let release,reads=0;
+  const gate=new Promise(resolve=>{release=resolve}),fileInput=fakeTarget(),inspectButton=fakeTarget(),status=fakeElement("NOT OBSERVED"),elements=renderElements();
+  const controller=createPathwayAuditFileController({fileInput,inspectButton,status,elements,formatTime:value=>value});
+  fileInput.files=[{text:async()=>{reads++;await gate;return canonical(validBundle())}}];await fileInput.emit("change");
+  const inspection=inspectButton.emit("click");controller.dispose();release();await inspection;
+  assert.equal(reads,1);for(const element of Object.values(elements))assert.deepEqual(element.writes,[]);
+});
+
+test("dispose invalidates pending digest validation and prevents post-dispose rendering",async(t)=>{
+  const subtle=globalThis.crypto.subtle,originalDigest=subtle.digest.bind(subtle);
+  let releaseDigest,markStarted,digestCalls=0;
+  const gate=new Promise(resolve=>{releaseDigest=resolve}),started=new Promise(resolve=>{markStarted=resolve});
+  subtle.digest=async(...arguments_)=>{digestCalls++;markStarted();await gate;return originalDigest(...arguments_)};
+  t.after(()=>{subtle.digest=originalDigest});
+  const fileInput=fakeTarget(),inspectButton=fakeTarget(),status=fakeElement("NOT OBSERVED"),elements=renderElements();
+  const controller=createPathwayAuditFileController({fileInput,inspectButton,status,elements,formatTime:value=>value});
+  fileInput.files=[{text:async()=>canonical(validBundle())}];await fileInput.emit("change");
+  const inspection=inspectButton.emit("click");await started;controller.dispose();releaseDigest();await inspection;
+  assert.equal(digestCalls,1);for(const element of Object.values(elements))assert.deepEqual(element.writes,[]);
 });
