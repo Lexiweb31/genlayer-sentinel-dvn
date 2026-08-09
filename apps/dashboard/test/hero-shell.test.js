@@ -101,13 +101,11 @@ test("carries the Sentinel surface system through the operational workspace",()=
   for(const token of["--surface:",".operations-content::before",".pathway-evidence,.runtime-observation,.quarantine,.delivery,.operator-recovery",".section-head","border-radius:24px","backdrop-filter:blur(18px)"])assert.ok(css.includes(token),`missing unified workspace token: ${token}`);
 });
 
-test("keeps dark hero copy legible over the dark network poster",()=>{
-  const veil=/\.hero-shell::after\s*\{[^}]*background\s*:\s*rgba\(255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\)/is.exec(css);
-  assert.ok(veil,"the dark poster needs a full-hero readability veil");
-  assert.ok(Number(veil[1])>=.5,"the full-hero white veil must be at least 50% opaque");
-  const statusBacking=/\.evidence-state\s*\{[^}]*background\s*:\s*rgba\(255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\)/is.exec(css);
-  assert.ok(statusBacking,"the small local status needs a stable light backing");
-  assert.ok(Number(statusBacking[1])>=.85,"the small local status backing must be at least 85% opaque");
+test("keeps one dark Sentinel world from hero through operations",()=>{
+  assert.match(css,/\.sentinel-experience\s*\{[^}]*background\s*:\s*#0a0a0c/is);
+  assert.match(css,/\.hero-shell::after\s*\{[^}]*background\s*:\s*rgba\(0\s*,\s*0\s*,\s*0\s*,\s*\.66\)/is);
+  assert.match(css,/\.sentinel-experience \.operations-content\s*\{[^}]*background\s*:\s*#0a0a0c/is);
+  assert.match(css,/\.experience-section\s*\{[^}]*border-top\s*:\s*1px solid var\(--dash-line\)/is);
 });
 
 test("keeps the mobile status clear of the circular upload control",()=>{
