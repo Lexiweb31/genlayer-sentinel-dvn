@@ -31,7 +31,9 @@ export default{async fetch(request,env){
   const url=new URL(request.url);
   if(!PUBLIC_PATHS.has(url.pathname))return errorResponse(request.method,404,"not found");
   if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(request.method,503,"static assets unavailable");
-  const assetRequest=url.pathname==="/"&&request.method==="HEAD"?new Request(request,{method:"GET"}):request;
+  const assetUrl=new URL(request.url);
+  if(assetUrl.pathname==="/")assetUrl.pathname="/index.html";
+  const assetRequest=new Request(assetUrl,{method:"GET",headers:request.headers});
   let response;
   try{response=await env.ASSETS.fetch(assetRequest)}catch{return errorResponse(request.method,502,"static asset request failed")}
   const headers=securityHeaders(response.headers,cachePolicy(url.pathname,response.status));

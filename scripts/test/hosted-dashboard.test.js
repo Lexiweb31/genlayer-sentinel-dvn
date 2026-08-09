@@ -73,6 +73,21 @@ test("the worker injects only the request origin into hosted social metadata",as
   assert.equal(response.headers.get("etag"),null);
 });
 
+test("the worker resolves the hosted root to the packaged index file",async()=>{
+  const page=await readFile("dist/public/index.html");
+  const response=await worker.fetch(
+    new Request("https://sentinel.example/"),
+    {ASSETS:{fetch:async request=>{
+      const path=new URL(request.url).pathname;
+      return path==="/index.html"
+        ?new Response(page,{headers:{"content-type":"text/html; charset=utf-8"}})
+        :new Response("not found",{status:404});
+    }}}
+  );
+  assert.equal(response.status,200);
+  assert.match(await response.text(),/https:\/\/sentinel\.example\/assets\/og\.png/);
+});
+
 test("the worker permits HEAD without returning the delegated HTML body",async()=>{
   const page=await readFile("dist/public/index.html");
   const response=await worker.fetch(
