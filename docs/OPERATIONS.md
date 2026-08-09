@@ -1,5 +1,27 @@
 # Coordinator operations
 
+## Keyless public pathway observation
+
+The read-only pathway auditor is a separate operator command from the coordinator runtime and local wallet harness. It has no wallet, signing, submission, deployment, funding, GenLayer account, cloud, database, or publication capability. Its only network surface is four manifest-supplied credential-free HTTPS RPC transports and seven fixed read methods. Exact manifest preparation, provider review, deployment evidence, artifact schema, and exit codes are in [`PATHWAY_AUDITOR.md`](PATHWAY_AUDITOR.md).
+
+Select two endpoints per chain only after proving that they are public, credential-free, support EIP-1898 block-hash reads, and are controlled by reviewed different operator families. Four different origins are required, but URL/domain/IP diversity is not operator independence. Update `config/rpc-provider-audit.json` only through a reviewed evidence commit; each row must bind the manifest label, origin digest, operator family, evidence digest, and evidence sources. The current registry contains no reviewed providers, so current live readiness remains blocked.
+
+No public manifest was supplied for this milestone. Live smoke: **NOT RUN — PUBLIC RPC INPUTS NOT SUPPLIED**. Do not substitute test fixtures or discover endpoints from environment variables.
+
+When explicitly authorized, generate one immutable artifact to a fresh absolute path:
+
+```bash
+npm run audit:pathway -- --manifest /absolute/path/to/public-pathway-observation.json --output /absolute/path/to/new-pathway-evidence.json
+```
+
+Exit `0` is an internally consistent read-only observation, not authorization. Exit `2` is a usable blocked evidence record. Exit `1` is an untrustworthy/unsafe execution failure and only its stable allowlisted stderr code should be used. Null deployment is the correct predeployment input and must remain blocked. Never edit, overwrite, or merge artifacts.
+
+For monitoring, create a new artifact on each approved observation window and compare the exact raw file hash, `repositoryBindingSha256`, provider identities and independence state, pinned block number/hash, official and deployed code hashes, creation evidence, `configurationSha256`, decoded libraries/peers/Executor/confirmations/DVNs/threshold/adapters/signers, status, and complete blocker list. Block-number movement is normal; a changed hash at the same block, changed repository binding, code/configuration drift, operator-evidence expiry, or removed blocker without authoritative evidence is an integrity alert. Pause any separately deployed signer intake and investigate; the auditor itself controls no signer.
+
+The dashboard accepts one operator-selected local canonical artifact, validates it in browser memory, and stores/uploads nothing. It does not fetch an evidence path or combine the artifact with operational lifecycle state. The static web package is locally buildable with `npm run build:site` and verifiable with `npm run test:site`; it is currently not published and has no live URL.
+
+Rollback is Git revert of the reviewed policy/documentation change and rejection/deletion of generated local artifacts. The command makes no chain write, so there is no chain rollback. An artifact optionally bound into `readiness:bundle` cannot set `livePathwayValidated` or clear any human approval gate.
+
 ## Local wallet demo
 
 `npm run demo:local -- --owner 0x...` is a separate loopback-only harness, not the production composition root. It validates the public owner before creating infrastructure, starts one isolated EDR chain and same-origin app on `127.0.0.1`, explicitly funds that address with local currency, deploys and configures the fixture contracts, transfers source OApp ownership, and creates four coordinator stores plus a durable local-executor attempt store in one temporary SQLite database. Shutdown cancels scheduling, drains active work, closes HTTP and stores in reverse order, destroys the provider/server, and removes only that session directory.

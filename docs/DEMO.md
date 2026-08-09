@@ -44,6 +44,22 @@ The new operator-recovery E2E exercises a different, explicitly adversarial dest
 
 A separate local-executor recovery test still records an ambiguous OApp-delivery incident, closes and reopens the real SQLite store, proves that the GUID cannot be reserved for a second broadcast, and then proves incident resolution is durable. The app exposes destination incidents through `/api/deliveries` and sanitized operator receipts through read-only `/api/recovery-actions`. These paths are described separately because adapter reconciliation and OApp-executor reconciliation have different proofs and controls.
 
+## Read-only pathway-auditor demonstration
+
+The separate M2 auditor is an operator tool, not part of the wallet demo and not a simulated live pathway. Start from [`examples/public-pathway-observation-manifest.template.json`](examples/public-pathway-observation-manifest.template.json). The `.invalid` hosts, `REPLACE_...` values, and `deployment:null` make that file visibly nonoperational. With no operator-supplied public inputs, the recorded live smoke is **NOT RUN — PUBLIC RPC INPUTS NOT SUPPLIED**.
+
+After an operator supplies four credential-free public RPC URLs, completes the provider-independence review, and explicitly authorizes the public reads, run:
+
+```bash
+npm run audit:pathway -- --manifest /absolute/path/to/public-pathway-observation.json --output /absolute/path/to/new-pathway-evidence.json
+```
+
+Before deployments, the truthful expected outcome is exit `2`: the command may establish provider-agreed blocks and public protocol code, but its artifact records `AUDIT_PATHWAY_DEPLOYMENTS_MISSING` and leaves pathway configuration absent. It never substitutes local EDR data. A later complete record must contain both OApps, both adapters, four creation transaction hashes, two OApp delegates, five sorted authorized signers, and quorum three.
+
+Open the local operations dashboard and use **Inspect Evidence** to select the generated artifact. Selection is local and in-memory; the browser uploads and persists nothing. The panel remains `NOT OBSERVED` until a strict canonical artifact passes its integrity and semantic-consistency checks. It never combines audit evidence with coordinator packet, GenLayer, signer, destination, or execution state. The polished hosted package can be validated with `npm run test:site`, but it is not published and there is no live URL.
+
+For a credible recorded demo, show the command, exit code, immutable file hash, artifact truth label, two transport-agreement fields, separate operator-independence fields, pinned blocks, code identities, configuration digest or blockers, and dashboard rejection of one tampered copy. Do not call a blocked artifact validated, call transport diversity decentralization, or present `LOCAL_POLICY_FIXTURE` as GenLayer consensus.
+
 ## Exact trust labels
 
 Real local behavior:
