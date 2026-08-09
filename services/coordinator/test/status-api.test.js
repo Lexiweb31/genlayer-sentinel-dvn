@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {once} from "node:events";
+import {readFile} from "node:fs/promises";
 import {resolve} from "node:path";
 import {Coordinator} from "../../../dist/services/coordinator/src/coordinator.js";
-import {dashboardResponse,statusResponse} from "../../../dist/services/coordinator/src/status-api.js";
+import {createDashboardServer,dashboardResponse,statusResponse} from "../../../dist/services/coordinator/src/status-api.js";
 import {parseDemoCapability} from "../../../dist/services/coordinator/src/demo-capability.js";
 
 const h=n=>`0x${n.repeat(64)}`,presentation={presentationMode:"LOCAL_TEST"};
@@ -83,3 +85,35 @@ test("exposes sanitized read-only destination delivery metadata",async()=>{const
 test("exposes only allowlisted hash-chained recovery evidence through GET",async()=>{const c=coordinator(),reader={listRecoveryReceipts:async()=>[{actionId:h("1"),kind:"DESTINATION_CONFIRM",deploymentDigest:h("2"),subject:h("3"),preconditionDigest:h("4"),candidateTransactionHash:h("5"),operators:["0x1111111111111111111111111111111111111111","0x2222222222222222222222222222222222222222","0x3333333333333333333333333333333333333333"],approvalCount:3,preparedAt:100,executeAfter:1000,expiresAt:3700,appliedAt:1100,resultCode:"DESTINATION_CONFIRMED",previousReceiptHash:h("0"),receiptHash:h("6"),signature:"0xsecret",databasePath:"/private/state.db",rawPacket:"0xsecret"}]};const response=await statusResponse(c,"GET","/api/recovery-actions",undefined,undefined,presentation,undefined,reader),body=JSON.parse(response.body);assert.equal(response.status,200);assert.deepEqual(Object.keys(body[0]),["actionId","kind","subject","candidateTransactionHash","operators","approvalCount","preparedAt","executeAfter","expiresAt","appliedAt","resultCode","previousReceiptHash","receiptHash"]);assert.equal(body[0].approvalCount,3);assert.equal(body[0].signature,undefined);assert.equal(body[0].databasePath,undefined);assert.equal(body[0].rawPacket,undefined);assert.equal((await statusResponse(c,"POST","/api/recovery-actions",undefined,undefined,presentation,undefined,reader)).status,405)});
 test("exposes a sanitized demo capability only when intentionally injected",async()=>{const c=coordinator();assert.equal((await statusResponse(c,"GET","/api/demo/config",undefined,undefined,presentation)).status,404);const response=await statusResponse(c,"GET","/api/demo/config",undefined,undefined,presentation,demo),body=JSON.parse(response.body);assert.equal(response.status,200);assert.equal(body.chainId,"31337");assert.equal(body.semanticSource,"LOCAL_POLICY_FIXTURE");assert.equal(JSON.stringify(body).includes("private"),false);assert.equal((await statusResponse(c,"POST","/api/demo/config",undefined,undefined,presentation,demo)).status,405)});
 test("serves only allowlisted dashboard assets beside the read-only API",async()=>{const c=coordinator(),root=resolve("apps/dashboard");const page=await dashboardResponse(c,"GET","/",root,undefined,undefined,presentation);assert.equal(page.status,200);assert.equal(page.contentType,"text/html; charset=utf-8");assert.match(Buffer.from(page.body).toString(),/GenLayer Sentinel/);assert.equal((await dashboardResponse(c,"GET","/src/app.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/src/timeline.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/src/runtime-status.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/assets/demo.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/assets/anything-else.js",root,undefined,undefined,presentation)).status,404);assert.equal((await dashboardResponse(c,"GET","/dist/apps/dashboard/demo.js",root,undefined,undefined,presentation)).status,404);assert.equal((await dashboardResponse(c,"GET","/api/jobs",root,undefined,undefined,presentation)).status,200);assert.equal((await dashboardResponse(c,"GET","/../package.json",root,undefined,undefined,presentation)).status,404);assert.equal((await dashboardResponse(c,"POST","/",root,undefined,undefined,presentation)).status,405)});
+
+test("serves each reviewed dashboard media asset with its exact bytes and MIME",async()=>{
+  const c=coordinator(),root=resolve("apps/dashboard");
+  const cases=[
+    ["/assets/sentinel-network-loop.mp4","assets/sentinel-network-loop.mp4","video/mp4"],
+    ["/assets/sentinel-network-poster.jpg","assets/sentinel-network-poster.jpg","image/jpeg"],
+    ["/assets/geist-latin.woff2","assets/geist-latin.woff2","font/woff2"],
+    ["/assets/special-elite-latin.woff2","assets/special-elite-latin.woff2","font/woff2"]
+  ];
+  for(const[path,diskPath,contentType]of cases){
+    const response=await dashboardResponse(c,"GET",path,root,undefined,undefined,presentation);
+    assert.equal(response.status,200,path);
+    assert.equal(response.contentType,contentType,path);
+    assert.deepEqual(Buffer.from(response.body),await readFile(resolve(root,diskPath)),path);
+    assert.equal((await dashboardResponse(c,"POST",path,root,undefined,undefined,presentation)).status,405,path);
+  }
+  assert.equal((await dashboardResponse(c,"GET","/assets/sentinel-network-loop.webm",root,undefined,undefined,presentation)).status,404);
+  assert.equal((await dashboardResponse(c,"GET","/assets/ASSET_PROVENANCE.md",root,undefined,undefined,presentation)).status,404);
+});
+
+test("dashboard HTTP responses permit only self-hosted media alongside existing restrictions",async(t)=>{
+  const server=createDashboardServer(coordinator(),resolve("apps/dashboard"));
+  server.listen(0,"127.0.0.1");
+  await once(server,"listening");
+  t.after(()=>server.close());
+  const address=server.address();
+  assert.notEqual(address,null);
+  assert.equal(typeof address,"object");
+  const response=await fetch(`http://127.0.0.1:${address.port}/`);
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get("content-security-policy"),"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; media-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+});
