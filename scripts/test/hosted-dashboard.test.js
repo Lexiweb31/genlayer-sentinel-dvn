@@ -149,22 +149,13 @@ test("the worker rejects unknown and traversal-like paths before static delegati
   }
 });
 
-test("the temporary asset diagnosis reports only candidate static-path statuses",async()=>{
+test("the retired diagnostic route is never exposed publicly",async()=>{
   const response=await worker.fetch(
     new Request("https://sentinel.example/__sentinel-assets"),
-    {ASSETS:{fetch:async request=>new Response(null,{status:new URL(request.url).pathname==="/public/index.html"?200:404})}}
+    {ASSETS:{fetch:async()=>{throw new Error("diagnostic route must not delegate")}}}
   );
-  assert.equal(response.status,200);
-  assert.deepEqual(await response.json(),{
-    candidates:{
-      "/index.html":404,
-      "/public/index.html":200,
-      "/dist/public/index.html":404,
-      "/assets/og.png":404,
-      "/public/assets/og.png":404,
-      "/dist/public/assets/og.png":404
-    }
-  });
+  assert.equal(response.status,404);
+  assert.deepEqual(await response.json(),{error:"not found"});
 });
 
 test("the worker preserves video bytes and applies immutable caching",async()=>{

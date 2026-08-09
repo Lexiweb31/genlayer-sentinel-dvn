@@ -25,12 +25,10 @@ const IMMUTABLE_PATHS=new Set([
   "/assets/sentinel-network-poster.jpg",
   "/assets/special-elite-latin.woff2"
 ]);
-const DIAGNOSTIC_CANDIDATES=["/index.html","/public/index.html","/dist/public/index.html","/assets/og.png","/public/assets/og.png","/dist/public/assets/og.png"];
 
 export default{async fetch(request,env){
   if(request.method!=="GET"&&request.method!=="HEAD")return errorResponse(request.method,405,"method not allowed",{"allow":"GET, HEAD"});
   const url=new URL(request.url);
-  if(url.pathname==="/__sentinel-assets")return assetDiagnosis(request,env,url);
   if(!PUBLIC_PATHS.has(url.pathname))return errorResponse(request.method,404,"not found");
   if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(request.method,503,"static assets unavailable");
   const assetUrl=new URL(request.url);
@@ -50,17 +48,6 @@ export default{async fetch(request,env){
   if(request.method==="HEAD")return new Response(null,{status:response.status,statusText:response.statusText,headers});
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};
-
-async function assetDiagnosis(request,env,url){
-  if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(request.method,503,"static assets unavailable");
-  const candidates={};
-  for(const path of DIAGNOSTIC_CANDIDATES){
-    try{candidates[path]=(await env.ASSETS.fetch(new Request(new URL(path,url),{method:"GET"}))).status}
-    catch{candidates[path]=0}
-  }
-  const headers=securityHeaders(new Headers({"content-type":"application/json; charset=utf-8"}),"no-store");
-  return new Response(request.method==="HEAD"?null:JSON.stringify({candidates}),{status:200,headers});
-}
 
 function cachePolicy(path,status){
   if(path==="/"||status!==200)return"no-store";

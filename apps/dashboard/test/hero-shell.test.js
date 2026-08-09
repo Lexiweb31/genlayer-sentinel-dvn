@@ -9,12 +9,16 @@ const js=fs.readFileSync(new URL("../src/app.js",import.meta.url),"utf8");
 const element=(tag,id)=>html.match(new RegExp(`<${tag}\\b[^>]*\\bid="${id}"[^>]*>`,"i"))?.[0]??"";
 const attribute=(markup,name)=>new RegExp(`\\b${name}(?:=(?:"[^"]*"|'[^']*'|[^\\s>]+))?`,"i").test(markup);
 
-test("presents the approved Sentinel hero without travel or deployment claims",()=>{
+test("presents the approved Sentinel policy-firewall hero without travel or deployment claims",()=>{
   for(const text of[
     "sentinel",
-    "Verify policy before messages cross chains.",
-    "Select a locally generated read-only pathway audit artifact. Nothing is uploaded.",
+    "A policy firewall for messages that move value.",
+    "Inspect a local, read-only pathway audit before trusting a cross-chain action. Nothing is uploaded.",
     "Inspect Evidence",
+    "Packet proof",
+    "Policy decision",
+    "Signer quorum",
+    "Destination check",
     "NOT OBSERVED"
   ])assert.ok(html.includes(text),`missing approved hero text: ${text}`);
   assert.equal(/Wandor|Japan|travel|itinerary/i.test(html),false);
