@@ -1,5 +1,17 @@
 # Demo and submission plan
 
+## Deployed web dashboard
+
+```text
+Web dashboard: DEPLOYED — https://genlayer-sentinel-dvn.damilexi2005.chatgpt.site (owner-private; sign-in required)
+Pathway contracts: NOT DEPLOYED BY THIS MILESTONE
+LayerZero DVN onboarding: NOT COMPLETED
+GenLayer live finality: NOT CLAIMED
+Production readiness: NO
+```
+
+The deployed page is a static, self-origin presentation and local pathway-evidence inspector. It does not host the coordinator API, signer services, GenLayer account integration, or testnet contracts. Before a local artifact is selected it remains `NOT OBSERVED`; hosted coordinator-backed sections fail closed as unavailable and never substitute fixture data.
+
 ## Runnable local wallet demo
 
 The repository now ships a complete local app demonstration. It is not a public deployment and does not contact Ethereum Sepolia, Arbitrum Sepolia, GenLayer, cloud infrastructure, or a faucet.
@@ -56,7 +68,7 @@ npm run audit:pathway -- --manifest /absolute/path/to/public-pathway-observation
 
 Before deployments, the truthful expected outcome is exit `2`: the command may establish provider-agreed blocks and public protocol code, but its artifact records `AUDIT_PATHWAY_DEPLOYMENTS_MISSING` and leaves pathway configuration absent. It never substitutes local EDR data. A later complete record must contain both OApps, both adapters, four creation transaction hashes, two OApp delegates, five sorted authorized signers, and quorum three.
 
-Open the local operations dashboard and use **Inspect Evidence** to select the generated artifact. Selection is local and in-memory; the browser uploads and persists nothing. The panel remains `NOT OBSERVED` until a strict canonical artifact passes its integrity and semantic-consistency checks. It never combines audit evidence with coordinator packet, GenLayer, signer, destination, or execution state. The polished hosted package can be validated with `npm run test:site`, but it is not published and there is no live URL.
+Open the local operations dashboard or the owner-private deployed dashboard and use **Inspect Evidence** to select the generated artifact. Selection is local and in-memory; the browser uploads and persists nothing. The panel remains `NOT OBSERVED` until a strict canonical artifact passes its integrity and semantic-consistency checks. It never combines audit evidence with coordinator packet, GenLayer, signer, destination, or execution state. The hosted dashboard URL above is a web deployment only, not pathway deployment evidence.
 
 For a credible recorded demo, show the command, exit code, immutable file hash, artifact truth label, two transport-agreement fields, separate operator-independence fields, pinned blocks, code identities, configuration digest or blockers, and dashboard rejection of one tampered copy. Do not call a blocked artifact validated, call transport diversity decentralization, or present `LOCAL_POLICY_FIXTURE` as GenLayer consensus.
 
@@ -83,13 +95,13 @@ Fixtures:
 
 Unavailable:
 
-- live app URL, testnet contracts, live GenLayer request, independent DVNs/providers, five isolated DVN signer operators, five isolated recovery operators, on-chain recovery governance, HSM custody, external audit anchoring, monitoring, audit, and mainnet support.
+- public unauthenticated app access, testnet contracts, live GenLayer request, independent DVNs/providers, five isolated DVN signer operators, five isolated recovery operators, on-chain recovery governance, HSM custody, external audit anchoring, monitoring, audit, and mainnet support. The owner-private static dashboard exists, but it supplies none of these operational capabilities.
 
 ## Public demo gate
 
-A public demo requires explicit approval for deployment and funding, re-verification of official addresses and pathway support, approved GenLayer finality consumption, independent source/destination RPCs, independent LayerZero DVNs, account providers, isolated signer processes, monitoring, and explorer evidence. Sentinel must remain an additional/optional verifier rather than the sole production verifier.
+A public end-to-end pathway demo requires explicit approval for contract deployment and funding, re-verification of official addresses and pathway support, approved GenLayer finality consumption, independent source/destination RPCs, independent LayerZero DVNs, account providers, isolated signer processes, monitoring, and explorer evidence. Sentinel must remain an additional/optional verifier rather than the sole production verifier. The owner-private static dashboard URL does not satisfy this gate.
 
-The future public walkthrough should publish one authoritative governance authorization; send matching and mismatching treasury actions; show both source transactions in explorers; follow the exact GUID through deterministic checks and live GenLayer finality; show three independently operated signer identities; show LayerZero verification and OApp execution only for the match; and demonstrate replay rejection. Until those facts exist, the README live URL remains `none`.
+The future public walkthrough should publish one authoritative governance authorization; send matching and mismatching treasury actions; show both source transactions in explorers; follow the exact GUID through deterministic checks and live GenLayer finality; show three independently operated signer identities; show LayerZero verification and OApp execution only for the match; and demonstrate replay rejection. Until those facts exist, the deployed URL must be described only as the owner-private static dashboard—not as a live Sentinel pathway.
 
 ## Video and submission
 
