@@ -107,6 +107,28 @@ test("keeps the mobile status clear of the circular upload control",()=>{
   assert.match(css,/@media\s*\(max-width\s*:\s*430px\)[\s\S]*\.evidence-state\s*\{[^}]*top\s*:\s*137px[^}]*right\s*:\s*auto[^}]*left\s*:\s*80px/is);
 });
 
+test("keeps 44-pixel upload and 56-pixel inspect targets separated at a 390-pixel viewport",()=>{
+  const compact=css.match(/@media\s*\(max-width\s*:\s*430px\)\s*\{([\s\S]*?)\n\}/i)?.[1]??"";
+  const rules=(source,selector)=>[...source.matchAll(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\s*\\{([^}]*)\\}`,"gi"))].map(match=>match[1]);
+  const pixels=(source,selector,property)=>{
+    for(const body of rules(source,selector)){
+      const match=body.match(new RegExp(`${property}\\s*:\\s*([0-9]+)px`,"i"));
+      if(match)return Number(match[1]);
+    }
+    return Number.NaN;
+  };
+  const cardHeight=pixels(compact,".evidence-glass","min-height");
+  const uploadTop=pixels(compact,".evidence-upload","top"),uploadHeight=pixels(css,".evidence-upload","height");
+  const inspectBottom=pixels(compact,".inspect-evidence","bottom"),inspectHeight=pixels(css,".inspect-evidence","height");
+  const inspectTop=cardHeight-inspectBottom-inspectHeight;
+  assert.ok(Number.isFinite(inspectTop));
+  assert.ok(inspectTop-(uploadTop+uploadHeight)>=12,"compact touch targets need at least a 12-pixel vertical gap");
+
+  const clientWidth=375,cardWidth=390-48,cardLeft=(clientWidth-cardWidth)/2;
+  assert.ok(cardLeft>=0);
+  assert.ok(cardLeft+21>=0&&cardLeft+cardWidth-21<=clientWidth,"compact inspect target must remain within the 375-pixel client width");
+});
+
 test("initializes one independent local-file controller without joining coordinator or demo state",()=>{
   assert.match(js,/import\s*\{\s*createPathwayAuditFileController\s*\}\s*from\s*["']\.\/pathway-audit\.js["']/);
   assert.equal((js.match(/createPathwayAuditFileController\s*\(/g)??[]).length,1);
@@ -115,4 +137,12 @@ test("initializes one independent local-file controller without joining coordina
   assert.match(js,/fileInput\.click\(\)/);
   assert.equal(/(?:jobs|deliveryByGuid)\s*(?:\.push|\.set|=)[^;]*pathway/i.test(js),false);
   assert.equal(/(?:demo|wallet)[A-Za-z]*\s*(?:\.push|\.set|=)[^;]*pathway/i.test(js),false);
+});
+
+test("binds reduced-motion video lifecycle once and disposes it with the page",()=>{
+  assert.match(js,/import\s*\{\s*createHeroMotionController\s*\}\s*from\s*["']\.\/hero-motion\.js["']/);
+  assert.match(js,/querySelector\(["']\.hero-media["']\)/);
+  assert.match(js,/matchMedia\(["']\(prefers-reduced-motion:\s*reduce\)["']\)/);
+  assert.equal((js.match(/createHeroMotionController\s*\(/g)??[]).length,1);
+  assert.match(js,/heroMotionController\.dispose\(\)/);
 });

@@ -340,6 +340,24 @@ test("rejects invalid local files with a fixed message and forgets the File",asy
   controller.dispose();
 });
 
+test("preserves every validated evidence field when a later artifact is rejected",async()=>{
+  const fileInput=fakeTarget(),inspectButton=fakeTarget(),status=fakeElement("NOT OBSERVED"),elements=renderElements();
+  const controller=createPathwayAuditFileController({fileInput,inspectButton,status,elements,formatTime:value=>`formatted:${value}`});
+  fileInput.files=[{text:async()=>canonical(validBundle())}];
+  await fileInput.emit("change");await inspectButton.emit("click");
+  assert.equal(status.textContent,"INSPECTED LOCALLY");
+  const validated=Object.fromEntries(Object.entries(elements).filter(([key])=>key!=="notice").map(([key,element])=>[key,element.textContent]));
+  assert.equal(elements.notice.textContent,"VERIFIED LOCALLY · NOTHING UPLOADED");
+
+  fileInput.files=[{text:async()=>'{"attacker":"<img src=x onerror=alert(1)>"}'}];
+  await fileInput.emit("change");await inspectButton.emit("click");
+  assert.equal(status.textContent,"ARTIFACT REJECTED");
+  assert.equal(elements.notice.textContent,"ARTIFACT REJECTED");
+  for(const[key,value]of Object.entries(validated))assert.equal(elements[key].textContent,value,key);
+  assert.equal(Object.values(elements).some(element=>element.textContent.includes("attacker")||element.textContent.includes("img")),false);
+  controller.dispose();
+});
+
 test("ignores reselection while inspection is busy and never starts a second File read",async()=>{
   let releaseA,readsA=0,readsB=0;
   const gate=new Promise(resolve=>{releaseA=resolve}),fileInput=fakeTarget(),inspectButton=fakeTarget(),status=fakeElement("NOT OBSERVED"),elements=renderElements();

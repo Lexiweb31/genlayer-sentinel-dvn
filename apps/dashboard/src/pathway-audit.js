@@ -94,7 +94,7 @@ export function renderPathwayAuditUnavailable(elements,reason){
 }
 
 export function createPathwayAuditFileController({fileInput,inspectButton,status,elements,formatTime}){
-  let selected=null,inFlightGeneration=null,generation=0,disposed=false;
+  let selected=null,inFlightGeneration=null,generation=0,disposed=false,hasValidObservation=false;
   inspectButton.disabled=true;
   const forgetSelection=()=>{selected=null;inspectButton.disabled=true;fileInput.value=""};
   const active=token=>!disposed&&generation===token&&inFlightGeneration===token;
@@ -121,12 +121,14 @@ export function createPathwayAuditFileController({fileInput,inspectButton,status
     }catch{
       if(!active(token))return;
       inFlightGeneration=null;
-      renderPathwayAuditUnavailable(elements,"ARTIFACT REJECTED");
+      if(hasValidObservation)elements.notice.textContent="ARTIFACT REJECTED";
+      else renderPathwayAuditUnavailable(elements,"ARTIFACT REJECTED");
       status.textContent="ARTIFACT REJECTED";
       return;
     }
     inFlightGeneration=null;
     renderPathwayAudit(elements,view,formatTime);
+    hasValidObservation=true;
     status.textContent="INSPECTED LOCALLY";
   };
   fileInput.addEventListener("change",onChange);
