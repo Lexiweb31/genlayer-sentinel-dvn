@@ -2,11 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {getAddress} from "ethers";
+import {canonicalJson} from "../../../dist/services/coordinator/src/canonical-json.js";
 import {parseDeploymentReadinessManifest} from "../../../dist/services/coordinator/src/deployment-readiness-manifest.js";
 import {
   inspectDeploymentReadinessBindings,
   parseDeploymentReadinessConfig
 } from "../../../dist/services/coordinator/src/deployment-readiness-binding.js";
+import {
+  buildPathwayAuditBundle,
+  encodePathwayAuditBundle
+} from "../../../dist/services/coordinator/src/pathway-audit-bundle.js";
 
 const sha256=value=>createHash("sha256").update(value).digest("hex");
 const json=value=>`${JSON.stringify(value,null,2)}\n`;
@@ -14,10 +19,128 @@ const address=value=>getAddress(`0x${value.toString(16).padStart(40,"0")}`);
 const sorted=values=>values.map(address).sort((left,right)=>left.toLowerCase().localeCompare(right.toLowerCase()));
 const sourceText={SentinelDVNAdapter:"contract A{}",TreasuryPolicyOApp:"contract B{}"};
 
+const auditDigest=value=>value.repeat(64);
+const auditHash=value=>`0x${value.repeat(64)}`;
+const auditAddress=value=>`0x${value.toString(16).padStart(40,"0")}`;
+const auditProvider=(label,digit)=>({label,originSha256:auditDigest(digit),operatorFamily:`operator-${label}`});
+const auditProviders=(chain,a,b)=>[auditProvider(`${chain}-a`,a),auditProvider(`${chain}-b`,b)];
+const auditBlock=(chainId,number,digit)=>({
+  chainId:String(chainId),blockNumber:String(number),blockHash:auditHash(digit),parentHash:auditHash("c"),
+  stateRoot:auditHash("d"),transactionsRoot:auditHash("e"),timestamp:"1710000000"
+});
+const auditCode=(name,value,digit)=>({
+  name,address:value,byteLength:2,runtimeCodeKeccak256:auditHash(digit),identity:"CODE_IDENTITY_REVIEWED"
+});
+const auditUln=(confirmations,required,optional)=>({
+  confirmations,requiredDvns:[required],optionalDvns:[optional],optionalDvnThreshold:1
+});
+const auditAdapter=(value,lib,target)=>({
+  address:value,messageLib:lib,verificationTarget:target,supportedDstEid:40231,quorum:"3",
+  signersAuthorized:[true,true,true,true,true]
+});
+const auditSource={
+  endpoint:auditAddress(1),send:auditAddress(2),receive:auditAddress(3),executor:auditAddress(4),
+  oapp:auditAddress(5),adapter:auditAddress(6),dvn:auditAddress(7)
+};
+const auditDestination={
+  endpoint:auditAddress(11),send:auditAddress(12),receive:auditAddress(13),oapp:auditAddress(14),
+  adapter:auditAddress(15),dvn:auditSource.dvn
+};
+const auditSigners=[21,22,23,24,25].map(auditAddress);
+
+function auditDeployment(contractName,chainId,value,providerIdentities,digit,constructorArguments){
+  return{
+    contractName,chainId:String(chainId),address:value,deployer:auditAddress(chainId===11155111?31:32),
+    providerIdentities:structuredClone(providerIdentities),deploymentTxHash:auditHash(digit),deploymentBlockNumber:"90",
+    deploymentBlockHash:auditHash(chainId===11155111?"8":"9"),creationBytecodeSha256:auditDigest("1"),
+    deployedBytecodeSha256:auditDigest("2"),immutableReferencesSha256:auditDigest("3"),
+    transactionInputSha256:auditDigest("4"),runtimeCodeKeccak256:auditHash("5"),constructorArguments
+  };
+}
+
+function bindAuditInnerDigests(value){
+  value.configurationSha256=sha256(canonicalJson({destination:value.destination,source:value.source}));
+  value.providerAgreement.source.resultSha256=sha256(canonicalJson({
+    block:value.blocks.source,
+    deployments:{adapter:value.deployments.sourceAdapter,oapp:value.deployments.sourceOApp},
+    officialCode:value.officialCode.source,path:value.source
+  }));
+  value.providerAgreement.destination.resultSha256=sha256(canonicalJson({
+    block:value.blocks.destination,
+    deployments:{adapter:value.deployments.destinationAdapter,oapp:value.deployments.destinationOApp},
+    officialCode:value.officialCode.destination,path:value.destination
+  }));
+  return value;
+}
+
+function consistentPathwayAuditText(){
+  const sourceProviders=auditProviders("source","1","2"),destinationProviders=auditProviders("destination","3","4");
+  const sourcePath={
+    endpoint:auditSource.endpoint,sourceOApp:auditSource.oapp,dstEid:40231,sendLibrary:auditSource.send,
+    isDefaultSendLibrary:false,supportedEid:true,uln:auditUln("15",auditSource.dvn,auditSource.adapter),
+    dvnCodeKeccak256:[
+      {address:auditSource.dvn,codeKeccak256:auditHash("6")},
+      {address:auditSource.adapter,codeKeccak256:auditHash("5")}
+    ],
+    executor:{maxMessageSize:10000,address:auditSource.executor},
+    destinationPeer:`0x${"0".repeat(24)}${auditDestination.oapp.slice(2)}`,
+    adapter:auditAdapter(auditSource.adapter,auditSource.send,auditSource.receive)
+  };
+  const destinationUln=auditUln("64",auditDestination.dvn,auditDestination.adapter);
+  const destinationPath={
+    endpoint:auditDestination.endpoint,oapp:auditDestination.oapp,srcEid:40161,
+    receiveLibrary:auditDestination.receive,isDefaultReceiveLibrary:false,supportedEid:true,
+    rawAppUln:destinationUln,resolvedUln:structuredClone(destinationUln),
+    sourcePeer:`0x${"0".repeat(24)}${auditSource.oapp.slice(2)}`,
+    adapter:auditAdapter(auditDestination.adapter,auditDestination.send,auditDestination.receive)
+  };
+  const observation=bindAuditInnerDigests({
+    status:"OBSERVED_PATHWAY_CONSISTENT",truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
+    repositoryBindingSha256:auditDigest("a"),
+    rpcIndependence:{source:"OPERATOR_INDEPENDENCE_REVIEWED",destination:"OPERATOR_INDEPENDENCE_REVIEWED"},
+    providerAgreement:{
+      source:{state:"TWO_TRANSPORTS_AGREE",providers:sourceProviders,resultSha256:null},
+      destination:{state:"TWO_TRANSPORTS_AGREE",providers:destinationProviders,resultSha256:null}
+    },
+    blocks:{source:auditBlock(11155111,100,"a"),destination:auditBlock(421614,200,"b")},
+    officialCode:{
+      source:[
+        auditCode("sourceEndpointV2",auditSource.endpoint,"1"),
+        auditCode("sourceSendUln302",auditSource.send,"2"),
+        auditCode("sourceExecutor",auditSource.executor,"3")
+      ],
+      destination:[
+        auditCode("destinationEndpointV2",auditDestination.endpoint,"4"),
+        auditCode("destinationReceiveUln302",auditDestination.receive,"5")
+      ]
+    },
+    deployments:{
+      sourceOApp:auditDeployment("TreasuryPolicyOApp",11155111,auditSource.oapp,sourceProviders,"1",{
+        endpoint:auditSource.endpoint,delegate:auditAddress(41)
+      }),
+      destinationOApp:auditDeployment("TreasuryPolicyOApp",421614,auditDestination.oapp,destinationProviders,"2",{
+        endpoint:auditDestination.endpoint,delegate:auditAddress(42)
+      }),
+      sourceAdapter:auditDeployment("SentinelDVNAdapter",11155111,auditSource.adapter,sourceProviders,"3",{
+        messageLib:auditSource.send,verificationTarget:auditSource.receive,supportedDstEid:40231,
+        signers:[...auditSigners],quorum:"3"
+      }),
+      destinationAdapter:auditDeployment("SentinelDVNAdapter",421614,auditDestination.adapter,destinationProviders,"4",{
+        messageLib:auditDestination.send,verificationTarget:auditDestination.receive,supportedDstEid:40231,
+        signers:[...auditSigners],quorum:"3"
+      })
+    },
+    source:sourcePath,destination:destinationPath,configurationSha256:null,blockers:[]
+  });
+  return encodePathwayAuditBundle(buildPathwayAuditBundle({
+    observation,runTimestamp:"2026-08-02T12:34:56.789Z"
+  }));
+}
+
 function readinessConfig(){
   return{
-    schemaVersion:1,
-    toolVersion:"sentinel-readiness/v1",
+    schemaVersion:2,
+    toolVersion:"sentinel-readiness/v2",
     maximumAuditAgeDays:7,
     networkConfig:"config/networks.json",
     auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
@@ -142,7 +265,7 @@ function fixture(){
   const auditEvidenceText="# Deployment readiness audit\n\nAUDITED_METADATA_NOT_DEPLOYMENT_AUTHORIZATION\n";
   const buildManifestText=json(buildManifest());
   const manifest=parseDeploymentReadinessManifest({
-    schemaVersion:1,
+    schemaVersion:2,
     classification:"LAYERZERO_DVN_CANDIDATE",
     sourceCommit:"1".repeat(40),
     audit:{
@@ -166,12 +289,13 @@ function fixture(){
         creationBytecodeSha256:buildManifest().contracts[1].creationBytecodeSha256
       }
     },
+    pathwayAudit:null,
     acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED"
   });
   return{
     manifest,evaluationDate:"2026-08-02",
     git:{commit:"1".repeat(40),dirty:false},
-    networkConfigText,auditEvidenceText,
+    networkConfigText,auditEvidenceText,pathwayAuditText:null,
     readinessConfigText:json(readinessConfig()),
     buildManifestText,
     compiledBuildManifestText:buildManifestText,
@@ -183,7 +307,8 @@ function fixture(){
 test("binds clean source, compiler artifacts and audited network metadata",()=>{
   const input=fixture(),binding=inspectDeploymentReadinessBindings(input);
   assert.deepEqual(binding.blockers,[]);
-  assert.equal(binding.toolVersion,"sentinel-readiness/v1");
+  assert.equal(binding.toolVersion,"sentinel-readiness/v2");
+  assert.equal(binding.pathwayAudit,null);
   assert.equal(binding.sourceCommit,"1".repeat(40));
   assert.match(binding.repositoryInputSha256,/^[a-f0-9]{64}$/);
   assert.deepEqual(binding.compiler,{
@@ -218,6 +343,69 @@ test("binds clean source, compiler artifacts and audited network metadata",()=>{
   assert.equal(JSON.stringify(binding).includes("/Users/"),false);
   input.productionSources.SentinelDVNAdapter="changed";
   assert.equal(binding.artifacts.SentinelDVNAdapter.sourceSha256,buildManifest().contracts[0].sourceSha256);
+});
+
+test("binds only a detached consistent pathway summary and preserves every readiness gate",()=>{
+  const input=fixture(),pathwayAuditText=consistentPathwayAuditText();
+  input.manifest.pathwayAudit={evidenceSha256:sha256(pathwayAuditText)};
+  input.pathwayAuditText=pathwayAuditText;
+  const binding=inspectDeploymentReadinessBindings(input);
+  assert.deepEqual(binding.pathwayAudit,{
+    status:"OBSERVED_PATHWAY_CONSISTENT",
+    truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
+    evidenceSha256:sha256(pathwayAuditText),
+    runTimestamp:"2026-08-02T12:34:56.789Z",
+    pinnedBlockHashes:{source:auditHash("a"),destination:auditHash("b")}
+  });
+  assert.equal(binding.gates.livePathwayValidated,false);
+  assert.equal(binding.gates.independentDvnsSelected,false);
+  assert.equal(binding.gates.confirmationPolicyApproved,false);
+  const encoded=JSON.stringify(binding.pathwayAudit);
+  for(const forbidden of["https://","providers","deployments","sourceOApp","rpcUrl","privateKey"])
+    assert.equal(encoded.includes(forbidden),false,forbidden);
+});
+
+test("requires exact manifest-to-artifact attachment and strict consistent evidence",()=>{
+  const base=consistentPathwayAuditText();
+  const cases=[
+    input=>{input.pathwayAuditText=base},
+    input=>{input.manifest.pathwayAudit={evidenceSha256:sha256(base)}},
+    input=>{
+      input.manifest.pathwayAudit={evidenceSha256:"f".repeat(64)};
+      input.pathwayAuditText=base;
+    },
+    input=>{
+      const value=JSON.parse(base);value.truthLabel="LIVE_PATHWAY_VALIDATED";
+      const{evidenceSha256:ignored,...body}=value;value.evidenceSha256=sha256(canonicalJson(body));
+      input.pathwayAuditText=canonicalJson(value);
+      input.manifest.pathwayAudit={evidenceSha256:sha256(input.pathwayAuditText)};
+    },
+    input=>{
+      const value=JSON.parse(base);
+      value.blockers=[{code:"AUDIT_RPC_UNAVAILABLE",category:"RPC_CONSENSUS",remediation:"REPLACE_RPC_TRANSPORT"}];
+      const{evidenceSha256:ignored,...body}=value;value.evidenceSha256=sha256(canonicalJson(body));
+      input.pathwayAuditText=canonicalJson(value);
+      input.manifest.pathwayAudit={evidenceSha256:sha256(input.pathwayAuditText)};
+    },
+    input=>{
+      const value=JSON.parse(base);value.providerAgreement.source.providers[0].rpcUrl="https://rpc.example";
+      input.pathwayAuditText=canonicalJson(value);
+      input.manifest.pathwayAudit={evidenceSha256:sha256(input.pathwayAuditText)};
+    },
+    input=>{
+      const value=JSON.parse(base);value.source.adapter.privateKey="must-not-appear";
+      input.pathwayAuditText=canonicalJson(value);
+      input.manifest.pathwayAudit={evidenceSha256:sha256(input.pathwayAuditText)};
+    },
+    input=>{
+      input.pathwayAuditText=JSON.stringify(JSON.parse(base));
+      input.manifest.pathwayAudit={evidenceSha256:sha256(input.pathwayAuditText)};
+    }
+  ];
+  for(const mutate of cases){
+    const input=fixture();mutate(input);
+    assert.throws(()=>inspectDeploymentReadinessBindings(input),/READINESS_MANIFEST_INVALID/);
+  }
 });
 
 test("reports every ordinary repository and audit drift as a sanitized blocker",()=>{
@@ -279,6 +467,8 @@ test("rejects malformed readiness configuration and forbidden path fields",()=>{
   const valid=json(readinessConfig());
   assert.equal(parseDeploymentReadinessConfig(valid).maximumAuditAgeDays,7);
   const invalid=[
+    value=>{value.schemaVersion=1},
+    value=>{value.toolVersion="sentinel-readiness/v1"},
     value=>{value.extra=true},
     value=>{delete value.gates},
     value=>{value.maximumAuditAgeDays=0},
@@ -298,7 +488,7 @@ test("rejects malformed readiness configuration and forbidden path fields",()=>{
 test("rejects duplicate keys throughout local readiness evidence",()=>{
   const cases=[
     input=>{input.readinessConfigText=input.readinessConfigText.replace(
-      '"schemaVersion": 1,','"schemaVersion": 1,\n  "schemaVersion": 1,'
+      '"schemaVersion": 2,','"schemaVersion": 2,\n  "schemaVersion": 2,'
     )},
     input=>{input.networkConfigText=input.networkConfigText.replace(
       '"chainId": 11155111,','"chainId": 11155111, "chainId": 11155111,'

@@ -21,8 +21,9 @@ const root=process.cwd(),manifestPath=join(tmpdir(),"sentinel-public-readiness.j
 const address=value=>getAddress(`0x${value.toString(16).padStart(40,"0")}`);
 const sorted=values=>values.map(address).sort((left,right)=>left.toLowerCase().localeCompare(right.toLowerCase()));
 const digest=value=>value.repeat(64);
+const sha256=value=>createHash("sha256").update(value).digest("hex");
 const manifestText=canonicalJson({
-  schemaVersion:1,classification:"LAYERZERO_DVN_CANDIDATE",sourceCommit:"1".repeat(40),
+  schemaVersion:2,classification:"LAYERZERO_DVN_CANDIDATE",sourceCommit:"1".repeat(40),
   audit:{date:"2026-07-29",evidenceSha256:digest("a"),networkConfigSha256:digest("b")},
   source:{name:"ethereum-sepolia",chainId:11155111,eid:40161},
   destination:{name:"arbitrum-sepolia",chainId:421614,eid:40231},
@@ -34,14 +35,15 @@ const manifestText=canonicalJson({
     SentinelDVNAdapter:{abiSha256:digest("c"),creationBytecodeSha256:digest("d")},
     TreasuryPolicyOApp:{abiSha256:digest("e"),creationBytecodeSha256:digest("f")}
   },
+  pathwayAudit:null,
   acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED"
 });
 
 function bundle(status){
   return{
-    schemaVersion:1,toolVersion:"sentinel-readiness/v1",evaluationDate:"2026-07-29",status,
+    schemaVersion:2,toolVersion:"sentinel-readiness/v2",evaluationDate:"2026-07-29",status,
     truthLabel:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED",userApprovalRequired:true,
-    transactions:[]
+    pathwayAudit:null,transactions:[]
   };
 }
 function dependencies(status="BLOCKED_DVN_CONFORMANCE"){
@@ -90,12 +92,56 @@ test("writes an output file once without printing the bundle",async()=>{
   assert.equal(JSON.parse(calls[0].contents).status,"BLOCKED_DVN_CONFORMANCE");
 });
 
+test("requires and forwards the exact optional pathway-audit path pair",async()=>{
+  const pathwayAuditPath=join(tmpdir(),"sentinel-pathway-audit.json");
+  const pathwayAuditText='{"canonical":"fixture"}\n';
+  const referenced=JSON.parse(manifestText);
+  referenced.pathwayAudit={evidenceSha256:sha256(pathwayAuditText)};
+  const referencedText=canonicalJson(referenced);
+
+  for(const args of[["--manifest",manifestPath]]){
+    const output=io(),deps=dependencies();
+    deps.readText=async path=>path===manifestPath?referencedText:path===pathwayAuditPath?pathwayAuditText:readFile(path,"utf8");
+    assert.equal(await runDeploymentReadinessCommand(args,output.value,deps),1);
+    assert.equal(output.stderr.join(""),'{"error":"READINESS_MANIFEST_INVALID"}\n');
+  }
+
+  const output=io(),deps=dependencies();let inspected;
+  deps.readText=async path=>path===manifestPath?referencedText:path===pathwayAuditPath?pathwayAuditText:readFile(path,"utf8");
+  deps.inspect=input=>{inspected=input;return{}};
+  assert.equal(await runDeploymentReadinessCommand(
+    ["--manifest",manifestPath,"--pathway-audit",pathwayAuditPath],output.value,deps
+  ),2);
+  assert.equal(inspected.pathwayAuditText,pathwayAuditText);
+
+  const combined=io(),combinedDeps=dependencies(),writes=[];
+  combinedDeps.readText=deps.readText;
+  combinedDeps.inspect=input=>{inspected=input;return{}};
+  combinedDeps.writeExclusive=async(path,contents)=>writes.push({path,contents});
+  const outputPath=join(tmpdir(),"sentinel-readiness-with-pathway.json");
+  assert.equal(await runDeploymentReadinessCommand([
+    "--manifest",manifestPath,"--pathway-audit",pathwayAuditPath,"--output",outputPath
+  ],combined.value,combinedDeps),2);
+  assert.equal(inspected.pathwayAuditText,pathwayAuditText);
+  assert.equal(writes[0].path,outputPath);
+
+  const unexpected=io();
+  assert.equal(await runDeploymentReadinessCommand(
+    ["--manifest",manifestPath,"--pathway-audit",pathwayAuditPath],unexpected.value,dependencies()
+  ),1);
+  assert.equal(unexpected.stderr.join(""),'{"error":"READINESS_MANIFEST_INVALID"}\n');
+});
+
 test("rejects every argument shape outside the exact absolute-path grammar",async()=>{
   const invalid=[
     [],["--manifest"],["--manifest","relative.json"],["--manifest","-"],
     ["--manifest",'{"schemaVersion":1}'],["--manifest",`${manifestPath}\0x`],
     ["--other",manifestPath],["--manifest",manifestPath,"extra"],
     ["--manifest",manifestPath,"--output"],["--manifest",manifestPath,"--output","relative.json"],
+    ["--manifest",manifestPath,"--pathway-audit"],
+    ["--manifest",manifestPath,"--pathway-audit","relative.json"],
+    ["--manifest",manifestPath,"--pathway-audit",manifestPath,"extra"],
+    ["--manifest",manifestPath,"--output",join(tmpdir(),"x"),"--pathway-audit",manifestPath],
     ["--manifest",manifestPath,"--manifest",manifestPath],
     ["--manifest",manifestPath,"--output",join(tmpdir(),"x"),"extra"]
   ];

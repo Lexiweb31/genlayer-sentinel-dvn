@@ -1,6 +1,7 @@
 import{canonicalJson}from"./canonical-json.js";
 import{
   type ReadinessBinding,
+  type ReadinessPathwayAuditSummary,
   type ReadinessBlocker,
   type ReadinessBlockerCategory
 }from"./deployment-readiness-binding.js";
@@ -15,8 +16,8 @@ export type DeploymentReadinessStatus=
   "BLOCKED_DVN_CONFORMANCE"|"BLOCKED_NETWORK_AUDIT"|
   "BLOCKED_ARTIFACT_BINDING"|"BLOCKED_CONFIGURATION";
 export interface DeploymentReadinessBundle{
-  schemaVersion:1;
-  toolVersion:"sentinel-readiness/v1";
+  schemaVersion:2;
+  toolVersion:"sentinel-readiness/v2";
   evaluationDate:string;
   status:DeploymentReadinessStatus;
   classification:ReadinessClassification;
@@ -39,6 +40,7 @@ export interface DeploymentReadinessBundle{
     signing:"ONLY_AFTER_BOTH_FINALIZE";
     layerZeroRole:"ADDITIONAL_OR_OPTIONAL_WITH_INDEPENDENT_DVNS";
   };
+  pathwayAudit:ReadinessPathwayAuditSummary|null;
   blockers:ReadinessBlocker[];
   transactions:[];
 }
@@ -92,8 +94,8 @@ export function buildDeploymentReadinessBundle(input:BuildDeploymentReadinessBun
     left.category.localeCompare(right.category)
   );
   return{
-    schemaVersion:1,
-    toolVersion:"sentinel-readiness/v1",
+    schemaVersion:2,
+    toolVersion:"sentinel-readiness/v2",
     evaluationDate:input.evaluationDate,
     status:status(blockers),
     classification:input.manifest.classification,
@@ -135,8 +137,25 @@ export function buildDeploymentReadinessBundle(input:BuildDeploymentReadinessBun
       signing:"ONLY_AFTER_BOTH_FINALIZE",
       layerZeroRole:"ADDITIONAL_OR_OPTIONAL_WITH_INDEPENDENT_DVNS"
     },
+    pathwayAudit:clonePathwayAudit(input.binding.pathwayAudit),
     blockers,
     transactions:[]
+  };
+}
+
+function clonePathwayAudit(value:ReadinessPathwayAuditSummary|null):ReadinessPathwayAuditSummary|null{
+  if(value===null)return null;
+  if(value.status!=="OBSERVED_PATHWAY_CONSISTENT"||
+    value.truthLabel!=="READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED"||
+    !/^[a-f0-9]{64}$/.test(value.evidenceSha256)||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.runTimestamp)||
+    !/^0x[a-f0-9]{64}$/.test(value.pinnedBlockHashes.source)||
+    !/^0x[a-f0-9]{64}$/.test(value.pinnedBlockHashes.destination))invalid();
+  return{
+    status:"OBSERVED_PATHWAY_CONSISTENT",
+    truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
+    evidenceSha256:value.evidenceSha256,runTimestamp:value.runTimestamp,
+    pinnedBlockHashes:{...value.pinnedBlockHashes}
   };
 }
 

@@ -1,6 +1,7 @@
 import{createHash}from"node:crypto";
 import{getAddress}from"ethers";
 import{canonicalJson,parseJsonDocument}from"./canonical-json.js";
+import{parsePathwayAuditBundleText}from"./pathway-audit-bundle.js";
 import{
   ReadinessError,
   type DeploymentReadinessManifest
@@ -32,8 +33,8 @@ export interface ReadinessGates{
   deploymentSecurityApproval:boolean;
 }
 export interface DeploymentReadinessConfig{
-  schemaVersion:1;
-  toolVersion:"sentinel-readiness/v1";
+  schemaVersion:2;
+  toolVersion:"sentinel-readiness/v2";
   maximumAuditAgeDays:number;
   networkConfig:"config/networks.json";
   auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md";
@@ -55,11 +56,19 @@ export interface BindingInput{
   git:{commit:string;dirty:boolean};
   networkConfigText:string;
   auditEvidenceText:string;
+  pathwayAuditText:string|null;
   readinessConfigText:string;
   buildManifestText:string;
   compiledBuildManifestText:string;
   productionArtifacts:{SentinelDVNAdapter:string;TreasuryPolicyOApp:string};
   productionSources:{SentinelDVNAdapter:string;TreasuryPolicyOApp:string};
+}
+export interface ReadinessPathwayAuditSummary{
+  status:"OBSERVED_PATHWAY_CONSISTENT";
+  truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED";
+  evidenceSha256:string;
+  runTimestamp:string;
+  pinnedBlockHashes:{source:string;destination:string};
 }
 interface BoundContract{
   source:string;
@@ -82,7 +91,7 @@ interface BoundNetwork{
   source:string;
 }
 export interface ReadinessBinding{
-  toolVersion:"sentinel-readiness/v1";
+  toolVersion:"sentinel-readiness/v2";
   sourceCommit:string;
   repositoryInputSha256:string;
   compiler:{version:string;evmVersion:string;optimizer:{enabled:boolean;runs:number}};
@@ -99,6 +108,7 @@ export interface ReadinessBinding{
     };
   };
   gates:ReadinessGates;
+  pathwayAudit:ReadinessPathwayAuditSummary|null;
   blockers:ReadinessBlocker[];
 }
 
@@ -177,7 +187,7 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
   exactKeys(sources,["SentinelDVNAdapter","TreasuryPolicyOApp"]);
   exactKeys(pathway,["source","destination"]);exactKeys(gates,gateKeys);
   const maximumAuditAgeDays=uint(root.maximumAuditAgeDays);
-  if(root.schemaVersion!==1||root.toolVersion!=="sentinel-readiness/v1"||
+  if(root.schemaVersion!==2||root.toolVersion!=="sentinel-readiness/v2"||
     maximumAuditAgeDays<1||maximumAuditAgeDays>30||
     root.networkConfig!=="config/networks.json"||
     root.auditEvidence!=="docs/research/2026-08-02-layerzero-interface-conformance-audit.md"||
@@ -204,7 +214,7 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
     deploymentSecurityApproval:bool(gates.deploymentSecurityApproval)
   };
   return{
-    schemaVersion:1,toolVersion:"sentinel-readiness/v1",maximumAuditAgeDays,
+    schemaVersion:2,toolVersion:"sentinel-readiness/v2",maximumAuditAgeDays,
     networkConfig:"config/networks.json",
     auditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     buildManifest:"dist/contracts/build-manifest.json",
@@ -223,6 +233,7 @@ export function parseDeploymentReadinessConfig(text:string):DeploymentReadinessC
 
 export function inspectDeploymentReadinessBindings(input:BindingInput):ReadinessBinding{
   const config=parseDeploymentReadinessConfig(input.readinessConfigText);
+  const pathwayAudit=bindPathwayAudit(input.manifest.pathwayAudit,input.pathwayAuditText);
   const network=parseNetworkConfig(input.networkConfigText),build=parseBuildManifest(input.buildManifestText);
   const compiledBuild=parseBuildManifest(input.compiledBuildManifestText);
   const adapterArtifact=parseContractArtifact(input.productionArtifacts.SentinelDVNAdapter);
@@ -293,10 +304,11 @@ export function inspectDeploymentReadinessBindings(input:BindingInput):Readiness
     buildManifestSha256:sha256(input.buildManifestText),
     compiledBuildManifestSha256:sha256(input.compiledBuildManifestText),
     productionArtifactFileSha256:artifactFileDigests,
-    productionSourceSha256:sourceDigests
+    productionSourceSha256:sourceDigests,
+    pathwayAuditSha256:pathwayAudit?.evidenceSha256??null
   }));
   return{
-    toolVersion:"sentinel-readiness/v1",
+    toolVersion:"sentinel-readiness/v2",
     sourceCommit:input.git.commit,
     repositoryInputSha256,
     compiler:{
@@ -317,7 +329,31 @@ export function inspectDeploymentReadinessBindings(input:BindingInput):Readiness
       pathwayValidation:{...network.pathwayValidation}
     },
     gates:{...config.gates},
+    pathwayAudit,
     blockers
+  };
+}
+
+function bindPathwayAudit(
+  expectation:DeploymentReadinessManifest["pathwayAudit"],
+  text:string|null
+):ReadinessPathwayAuditSummary|null{
+  if(expectation===null){if(text!==null)invalid();return null}
+  if(text===null||sha256(text)!==expectation.evidenceSha256)invalid();
+  let artifact:ReturnType<typeof parsePathwayAuditBundleText>;
+  try{artifact=parsePathwayAuditBundleText(text)}catch{invalid()}
+  if(artifact.status!=="OBSERVED_PATHWAY_CONSISTENT"||
+    artifact.truthLabel!=="READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED"||
+    artifact.blocks.source===null||artifact.blocks.destination===null)invalid();
+  return{
+    status:"OBSERVED_PATHWAY_CONSISTENT",
+    truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
+    evidenceSha256:expectation.evidenceSha256,
+    runTimestamp:artifact.runTimestamp,
+    pinnedBlockHashes:{
+      source:artifact.blocks.source.blockHash,
+      destination:artifact.blocks.destination.blockHash
+    }
   };
 }
 

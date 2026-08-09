@@ -75,7 +75,7 @@ export async function runDeploymentReadinessCommand(
   io:ReadinessCommandIo,
   suppliedDependencies?:ReadinessCommandDependencies
 ):Promise<number>{
-  let paths:{manifest:string;output?:string};
+  let paths:{manifest:string;pathwayAudit?:string;output?:string};
   try{paths=parseArguments(args)}catch{return fail(io,"READINESS_MANIFEST_INVALID")}
   const dependencies=suppliedDependencies??defaultDependencies();
   let manifestText:string;
@@ -84,6 +84,8 @@ export async function runDeploymentReadinessCommand(
   let manifest:DeploymentReadinessManifest;
   try{manifest=parseDeploymentReadinessManifestText(manifestText)}
   catch(error){return fail(io,manifestError(error))}
+  if((manifest.pathwayAudit===null)!==(paths.pathwayAudit===undefined))
+    return fail(io,"READINESS_MANIFEST_INVALID");
   let evaluationDate:string;
   try{evaluationDate=normalizeDate(dependencies.evaluationDate())}
   catch{return fail(io,"READINESS_BINDING_FAILED")}
@@ -113,9 +115,13 @@ export async function runDeploymentReadinessCommand(
       dependencies.readText(join(dependencies.repositoryRoot,config.productionSources.SentinelDVNAdapter)),
       dependencies.readText(join(dependencies.repositoryRoot,config.productionSources.TreasuryPolicyOApp))
     ]);
+    const pathwayAuditText=paths.pathwayAudit===undefined
+      ?null
+      :await dependencies.readText(paths.pathwayAudit);
     input={
       manifest,evaluationDate,git:{commit:"0".repeat(40),dirty:true},
-      networkConfigText,auditEvidenceText,readinessConfigText,buildManifestText,compiledBuildManifestText,
+      networkConfigText,auditEvidenceText,pathwayAuditText,
+      readinessConfigText,buildManifestText,compiledBuildManifestText,
       productionArtifacts:{SentinelDVNAdapter:adapterArtifact,TreasuryPolicyOApp:oappArtifact},
       productionSources:{SentinelDVNAdapter:adapterSource,TreasuryPolicyOApp:oappSource}
     };
@@ -268,11 +274,17 @@ function validateLocalGitConfiguration(text:string):void{
     if(!expected?.test(value))throw new ReadinessCommandError("READINESS_GIT_FAILED");
   }
 }
-function parseArguments(args:string[]):{manifest:string;output?:string}{
-  if(args.length!==2&&args.length!==4)invalid();
+function parseArguments(args:string[]):{manifest:string;pathwayAudit?:string;output?:string}{
   if(args[0]!=="--manifest"||!validAbsolutePath(args[1]))invalid();
-  if(args.length===4&&(args[2]!=="--output"||!validAbsolutePath(args[3])))invalid();
-  return args.length===2?{manifest:args[1]!}:{manifest:args[1]!,output:args[3]!};
+  if(args.length===2)return{manifest:args[1]!};
+  if(args.length===4&&args[2]==="--output"&&validAbsolutePath(args[3]))
+    return{manifest:args[1]!,output:args[3]};
+  if(args.length===4&&args[2]==="--pathway-audit"&&validAbsolutePath(args[3]))
+    return{manifest:args[1]!,pathwayAudit:args[3]};
+  if(args.length===6&&args[2]==="--pathway-audit"&&validAbsolutePath(args[3])&&
+    args[4]==="--output"&&validAbsolutePath(args[5]))
+    return{manifest:args[1]!,pathwayAudit:args[3],output:args[5]};
+  invalid();
 }
 function validAbsolutePath(value:unknown):value is string{
   return typeof value==="string"&&value.length>1&&!/[\0-\x1f\x7f]/.test(value)&&

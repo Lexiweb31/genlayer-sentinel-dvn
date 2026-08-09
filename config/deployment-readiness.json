@@ -1,6 +1,6 @@
 {
-  "schemaVersion": 1,
-  "toolVersion": "sentinel-readiness/v1",
+  "schemaVersion": 2,
+  "toolVersion": "sentinel-readiness/v2",
   "maximumAuditAgeDays": 7,
   "networkConfig": "config/networks.json",
   "auditEvidence": "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",

@@ -13,7 +13,7 @@ const digest=value=>value.repeat(64);
 
 function manifest(classification="LAYERZERO_DVN_CANDIDATE"){
   return parseDeploymentReadinessManifest({
-    schemaVersion:1,classification,sourceCommit:"1".repeat(40),
+    schemaVersion:2,classification,sourceCommit:"1".repeat(40),
     audit:{date:"2026-07-29",evidenceSha256:digest("a"),networkConfigSha256:digest("b")},
     source:{name:"ethereum-sepolia",chainId:11155111,eid:40161},
     destination:{name:"arbitrum-sepolia",chainId:421614,eid:40231},
@@ -25,6 +25,7 @@ function manifest(classification="LAYERZERO_DVN_CANDIDATE"){
       SentinelDVNAdapter:{abiSha256:digest("c"),creationBytecodeSha256:digest("d")},
       TreasuryPolicyOApp:{abiSha256:digest("e"),creationBytecodeSha256:digest("f")}
     },
+    pathwayAudit:null,
     acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED"
   });
 }
@@ -52,7 +53,7 @@ const network=(name,chainId,eid,deadDvn)=>({
 
 function binding(){
   return{
-    toolVersion:"sentinel-readiness/v1",
+    toolVersion:"sentinel-readiness/v2",
     sourceCommit:"1".repeat(40),
     repositoryInputSha256:digest("9"),
     compiler:{version:"0.8.30+commit.73712a01.Emscripten.clang",evmVersion:"shanghai",optimizer:{enabled:true,runs:200}},
@@ -90,7 +91,7 @@ function binding(){
       independentRecoveryOperators:false,
       deploymentSecurityApproval:false
     },
-    blockers:[]
+    pathwayAudit:null,blockers:[]
   };
 }
 
@@ -99,6 +100,9 @@ test("blocks the current adapter candidate and preserves every truth boundary",(
   assert.equal(result.status,"BLOCKED_DVN_CONFORMANCE");
   assert.equal(result.truthLabel,"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED");
   assert.equal(result.userApprovalRequired,true);
+  assert.equal(result.schemaVersion,2);
+  assert.equal(result.toolVersion,"sentinel-readiness/v2");
+  assert.equal(result.pathwayAudit,null);
   assert.deepEqual(result.transactions,[]);
   assert.equal(Object.hasOwn(result,"readinessGates"),false);
   assert.equal(result.network.source.deadDvn.selectable,false);
@@ -171,6 +175,22 @@ test("a synthetic future-ready result remains unsigned and separately approval-g
   assert.equal(result.userApprovalRequired,true);
   assert.deepEqual(result.transactions,[]);
   assert.deepEqual(result.blockers,[]);
+});
+
+test("surfaces detached pathway evidence without clearing the live validation gate",()=>{
+  const current=binding();
+  current.pathwayAudit={
+    status:"OBSERVED_PATHWAY_CONSISTENT",
+    truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
+    evidenceSha256:digest("8"),
+    runTimestamp:"2026-08-02T12:34:56.789Z",
+    pinnedBlockHashes:{source:`0x${"a".repeat(64)}`,destination:`0x${"b".repeat(64)}`}
+  };
+  const result=buildDeploymentReadinessBundle({manifest:manifest(),binding:current,evaluationDate:"2026-07-29"});
+  assert.equal(result.pathwayAudit.status,"OBSERVED_PATHWAY_CONSISTENT");
+  assert.deepEqual(result.pathwayAudit,current.pathwayAudit);
+  assert.equal(current.gates.livePathwayValidated,false);
+  assert.equal(result.blockers.some(value=>value.remediation==="VALIDATE_LIVE_PATHWAY"),true);
 });
 
 test("encodes deterministic sanitized output bound to the evaluation date",()=>{

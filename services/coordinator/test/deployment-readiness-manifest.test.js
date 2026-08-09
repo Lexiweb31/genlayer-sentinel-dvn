@@ -13,7 +13,7 @@ const sorted=values=>values.map(address).sort((left,right)=>left.toLowerCase().l
 
 function fixture(){
   return{
-    schemaVersion:1,
+    schemaVersion:2,
     classification:"LAYERZERO_DVN_CANDIDATE",
     sourceCommit:"1".repeat(40),
     audit:{
@@ -33,6 +33,7 @@ function fixture(){
       SentinelDVNAdapter:{abiSha256:"c".repeat(64),creationBytecodeSha256:"d".repeat(64)},
       TreasuryPolicyOApp:{abiSha256:"e".repeat(64),creationBytecodeSha256:"f".repeat(64)}
     },
+    pathwayAudit:null,
     acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED"
   };
 }
@@ -51,7 +52,8 @@ test("rejects every malformed or unsafe public-manifest boundary",()=>{
   const invalid=[
     value=>{value.extra=true},
     value=>{delete value.delegate},
-    value=>{value.schemaVersion=2},
+    value=>{delete value.pathwayAudit},
+    value=>{value.schemaVersion=1},
     value=>{value.classification="PRODUCTION_DVN"},
     value=>{value.sourceCommit="0".repeat(40)},
     value=>{value.sourceCommit="A".repeat(40)},
@@ -103,7 +105,22 @@ test("rejects secret-shaped fields without echoing their names or values",()=>{
 test("requires canonical manifest bytes before schema validation",()=>{
   const text=canonicalJson(fixture());
   assert.throws(
-    ()=>parseDeploymentReadinessManifestText(text.replace('"schemaVersion":1','"schemaVersion":1, "schemaVersion":1')),
+    ()=>parseDeploymentReadinessManifestText(text.replace('"schemaVersion":2','"schemaVersion":2, "schemaVersion":2')),
     /READINESS_MANIFEST_INVALID/
   );
+});
+
+test("accepts only a closed optional pathway-audit digest reference",()=>{
+  const value=fixture();
+  value.pathwayAudit={evidenceSha256:"9".repeat(64)};
+  assert.deepEqual(parseDeploymentReadinessManifest(value).pathwayAudit,value.pathwayAudit);
+  value.pathwayAudit.rpcUrl="https://rpc.example";
+  assert.throws(
+    ()=>parseDeploymentReadinessManifest(value),
+    error=>error instanceof ReadinessError&&error.code==="READINESS_SECRET_FIELD_REJECTED"
+  );
+  for(const pathwayAudit of[{}, {evidenceSha256:"9".repeat(63)}, {evidenceSha256:"9".repeat(64),extra:true}]){
+    const invalid=fixture();invalid.pathwayAudit=pathwayAudit;
+    assert.throws(()=>parseDeploymentReadinessManifest(invalid),/READINESS_MANIFEST_INVALID/);
+  }
 });

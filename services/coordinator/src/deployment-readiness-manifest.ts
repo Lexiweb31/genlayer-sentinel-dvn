@@ -3,8 +3,9 @@ import{parseCanonicalJsonDocument}from"./canonical-json.js";
 
 export type ReadinessClassification="LOCAL_ADAPTER_PROTOTYPE"|"LAYERZERO_DVN_CANDIDATE";
 export interface ArtifactExpectation{abiSha256:string;creationBytecodeSha256:string}
+export interface PathwayAuditExpectation{evidenceSha256:string}
 export interface DeploymentReadinessManifest{
-  schemaVersion:1;
+  schemaVersion:2;
   classification:ReadinessClassification;
   sourceCommit:string;
   audit:{date:string;evidenceSha256:string;networkConfigSha256:string};
@@ -20,6 +21,7 @@ export interface DeploymentReadinessManifest{
     SentinelDVNAdapter:ArtifactExpectation;
     TreasuryPolicyOApp:ArtifactExpectation;
   };
+  pathwayAudit:PathwayAuditExpectation|null;
   acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED";
 }
 
@@ -30,7 +32,7 @@ export class ReadinessError extends Error{
 
 const topKeys=[
   "schemaVersion","classification","sourceCommit","audit","source","destination","owner","delegate",
-  "signers","quorum","recoveryOperators","confirmations","artifacts","acknowledgement"
+  "signers","quorum","recoveryOperators","confirmations","artifacts","pathwayAudit","acknowledgement"
 ];
 const secretKey=/private|secret|mnemonic|seed|keystore|rpc|websocket|provider|wallet|signerkey|cloud|credential|token/i;
 const commitPattern=/^[a-f0-9]{40}$/;
@@ -54,7 +56,9 @@ export function parseDeploymentReadinessManifest(value:unknown):DeploymentReadin
   exactKeys(artifacts,["SentinelDVNAdapter","TreasuryPolicyOApp"]);
   exactKeys(adapter,["abiSha256","creationBytecodeSha256"]);
   exactKeys(oapp,["abiSha256","creationBytecodeSha256"]);
-  if(root.schemaVersion!==1||
+  const pathwayAudit=root.pathwayAudit===null?null:record(root.pathwayAudit);
+  if(pathwayAudit)exactKeys(pathwayAudit,["evidenceSha256"]);
+  if(root.schemaVersion!==2||
     (root.classification!=="LOCAL_ADAPTER_PROTOTYPE"&&root.classification!=="LAYERZERO_DVN_CANDIDATE")||
     !commit(root.sourceCommit)||!date(audit.date)||
     source.name!=="ethereum-sepolia"||source.chainId!==11155111||source.eid!==40161||
@@ -65,7 +69,7 @@ export function parseDeploymentReadinessManifest(value:unknown):DeploymentReadin
   const signers=addresses(root.signers),recoveryOperators=addresses(root.recoveryOperators);
   if(signers.some(item=>recoveryOperators.includes(item)))invalid();
   return{
-    schemaVersion:1,
+    schemaVersion:2,
     classification:root.classification,
     sourceCommit:root.sourceCommit,
     audit:{
@@ -91,6 +95,7 @@ export function parseDeploymentReadinessManifest(value:unknown):DeploymentReadin
         creationBytecodeSha256:digest(oapp.creationBytecodeSha256)
       }
     },
+    pathwayAudit:pathwayAudit?{evidenceSha256:digest(pathwayAudit.evidenceSha256)}:null,
     acknowledgement:"UNSIGNED_NOT_DEPLOYED_NOT_VERIFIED"
   };
 }
