@@ -37,6 +37,7 @@ before(async()=>{
 
 test("build:site emits only the reviewed public and worker files",async()=>{
   assert.deepEqual(await filesBelow(resolve("dist/public")),expectedPublicFiles);
+  assert.deepEqual(await filesBelow(resolve("dist/client")),expectedPublicFiles);
   assert.deepEqual(await filesBelow(resolve("dist/server")),["index.js"]);
   const hostedHtml=await readFile("dist/public/index.html","utf8");
   const sourceHtml=await readFile("apps/dashboard/index.html","utf8");

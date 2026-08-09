@@ -1,5 +1,5 @@
 import {createHash} from "node:crypto";
-import {copyFile,mkdir,readFile,readdir,rm,writeFile} from "node:fs/promises";
+import {copyFile,cp,mkdir,readFile,readdir,rm,writeFile} from "node:fs/promises";
 import {fileURLToPath} from "node:url";
 import {dirname,join,resolve} from "node:path";
 
@@ -39,8 +39,9 @@ export async function buildHostedDashboard({root=process.cwd()}={}){
   for(const[source]of COPIES)await readFile(join(projectRoot,source));
   await readFile(join(projectRoot,"apps/dashboard/src/hosted-worker.js"));
 
-  const publicRoot=join(projectRoot,"dist/public"),serverRoot=join(projectRoot,"dist/server");
+  const publicRoot=join(projectRoot,"dist/public"),clientRoot=join(projectRoot,"dist/client"),serverRoot=join(projectRoot,"dist/server");
   await rm(publicRoot,{recursive:true,force:true});
+  await rm(clientRoot,{recursive:true,force:true});
   await rm(serverRoot,{recursive:true,force:true});
   await mkdir(publicRoot,{recursive:true});
   await mkdir(serverRoot,{recursive:true});
@@ -52,8 +53,9 @@ export async function buildHostedDashboard({root=process.cwd()}={}){
   }
   const hostedHtml=sourceHtml.replaceAll(localImage,'content="__SITE_ORIGIN__/assets/og.png"');
   await writeFile(join(publicRoot,"index.html"),hostedHtml,"utf8");
+  await cp(publicRoot,clientRoot,{recursive:true});
   await copyFile(join(projectRoot,"apps/dashboard/src/hosted-worker.js"),join(serverRoot,"index.js"));
-  return{publicRoot,serverRoot};
+  return{publicRoot,clientRoot,serverRoot};
 }
 
 async function validateAssets(root){
