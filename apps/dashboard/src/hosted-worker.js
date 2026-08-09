@@ -27,26 +27,26 @@ const IMMUTABLE_PATHS=new Set([
 ]);
 
 export default{async fetch(request,env){
-  if(request.method!=="GET"&&request.method!=="HEAD")return errorResponse(405,"method not allowed",{"allow":"GET, HEAD"});
+  if(request.method!=="GET"&&request.method!=="HEAD")return errorResponse(request.method,405,"method not allowed",{"allow":"GET, HEAD"});
   const url=new URL(request.url);
-  if(!PUBLIC_PATHS.has(url.pathname))return errorResponse(404,"not found");
-  if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(503,"static assets unavailable");
+  if(!PUBLIC_PATHS.has(url.pathname))return errorResponse(request.method,404,"not found");
+  if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(request.method,503,"static assets unavailable");
   let response;
-  try{response=await env.ASSETS.fetch(request)}catch{return errorResponse(502,"static asset request failed")}
-  const headers=securityHeaders(response.headers,cachePolicy(url.pathname));
+  try{response=await env.ASSETS.fetch(request)}catch{return errorResponse(request.method,502,"static asset request failed")}
+  const headers=securityHeaders(response.headers,cachePolicy(url.pathname,response.status));
   if(url.pathname==="/")invalidateRepresentationHeaders(headers);
   if(request.method==="HEAD")return new Response(null,{status:response.status,statusText:response.statusText,headers});
   if(url.pathname==="/"&&response.ok){
     const source=await response.text();
     const placeholders=source.split(`${SITE_ORIGIN}/assets/og.png`).length-1;
-    if(placeholders!==2)return errorResponse(500,"hosted metadata unavailable");
+    if(placeholders!==2)return errorResponse(request.method,500,"hosted metadata unavailable");
     return new Response(source.replaceAll(SITE_ORIGIN,url.origin),{status:response.status,statusText:response.statusText,headers});
   }
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};
 
-function cachePolicy(path){
-  if(path==="/")return"no-store";
+function cachePolicy(path,status){
+  if(path==="/"||status!==200)return"no-store";
   return IMMUTABLE_PATHS.has(path)?"public, max-age=31536000, immutable":"public, max-age=300";
 }
 
@@ -66,7 +66,7 @@ function invalidateRepresentationHeaders(headers){
   headers.delete("etag");
 }
 
-function errorResponse(status,error,extra={}){
+function errorResponse(method,status,error,extra={}){
   const headers=securityHeaders(new Headers({"content-type":"application/json; charset=utf-8",...extra}),"no-store");
-  return new Response(JSON.stringify({error}),{status,headers});
+  return new Response(method==="HEAD"?null:JSON.stringify({error}),{status,headers});
 }

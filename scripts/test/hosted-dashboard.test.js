@@ -120,6 +120,61 @@ test("the worker preserves video bytes and applies immutable caching",async()=>{
   assert.equal(response.headers.get("content-security-policy"),expectedCsp);
 });
 
+test("delegated redirects and errors are never publicly cached",async()=>{
+  const cases=[
+    ["/assets/og.png",301],
+    ["/assets/og.png",404],
+    ["/assets/og.png",500],
+    ["/src/app.js",301],
+    ["/src/app.js",404],
+    ["/src/app.js",500]
+  ];
+  for(const[path,status]of cases){
+    const response=await worker.fetch(
+      new Request(`https://sentinel.example${path}`),
+      delegatedEnv(status,`delegated ${status}`)
+    );
+    assert.equal(response.status,status,`${path} ${status}`);
+    assert.equal(await response.text(),`delegated ${status}`,`${path} ${status}`);
+    assert.equal(response.headers.get("cache-control"),"no-store",`${path} ${status}`);
+    assert.equal(response.headers.get("content-security-policy"),expectedCsp,`${path} ${status}`);
+  }
+});
+
+test("HEAD fixed failures match GET metadata without a body",async()=>{
+  const cases=[
+    ["/package.json",{ASSETS:{fetch:async()=>{throw new Error("must not delegate")}}}],
+    ["/assets/og.png",undefined],
+    ["/assets/og.png",{ASSETS:{fetch:async()=>{throw new Error("binding unavailable")}}}]
+  ];
+  for(const[path,env]of cases){
+    const get=await worker.fetch(new Request(`https://sentinel.example${path}`),env);
+    const head=await worker.fetch(new Request(`https://sentinel.example${path}`,{method:"HEAD"}),env);
+    assert.equal(head.status,get.status,path);
+    assert.deepEqual(headersOf(head),headersOf(get),path);
+    assert.equal(await head.text(),"",path);
+    assert.notEqual(await get.text(),"",path);
+  }
+});
+
+test("HEAD delegated redirects and errors match GET metadata without a body",async()=>{
+  const cases=[
+    ["/assets/og.png",301],
+    ["/assets/og.png",500],
+    ["/src/app.js",301],
+    ["/src/app.js",404]
+  ];
+  for(const[path,status]of cases){
+    const get=await worker.fetch(new Request(`https://sentinel.example${path}`),delegatedEnv(status,"binding response"));
+    const head=await worker.fetch(new Request(`https://sentinel.example${path}`,{method:"HEAD"}),delegatedEnv(status,"binding response"));
+    assert.equal(head.status,get.status,`${path} ${status}`);
+    assert.deepEqual(headersOf(head),headersOf(get),`${path} ${status}`);
+    assert.equal(head.headers.get("cache-control"),"no-store",`${path} ${status}`);
+    assert.equal(await head.text(),"",`${path} ${status}`);
+    assert.equal(await get.text(),"binding response",`${path} ${status}`);
+  }
+});
+
 test("the package builder refuses an unexpected dashboard source asset",async t=>{
   const fixture=await dashboardFixture(t);
   await writeFile(join(fixture,"apps/dashboard/assets/unreviewed.bin"),"not reviewed");
@@ -140,6 +195,19 @@ async function dashboardFixture(t){
   await mkdir(join(root,"dist/apps/dashboard"),{recursive:true});
   await cp(resolve("dist/apps/dashboard/demo.js"),join(root,"dist/apps/dashboard/demo.js"));
   return root;
+}
+
+function delegatedEnv(status,body){
+  return{ASSETS:{fetch:async()=>new Response(body,{status,headers:{
+    "content-type":"text/plain; charset=utf-8",
+    "content-length":String(Buffer.byteLength(body)),
+    "location":"https://cdn.sentinel.example/replacement",
+    "x-binding":"delegated"
+  }})}};
+}
+
+function headersOf(response){
+  return Object.fromEntries([...response.headers].sort(([left],[right])=>left.localeCompare(right)));
 }
 
 async function filesBelow(root){
