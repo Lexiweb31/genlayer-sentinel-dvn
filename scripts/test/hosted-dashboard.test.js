@@ -148,6 +148,24 @@ test("the worker rejects unknown and traversal-like paths before static delegati
   }
 });
 
+test("the temporary asset diagnosis reports only candidate static-path statuses",async()=>{
+  const response=await worker.fetch(
+    new Request("https://sentinel.example/__sentinel-assets"),
+    {ASSETS:{fetch:async request=>new Response(null,{status:new URL(request.url).pathname==="/public/index.html"?200:404})}}
+  );
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{
+    candidates:{
+      "/index.html":404,
+      "/public/index.html":200,
+      "/dist/public/index.html":404,
+      "/assets/og.png":404,
+      "/public/assets/og.png":404,
+      "/dist/public/assets/og.png":404
+    }
+  });
+});
+
 test("the worker preserves video bytes and applies immutable caching",async()=>{
   const expected=await readFile("dist/public/assets/sentinel-network-loop.mp4");
   const response=await worker.fetch(
