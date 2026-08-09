@@ -1,0 +1,118 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const html=fs.readFileSync(new URL("../index.html",import.meta.url),"utf8");
+const css=fs.readFileSync(new URL("../src/style.css",import.meta.url),"utf8");
+const js=fs.readFileSync(new URL("../src/app.js",import.meta.url),"utf8");
+
+const element=(tag,id)=>html.match(new RegExp(`<${tag}\\b[^>]*\\bid="${id}"[^>]*>`,"i"))?.[0]??"";
+const attribute=(markup,name)=>new RegExp(`\\b${name}(?:=(?:"[^"]*"|'[^']*'|[^\\s>]+))?`,"i").test(markup);
+
+test("presents the approved Sentinel hero without travel or deployment claims",()=>{
+  for(const text of[
+    "sentinel",
+    "Verify policy before messages cross chains.",
+    "Select a locally generated read-only pathway audit artifact. Nothing is uploaded.",
+    "Inspect Evidence",
+    "NOT OBSERVED"
+  ])assert.ok(html.includes(text),`missing approved hero text: ${text}`);
+  assert.equal(/Wandor|Japan|travel|itinerary/i.test(html),false);
+  assert.equal(html.includes("<title>GenLayer Sentinel — Verify policy before messages cross chains.</title>"),true);
+});
+
+test("uses only the self-origin loop and poster with ambient playback attributes",()=>{
+  const video=html.match(/<video\b[^>]*>/i)?.[0]??"";
+  assert.match(video,/\bsrc="\/assets\/sentinel-network-loop\.mp4"/i);
+  assert.match(video,/\bposter="\/assets\/sentinel-network-poster\.jpg"/i);
+  for(const name of["autoplay","muted","loop","playsinline"])assert.equal(attribute(video,name),true,`video missing ${name}`);
+  assert.equal(/<video\b[^>]*(?:https?:\/\/|\/\/)/i.test(html),false);
+});
+
+test("exposes keyboard and screen-reader operable local evidence controls",()=>{
+  const fileInput=element("input","pathway-audit-file");
+  assert.match(fileInput,/\btype="file"/i);
+  assert.match(fileInput,/\baccept="application\/json,\.json"/i);
+  assert.match(fileInput,/\bhidden\b/i);
+
+  const load=element("button","pathway-audit-load");
+  const upload=element("button","pathway-audit-upload");
+  const inspect=element("button","pathway-audit-inspect");
+  for(const [name,button]of[["load",load],["upload",upload],["inspect",inspect]]){
+    assert.notEqual(button,"",`${name} must be a native button`);
+    assert.match(button,/\btype="button"/i);
+  }
+  assert.match(upload,/\baria-label="Select local pathway audit evidence"/i);
+  assert.match(inspect,/\bdisabled\b/i);
+  const status=html.match(/<[^>]+\bid="pathway-audit-status"[^>]*>/i)?.[0]??"";
+  assert.match(status,/\brole="status"/i);
+  assert.match(status,/\baria-live="polite"/i);
+});
+
+test("links navigation to the local pathway, evidence, and trust sections",()=>{
+  for(const target of["pathway","evidence","trust-model"]){
+    assert.match(html,new RegExp(`<a\\b[^>]*href="#${target}"[^>]*>`,`i`));
+    assert.match(html,new RegExp(`\\bid="${target}"`,`i`));
+  }
+});
+
+test("preserves the existing live operations and demo targets",()=>{
+  for(const id of[
+    "runtime-mode","live-notice","demo-workspace","demo-title","demo-status","demo-connect","demo-account","demo-chain",
+    "demo-record-label","demo-argument","demo-match","demo-quote","demo-fee","demo-send","demo-transaction","demo-guid",
+    "demo-message","demo-source-oapp","demo-destination-eid","demo-target","demo-signature","runtime-status-badge",
+    "runtime-lifecycle","runtime-lease","runtime-phase","runtime-heartbeat","runtime-last-tick","runtime-recovery-posture",
+    "connection-status","job-select","refresh-time","timeline","quarantine-status","dead-letters","delivery-status",
+    "deliveries","recovery-action-status","recovery-actions","inspector","packet-details","verification-details",
+    "policy-details","signer-details"
+  ])assert.match(html,new RegExp(`\\bid="${id}"`,`i`),`missing existing target ${id}`);
+  assert.equal((html.match(/\bid="live-notice"/g)??[]).length,1,"live notice must be moved, not duplicated");
+});
+
+test("renders every allowlisted pathway evidence field before coordinator operations",()=>{
+  for(const id of[
+    "pathway-audit-file","pathway-audit-inspect","pathway-audit-status","pathway-audit-source-block",
+    "pathway-audit-destination-block","pathway-audit-rpc","pathway-audit-code","pathway-audit-configuration",
+    "pathway-audit-blockers","pathway-audit-truth-label","pathway-audit-observed-at","pathway-audit-evidence-digest",
+    "pathway-audit-configuration-digest","pathway-audit-notice"
+  ])assert.match(html,new RegExp(`\\bid="${id}"`,`i`),`missing pathway target ${id}`);
+  assert.ok(html.indexOf('id="evidence"')<html.indexOf('id="demo-workspace"'));
+});
+
+test("implements the exact glass composition and resilient responsive states",()=>{
+  assert.match(css,/@font-face\s*\{[^}]*font-family\s*:\s*Geist[^}]*geist-latin\.woff2/is);
+  assert.match(css,/@font-face\s*\{[^}]*font-family\s*:\s*['"]Special Elite['"][^}]*special-elite-latin\.woff2/is);
+  assert.match(css,/\.hero-shell\s*\{[^}]*min-height\s*:\s*100svh/is);
+  assert.match(css,/\.hero-gradient\s*\{[^}]*height\s*:\s*687px/is);
+  assert.match(css,/\.evidence-glass\s*\{[^}]*border-radius\s*:\s*44px/is);
+  assert.match(css,/\.evidence-glass\s*\{[^}]*backdrop-filter\s*:\s*blur\(20px\)/is);
+  assert.match(css,/@media\s*\(max-width\s*:\s*760px\)/i);
+  assert.match(css,/width\s*:\s*calc\(100vw\s*-\s*48px\)/i);
+  assert.match(css,/@media\s*\(prefers-reduced-motion\s*:\s*reduce\)/i);
+  assert.match(css,/:focus-visible/i);
+});
+
+test("keeps dark hero copy legible over the dark network poster",()=>{
+  const veil=/\.hero-shell::after\s*\{[^}]*background\s*:\s*rgba\(255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\)/is.exec(css);
+  assert.ok(veil,"the dark poster needs a full-hero readability veil");
+  assert.ok(Number(veil[1])>=.5,"the full-hero white veil must be at least 50% opaque");
+  const statusBacking=/\.evidence-state\s*\{[^}]*background\s*:\s*rgba\(255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\)/is.exec(css);
+  assert.ok(statusBacking,"the small local status needs a stable light backing");
+  assert.ok(Number(statusBacking[1])>=.85,"the small local status backing must be at least 85% opaque");
+});
+
+test("keeps the mobile status clear of the circular upload control",()=>{
+  const statusRules=[...css.matchAll(/\.evidence-state\s*\{([^}]*)\}/g)].map(match=>match[1]);
+  assert.equal(statusRules.some(rule=>/left\s*:\s*21px/i.test(rule)),false,"status must start after the 44-pixel upload control");
+  assert.match(css,/@media\s*\(max-width\s*:\s*430px\)[\s\S]*\.evidence-state\s*\{[^}]*top\s*:\s*137px[^}]*right\s*:\s*auto[^}]*left\s*:\s*80px/is);
+});
+
+test("initializes one independent local-file controller without joining coordinator or demo state",()=>{
+  assert.match(js,/import\s*\{\s*createPathwayAuditFileController\s*\}\s*from\s*["']\.\/pathway-audit\.js["']/);
+  assert.equal((js.match(/createPathwayAuditFileController\s*\(/g)??[]).length,1);
+  assert.match(js,/pathway-audit-load/);
+  assert.match(js,/pathway-audit-upload/);
+  assert.match(js,/fileInput\.click\(\)/);
+  assert.equal(/(?:jobs|deliveryByGuid)\s*(?:\.push|\.set|=)[^;]*pathway/i.test(js),false);
+  assert.equal(/(?:demo|wallet)[A-Za-z]*\s*(?:\.push|\.set|=)[^;]*pathway/i.test(js),false);
+});

@@ -3,17 +3,90 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Local wallet action and operations app for the GenLayer Sentinel LayerZero DVN testnet prototype.">
-  <title>GenLayer Sentinel · Operations</title>
+  <meta name="description" content="Read-only operations and pathway evidence for the GenLayer Sentinel LayerZero DVN testnet prototype.">
+  <title>GenLayer Sentinel — Verify policy before messages cross chains.</title>
   <link rel="stylesheet" href="./src/style.css">
   <link rel="stylesheet" href="./src/recovery.css">
   <link rel="stylesheet" href="./src/delivery.css">
   <link rel="stylesheet" href="./src/demo.css">
 </head>
 <body>
-  <header><div class="mark">S</div><div><strong>GenLayer Sentinel</strong><span>Policy firewall for LayerZero</span></div><b id="runtime-mode">CHECKING MODE</b></header>
-  <main>
-    <section class="hero"><p>POLICY-AWARE DVN PROTOTYPE · PATHWAY FROM COORDINATOR EVIDENCE</p><h1>Every high-value message must explain itself.</h1><p class="lede">Sentinel binds deterministic packet evidence, waits for a finalized semantic policy result, then requires the configured signer quorum. Runtime labels distinguish local fixtures from independently operated production infrastructure.</p><div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div></section>
+  <section class="hero-shell" id="pathway" aria-labelledby="hero-title">
+    <video class="hero-media" src="/assets/sentinel-network-loop.mp4" poster="/assets/sentinel-network-poster.jpg" autoplay muted loop playsinline aria-hidden="true"></video>
+    <div class="hero-gradient"></div>
+    <div class="hero-content">
+      <nav class="hero-nav" aria-label="Primary navigation">
+        <a class="wordmark" href="#pathway" aria-label="GenLayer Sentinel home">sentinel</a>
+        <div class="hero-nav-links">
+          <a href="#pathway">Pathway</a>
+          <a href="#evidence">Evidence</a>
+          <a href="#trust-model">Trust Model</a>
+        </div>
+        <div class="hero-actions">
+          <b id="runtime-mode">CHECKING MODE</b>
+          <button class="load-evidence" id="pathway-audit-load" type="button">Load Evidence</button>
+        </div>
+      </nav>
+      <div class="hero-body">
+        <p class="hero-kicker">READ-ONLY PATHWAY AUDITOR · TESTNET PROTOTYPE</p>
+        <h1 id="hero-title">Verify policy before messages cross chains.</h1>
+        <p class="hero-summary">Independent RPC checks, GenLayer policy consensus, and threshold signer evidence—before a LayerZero pathway is treated as consistent.</p>
+        <div class="evidence-glass">
+          <p class="evidence-prompt">Select a locally generated read-only pathway audit artifact. Nothing is uploaded.</p>
+          <button class="evidence-upload" id="pathway-audit-upload" type="button" aria-label="Select local pathway audit evidence">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+          </button>
+          <input id="pathway-audit-file" type="file" accept="application/json,.json" hidden>
+          <span class="evidence-state" id="pathway-audit-status" role="status" aria-live="polite">NOT OBSERVED</span>
+          <button class="inspect-evidence" id="pathway-audit-inspect" type="button" disabled>Inspect Evidence</button>
+        </div>
+        <p class="hero-boundary">READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED · This viewer cannot deploy, sign, onboard, or submit transactions.</p>
+      </div>
+    </div>
+  </section>
+
+  <main class="operations-content">
+    <section class="pathway-evidence" id="evidence" aria-labelledby="evidence-title">
+      <div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div>
+      <div class="section-head pathway-evidence-head">
+        <div><p>LOCAL FILE · CLOSED VALIDATION</p><h2 id="evidence-title">Pathway evidence</h2></div>
+        <span class="status">READ ONLY</span>
+      </div>
+      <p class="evidence-intro">The selected JSON stays in this browser tab. Sentinel verifies its canonical digest and closed presentation schema before showing the allowlisted fields below. It never becomes coordinator packet, delivery, signer, or demo state.</p>
+      <div class="pathway-evidence-grid">
+        <article id="pathway-audit-configuration">
+          <p>PATHWAY CONFIGURATION</p>
+          <dl>
+            <dt>Audit result</dt><dd id="pathway-audit-result">NOT OBSERVED</dd>
+            <dt>Truth label</dt><dd id="pathway-audit-truth-label">—</dd>
+            <dt>Observed at</dt><dd id="pathway-audit-observed-at">—</dd>
+            <dt>Configuration digest</dt><dd id="pathway-audit-configuration-digest">—</dd>
+          </dl>
+        </article>
+        <article id="pathway-audit-rpc">
+          <p>DETERMINISTIC RPC EVIDENCE</p>
+          <dl>
+            <dt>Source block</dt><dd id="pathway-audit-source-block">NOT OBSERVED</dd>
+            <dt>Destination block</dt><dd id="pathway-audit-destination-block">NOT OBSERVED</dd>
+          </dl>
+        </article>
+        <article id="pathway-audit-code">
+          <p>CODE &amp; EVIDENCE BINDING</p>
+          <dl>
+            <dt>Repository binding</dt><dd>The closed parser verifies this digest without exposing repository or filesystem paths.</dd>
+            <dt>Evidence digest</dt><dd id="pathway-audit-evidence-digest">—</dd>
+          </dl>
+        </article>
+        <article class="pathway-blockers">
+          <p>BLOCKERS &amp; NONCLAIMS</p>
+          <dl>
+            <dt>Blocking evidence</dt><dd id="pathway-audit-blockers">NOT OBSERVED</dd>
+            <dt>Local verification</dt><dd id="pathway-audit-notice">NOT OBSERVED</dd>
+          </dl>
+        </article>
+      </div>
+    </section>
+
     <section class="demo-workspace" id="demo-workspace" aria-labelledby="demo-title">
       <div class="section-head"><div><p>LOCAL TEST · FIXTURE POLICY</p><h2 id="demo-title">Send a governed treasury action</h2></div><span class="status" id="demo-status">CHECKING CAPABILITY</span></div>
       <div class="demo-warning"><strong>Local proof path only.</strong> Your wallet sends a real transaction to locally deployed OApp bytecode. The semantic result is an explicitly labeled fixture—not live GenLayer consensus or testnet approval.</div>
@@ -66,7 +139,7 @@
       <article><p>SEMANTIC ENGINE</p><h2>Finalized policy decision</h2><dl id="policy-details"></dl></article>
       <article><p>SIGNER GATE</p><h2>Quorum progress</h2><div id="signer-details"></div></article>
     </section>
-    <section class="split"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>Intended production design: 3-of-5 isolated operators. Local mode uses five in-process fixture identities.</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
+    <section class="split" id="trust-model"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>Intended production design: 3-of-5 isolated operators. Local mode uses five in-process fixture identities.</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
 
 deployment        NOT DEPLOYED
 operations API    READ ONLY / LIVE DATA
