@@ -48,18 +48,25 @@
           <span class="evidence-state" id="pathway-audit-status" role="status" aria-live="polite">NOT OBSERVED</span>
           <button class="inspect-evidence" id="pathway-audit-inspect" type="button" disabled>Inspect Evidence</button>
         </div>
-        <ol class="trust-rail" aria-label="Sentinel verification sequence">
-          <li><span>01</span><strong>Packet proof</strong><small>RPC inclusion + confirmations</small></li>
-          <li><span>02</span><strong>Policy decision</strong><small>GenLayer finality required</small></li>
-          <li><span>03</span><strong>Signer quorum</strong><small>3-of-5 target architecture</small></li>
-          <li><span>04</span><strong>Destination check</strong><small>Idempotent execution gate</small></li>
-        </ol>
         <p class="hero-boundary">READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED · This viewer cannot deploy, sign, onboard, or submit transactions.</p>
       </div>
     </div>
   </section>
 
   <main class="operations-content">
+    <section class="homepage-intro experience-section" aria-labelledby="proof-story-title">
+      <p class="homepage-eyebrow">SENTINEL SECURITY MODEL</p>
+      <div class="homepage-story">
+        <h2 id="proof-story-title">One packet. Four independent gates.</h2>
+        <p>Sentinel does not treat a message as trustworthy because it was sent. Each gate has to establish its own proof before the next one can proceed.</p>
+      </div>
+      <ol class="trust-rail" aria-label="Sentinel verification sequence">
+        <li><span>01</span><strong>Packet proof</strong><small>RPC inclusion + confirmations</small></li>
+        <li><span>02</span><strong>Policy decision</strong><small>GenLayer finality required</small></li>
+        <li><span>03</span><strong>Signer quorum</strong><small>3-of-5 target architecture</small></li>
+        <li><span>04</span><strong>Destination check</strong><small>Idempotent execution gate</small></li>
+      </ol>
+    </section>
     <section class="pathway-evidence" id="evidence" aria-labelledby="evidence-title">
       <div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div>
       <div class="section-head pathway-evidence-head">

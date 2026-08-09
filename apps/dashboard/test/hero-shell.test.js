@@ -108,6 +108,14 @@ test("keeps one dark Sentinel world from hero through operations",()=>{
   assert.match(css,/\.experience-section\s*\{[^}]*border-top\s*:\s*1px solid var\(--dash-line\)/is);
 });
 
+test("uses a proof-story transition instead of a hard hero-to-dashboard seam",()=>{
+  assert.match(html,/<section class="homepage-intro experience-section"[^>]*>/i);
+  assert.ok(html.includes("One packet. Four independent gates."));
+  assert.ok(html.indexOf('class="homepage-intro experience-section"')<html.indexOf('id="evidence"'));
+  assert.match(css,/\.sentinel-experience \.operations-content::before\s*\{[^}]*display\s*:\s*none/is);
+  assert.match(css,/\.homepage-intro\s*\{[^}]*padding\s*:\s*72px 0 56px/is);
+});
+
 test("keeps the mobile status clear of the circular upload control",()=>{
   const statusRules=[...css.matchAll(/\.evidence-state\s*\{([^}]*)\}/g)].map(match=>match[1]);
   assert.equal(statusRules.some(rule=>/left\s*:\s*21px/i.test(rule)),false,"status must start after the 44-pixel upload control");
