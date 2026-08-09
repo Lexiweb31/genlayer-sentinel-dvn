@@ -97,6 +97,10 @@ test("implements the exact glass composition and resilient responsive states",()
   assert.match(css,/:focus-visible/i);
 });
 
+test("carries the Sentinel surface system through the operational workspace",()=>{
+  for(const token of["--surface:",".operations-content::before",".pathway-evidence,.runtime-observation,.quarantine,.delivery,.operator-recovery",".section-head","border-radius:24px","backdrop-filter:blur(18px)"])assert.ok(css.includes(token),`missing unified workspace token: ${token}`);
+});
+
 test("keeps dark hero copy legible over the dark network poster",()=>{
   const veil=/\.hero-shell::after\s*\{[^}]*background\s*:\s*rgba\(255\s*,\s*255\s*,\s*255\s*,\s*([0-9.]+)\)/is.exec(css);
   assert.ok(veil,"the dark poster needs a full-hero readability veil");
