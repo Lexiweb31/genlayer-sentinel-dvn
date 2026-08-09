@@ -1,6 +1,8 @@
 import test from"node:test";
 import assert from"node:assert/strict";
+import{createHash}from"node:crypto";
 import fc from"fast-check";
+import{canonicalJson}from"../../../dist/services/coordinator/src/canonical-json.js";
 import{
   buildPathwayAuditBundle,encodePathwayAuditBundle,parsePathwayAuditBundleText
 }from"../../../dist/services/coordinator/src/pathway-audit-bundle.js";
@@ -12,7 +14,7 @@ const hash=digit=>`0x${digit.repeat(64)}`;
 const digest=digit=>digit.repeat(64);
 const bytes32=fc.uint8Array({minLength:32,maxLength:32});
 const source={endpoint:address(1),send:address(2),receive:address(3),executor:address(4),oapp:address(5),adapter:address(6),dvn:address(7)};
-const destination={endpoint:address(11),send:address(12),receive:address(13),oapp:address(14),adapter:address(15),dvn:address(16)};
+const destination={endpoint:address(11),send:address(12),receive:address(13),oapp:address(14),adapter:address(15),dvn:source.dvn};
 const signers=[21,22,23,24,25].map(address);
 
 function deployment(contractName,chainId,value,providerIdentities,digit,constructorArguments){
@@ -36,13 +38,13 @@ function normalizedObservation(values){
   ];
   const sourceUln={confirmations:"15",requiredDvns:[source.dvn],optionalDvns:[source.adapter],optionalDvnThreshold:1};
   const destinationUln={confirmations:"64",requiredDvns:[destination.dvn],optionalDvns:[destination.adapter],optionalDvnThreshold:1};
-  return{
+  return bindInnerDigests({
     status:"OBSERVED_PATHWAY_CONSISTENT",truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
     repositoryBindingSha256:digest32(values.repository),
     rpcIndependence:{source:"OPERATOR_INDEPENDENCE_REVIEWED",destination:"OPERATOR_INDEPENDENCE_REVIEWED"},
     providerAgreement:{
-      source:{state:"TWO_TRANSPORTS_AGREE",providers:sourceProvider,resultSha256:digest32(values.sourceResult)},
-      destination:{state:"TWO_TRANSPORTS_AGREE",providers:destinationProvider,resultSha256:digest32(values.destinationResult)}
+      source:{state:"TWO_TRANSPORTS_AGREE",providers:sourceProvider,resultSha256:digest("a")},
+      destination:{state:"TWO_TRANSPORTS_AGREE",providers:destinationProvider,resultSha256:digest("b")}
     },
     blocks:{
       source:{chainId:"11155111",blockNumber:"100",blockHash:hex32(values.sourceBlock),parentHash:`0x${"a".repeat(64)}`,stateRoot:`0x${"b".repeat(64)}`,transactionsRoot:`0x${"c".repeat(64)}`,timestamp:"1710000000"},
@@ -72,7 +74,7 @@ function normalizedObservation(values){
     source:{
       endpoint:source.endpoint,sourceOApp:source.oapp,dstEid:40231,sendLibrary:source.send,isDefaultSendLibrary:false,
       supportedEid:true,uln:sourceUln,
-      dvnCodeKeccak256:[{address:source.dvn,codeKeccak256:hash("6")},{address:source.adapter,codeKeccak256:hash("7")}],
+      dvnCodeKeccak256:[{address:source.dvn,codeKeccak256:hash("6")},{address:source.adapter,codeKeccak256:hash("5")}],
       executor:{maxMessageSize:values.configurationValue,address:source.executor},
       destinationPeer:`0x${"0".repeat(24)}${destination.oapp.slice(2)}`,
       adapter:{address:source.adapter,messageLib:source.send,verificationTarget:source.receive,supportedDstEid:40231,quorum:"3",signersAuthorized:[true,true,true,true,true]}
@@ -83,14 +85,27 @@ function normalizedObservation(values){
       sourcePeer:`0x${"0".repeat(24)}${source.oapp.slice(2)}`,
       adapter:{address:destination.adapter,messageLib:destination.send,verificationTarget:destination.receive,supportedDstEid:40231,quorum:"3",signersAuthorized:[true,true,true,true,true]}
     },
-    configurationSha256:digest32(values.configuration),
+    configurationSha256:digest("c"),
     blockers:[]
-  };
+  });
+}
+
+function bindInnerDigests(value){
+  value.configurationSha256=createHash("sha256").update(canonicalJson({destination:value.destination,source:value.source})).digest("hex");
+  value.providerAgreement.source.resultSha256=createHash("sha256").update(canonicalJson({
+    block:value.blocks.source,deployments:{adapter:value.deployments.sourceAdapter,oapp:value.deployments.sourceOApp},
+    officialCode:value.officialCode.source,path:value.source
+  })).digest("hex");
+  value.providerAgreement.destination.resultSha256=createHash("sha256").update(canonicalJson({
+    block:value.blocks.destination,deployments:{adapter:value.deployments.destinationAdapter,oapp:value.deployments.destinationOApp},
+    officialCode:value.officialCode.destination,path:value.destination
+  })).digest("hex");
+  return value;
 }
 
 const observationArbitrary=fc.record({
-  repository:bytes32,sourceResult:bytes32,destinationResult:bytes32,sourceBlock:bytes32,
-  destinationBlock:bytes32,code:bytes32,configuration:bytes32,configurationValue:fc.integer({min:1,max:1_000_000})
+  repository:bytes32,sourceBlock:bytes32,destinationBlock:bytes32,code:bytes32,
+  configurationValue:fc.integer({min:1,max:1_000_000})
 }).map(normalizedObservation);
 
 function reversedObjects(value){
@@ -119,6 +134,7 @@ campaign("property: block, code, and configuration mutations change evidence dig
   const codeMutation=structuredClone(observation);codeMutation.officialCode.source[0].runtimeCodeKeccak256=changedHex(codeMutation.officialCode.source[0].runtimeCodeKeccak256);
   const configurationMutation=structuredClone(observation);configurationMutation.source.executor.maxMessageSize++;
   for(const mutation of[blockMutation,codeMutation,configurationMutation]){
+    bindInnerDigests(mutation);
     const changed=buildPathwayAuditBundle({observation:mutation,runTimestamp:"2026-08-02T00:00:00.000Z"});
     assert.notEqual(changed.evidenceSha256,original.evidenceSha256);
   }

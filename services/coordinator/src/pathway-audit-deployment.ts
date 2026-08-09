@@ -3,6 +3,7 @@ import{AbiCoder,getAddress,keccak256}from"ethers";
 import{canonicalJson,parseJsonDocument}from"./canonical-json.js";
 import{eip1898,type PinnedBlockObservation}from"./pathway-audit-block.js";
 import{PathwayAuditError}from"./pathway-audit-model.js";
+import{isPathwayAuditPublicIdentifier}from"./pathway-audit-public-identifier.js";
 import type{ReadOnlyRpcClient}from"./read-only-json-rpc.js";
 
 export type AuditContractName="SentinelDVNAdapter"|"TreasuryPolicyOApp";
@@ -447,10 +448,12 @@ function checkedClients(value:unknown):{
 }
 function providerIdentity(value:unknown):AuditProviderIdentity{
   const identity=plainRecord(value);exactKeys(identity,["label","originSha256","operatorFamily"]);
+  const label=field(identity,"label"),operatorFamily=field(identity,"operatorFamily");
+  if(!isPathwayAuditPublicIdentifier(label)||!isPathwayAuditPublicIdentifier(operatorFamily))failure();
   return{
-    label:text(field(identity,"label")),
+    label,
     originSha256:nonzeroDigest(field(identity,"originSha256")),
-    operatorFamily:text(field(identity,"operatorFamily"))
+    operatorFamily
   };
 }
 function observationIdentity(value:unknown):{chainId:number;blockNumber:bigint}{

@@ -50,12 +50,14 @@ function invalid(value){
 }
 
 test("parses a closed public audit manifest into a detached value",()=>{
-  const raw=fixture(),parsed=parsePathwayAuditManifest(raw);
+  const raw=fixture();raw.source.rpcs[0].label="source:primary";raw.source.rpcs[0].operatorFamily="operator:primary";
+  const parsed=parsePathwayAuditManifest(raw);
   assert.deepEqual(parsed,raw);
   assert.deepEqual(parsePathwayAuditManifestText(canonicalJson(raw)),raw);
   raw.source.rpcs[0].label="changed";
   raw.destination.contracts.deadDvn=address(99);
-  assert.equal(parsed.source.rpcs[0].label,"source-a");
+  assert.equal(parsed.source.rpcs[0].label,"source:primary");
+  assert.equal(parsed.source.rpcs[0].operatorFamily,"operator:primary");
   assert.equal(parsed.destination.contracts.deadDvn,address(7));
 });
 
@@ -73,6 +75,10 @@ test("rejects malformed audit manifest boundaries",()=>{
     value=>{value.source.observationLag=0},
     value=>{value.destination.observationLag=257},
     value=>{value.source.rpcs[1].url="https://rpc-a.example/rpc"},
+    value=>{value.source.rpcs[0].label=""},
+    value=>{value.source.rpcs[0].label="a".repeat(129)},
+    value=>{value.source.rpcs[0].label="source\nprimary"},
+    value=>{value.source.rpcs[0].operatorFamily="operator/primary"},
     value=>{value.source.rpcs[0].url="http://rpc-a.example/"},
     value=>{value.source.rpcs[0].url="https://user@rpc-a.example/"},
     value=>{value.source.rpcs[0].url="https://rpc-a.example/?query=value"},

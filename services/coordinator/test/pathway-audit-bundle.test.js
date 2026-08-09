@@ -25,7 +25,7 @@ const adapter=(value,lib,target)=>({
 });
 
 const source={endpoint:address(1),send:address(2),receive:address(3),executor:address(4),oapp:address(5),adapter:address(6),dvn:address(7)};
-const destination={endpoint:address(11),send:address(12),receive:address(13),oapp:address(14),adapter:address(15),dvn:address(16)};
+const destination={endpoint:address(11),send:address(12),receive:address(13),oapp:address(14),adapter:address(15),dvn:source.dvn};
 const signers=[21,22,23,24,25].map(address);
 
 function deployment(contractName,chainId,value,providerIdentities,digit,constructorArguments){
@@ -43,7 +43,7 @@ function observation(){
   const sourcePath={
     endpoint:source.endpoint,sourceOApp:source.oapp,dstEid:40231,sendLibrary:source.send,
     isDefaultSendLibrary:false,supportedEid:true,uln:uln("15",source.dvn,source.adapter),
-    dvnCodeKeccak256:[{address:source.dvn,codeKeccak256:hash("6")},{address:source.adapter,codeKeccak256:hash("7")}],
+    dvnCodeKeccak256:[{address:source.dvn,codeKeccak256:hash("6")},{address:source.adapter,codeKeccak256:hash("5")}],
     executor:{maxMessageSize:10000,address:source.executor},
     destinationPeer:`0x${"0".repeat(24)}${destination.oapp.slice(2)}`,
     adapter:adapter(source.adapter,source.send,source.receive)
@@ -55,7 +55,7 @@ function observation(){
     sourcePeer:`0x${"0".repeat(24)}${source.oapp.slice(2)}`,
     adapter:adapter(destination.adapter,destination.send,destination.receive)
   };
-  return{
+  return bindInnerDigests({
     status:"OBSERVED_PATHWAY_CONSISTENT",truthLabel:"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED",
     repositoryBindingSha256:digest("a"),
     rpcIndependence:{source:"OPERATOR_INDEPENDENCE_REVIEWED",destination:"OPERATOR_INDEPENDENCE_REVIEWED"},
@@ -79,7 +79,23 @@ function observation(){
       })
     },
     source:sourcePath,destination:destinationPath,configurationSha256:digest("d"),blockers:[]
-  };
+  });
+}
+
+function bindInnerDigests(value){
+  value.configurationSha256=value.source&&value.destination?
+    createHash("sha256").update(canonicalJson({destination:value.destination,source:value.source})).digest("hex"):null;
+  value.providerAgreement.source.resultSha256=value.blocks.source?createHash("sha256").update(canonicalJson({
+    block:value.blocks.source,
+    deployments:value.deployments?{adapter:value.deployments.sourceAdapter,oapp:value.deployments.sourceOApp}:null,
+    officialCode:value.officialCode.source,path:value.source
+  })).digest("hex"):null;
+  value.providerAgreement.destination.resultSha256=value.blocks.destination?createHash("sha256").update(canonicalJson({
+    block:value.blocks.destination,
+    deployments:value.deployments?{adapter:value.deployments.destinationAdapter,oapp:value.deployments.destinationOApp}:null,
+    officialCode:value.officialCode.destination,path:value.destination
+  })).digest("hex"):null;
+  return value;
 }
 
 const blockers={
@@ -174,4 +190,92 @@ test("a consistency status requires complete public evidence, not merely an empt
   const input=observation();
   input.blocks.source=null;input.officialCode.source=[];input.providerAgreement.source.resultSha256=null;
   assert.throws(()=>buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"}));
+});
+
+test("inner observation digests are recomputed from normalized public evidence",()=>{
+  for(const field of["configuration","source","destination"]){
+    const input=observation();
+    if(field==="configuration")input.configurationSha256=digest("f");
+    else input.providerAgreement[field].resultSha256=digest("f");
+    assert.throws(()=>buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"}),field);
+  }
+  const input=observation(),before=buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"});
+  input.source.executor.maxMessageSize++;
+  assert.throws(()=>buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"}));
+  bindInnerDigests(input);
+  const after=buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"});
+  assert.notEqual(after.configurationSha256,before.configurationSha256);
+  assert.notEqual(after.providerAgreement.source.resultSha256,before.providerAgreement.source.resultSha256);
+  assert.notEqual(after.evidenceSha256,before.evidenceSha256);
+});
+
+test("a consistency claim independently rejects contradictory public evidence",async t=>{
+  const cases=[
+    ["duplicate provider label",input=>{
+      input.providerAgreement.source.providers[1].label=input.providerAgreement.source.providers[0].label;
+      input.deployments.sourceOApp.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+      input.deployments.sourceAdapter.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+    }],
+    ["duplicate provider origin",input=>{
+      input.providerAgreement.source.providers[1].originSha256=input.providerAgreement.source.providers[0].originSha256;
+      input.deployments.sourceOApp.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+      input.deployments.sourceAdapter.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+    }],
+    ["duplicate provider operator family",input=>{
+      input.providerAgreement.source.providers[1].operatorFamily=input.providerAgreement.source.providers[0].operatorFamily;
+      input.deployments.sourceOApp.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+      input.deployments.sourceAdapter.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+    }],
+    ["provider identity reused across chains",input=>{
+      input.providerAgreement.destination.providers[0]=structuredClone(input.providerAgreement.source.providers[0]);
+      input.deployments.destinationOApp.providerIdentities=structuredClone(input.providerAgreement.destination.providers);
+      input.deployments.destinationAdapter.providerIdentities=structuredClone(input.providerAgreement.destination.providers);
+    }],
+    ["deployment provider mismatch",input=>{input.deployments.sourceOApp.providerIdentities[0].label="different-provider"}],
+    ["unsupported EID",input=>{input.source.supportedEid=false}],
+    ["default library",input=>{input.destination.isDefaultReceiveLibrary=true}],
+    ["non-3 path quorum",input=>{input.source.adapter.quorum="2"}],
+    ["unauthorized signer",input=>{input.destination.adapter.signersAuthorized[2]=false}],
+    ["OApp identity mismatch",input=>{input.source.sourceOApp=address(99)}],
+    ["adapter identity mismatch",input=>{input.destination.adapter.address=address(99)}],
+    ["constructor adapter binding mismatch",input=>{input.deployments.sourceAdapter.constructorArguments.messageLib=address(99)}],
+    ["OApp endpoint binding mismatch",input=>{input.deployments.destinationOApp.constructorArguments.endpoint=address(99)}],
+    ["peer mismatch",input=>{input.source.destinationPeer=hash("9")}],
+    ["raw and resolved ULN mismatch",input=>{input.destination.resolvedUln.confirmations="63"}],
+    ["cross-path ULN mismatch",input=>{input.destination.rawAppUln.requiredDvns=[address(98)];input.destination.resolvedUln.requiredDvns=[address(98)]}],
+    ["confirmation policy mismatch",input=>{input.source.uln.confirmations="16"}],
+    ["official endpoint mismatch",input=>{input.officialCode.destination[0].address=address(99)}],
+    ["constructor signer tuple mismatch",input=>{input.deployments.destinationAdapter.constructorArguments.signers[4]=address(99)}],
+    ["cross-chain contract artifact provenance mismatch",input=>{input.deployments.destinationOApp.deployedBytecodeSha256=digest("f")}],
+    ["adapter EID mismatch",input=>{input.destination.adapter.supportedDstEid=40161}],
+    ["source adapter library mismatch",input=>{input.source.adapter.messageLib=address(99);input.deployments.sourceAdapter.constructorArguments.messageLib=address(99)}],
+    ["destination adapter target mismatch",input=>{input.destination.adapter.verificationTarget=address(99);input.deployments.destinationAdapter.constructorArguments.verificationTarget=address(99)}],
+    ["Sentinel absent from optional DVNs",input=>{input.source.uln.optionalDvns=[address(97)];input.source.dvnCodeKeccak256[1].address=address(97)}],
+    ["Sentinel code disagrees with deployment runtime",input=>{input.source.dvnCodeKeccak256[1].codeKeccak256=hash("9")}],
+    ["deployment after pinned observation",input=>{input.deployments.destinationAdapter.deploymentBlockNumber="201"}]
+  ];
+  for(const[name,mutate]of cases)await t.test(name,()=>{
+    const input=observation();mutate(input);bindInnerDigests(input);
+    assert.throws(()=>buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"}));
+  });
+});
+
+test("shared public identifier grammar accepts colon labels through the canonical bundle",()=>{
+  const input=observation();
+  input.providerAgreement.source.providers[0].label="source:primary";
+  input.deployments.sourceOApp.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+  input.deployments.sourceAdapter.providerIdentities=structuredClone(input.providerAgreement.source.providers);
+  bindInnerDigests(input);
+  const bundle=buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"});
+  assert.equal(parsePathwayAuditBundleText(encodePathwayAuditBundle(bundle)).providerAgreement.source.providers[0].label,"source:primary");
+});
+
+test("consistency accepts the upstream reviewed-optional posture when Sentinel is not the sole effective verifier",()=>{
+  const input=observation();
+  input.source.uln={confirmations:"15",requiredDvns:[],optionalDvns:[source.adapter,source.dvn],optionalDvnThreshold:2};
+  input.source.dvnCodeKeccak256=[{address:source.adapter,codeKeccak256:hash("5")},{address:source.dvn,codeKeccak256:hash("6")}];
+  input.destination.rawAppUln={confirmations:"64",requiredDvns:[],optionalDvns:[destination.dvn,destination.adapter],optionalDvnThreshold:2};
+  input.destination.resolvedUln=structuredClone(input.destination.rawAppUln);
+  bindInnerDigests(input);
+  assert.equal(buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"}).status,"OBSERVED_PATHWAY_CONSISTENT");
 });

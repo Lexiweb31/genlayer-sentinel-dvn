@@ -159,6 +159,17 @@ test("recognizes independent reviewed operator families only when each audited o
   assert.deepEqual(binding.providerState.source.map(value=>value.state),["OPERATOR_EVIDENCE_REVIEWED","OPERATOR_EVIDENCE_REVIEWED"]);
 });
 
+test("shared public identifiers round-trip through manifest and reviewed provider policy",async()=>{
+  const input=await reviewedInputs(),audit=JSON.parse(input.providerAuditText);
+  input.manifest.source.rpcs[0].label="source:primary";
+  input.manifest.source.rpcs[0].operatorFamily="operator:primary";
+  audit.providers[0].label="source:primary";audit.providers[0].operatorFamily="operator:primary";
+  input.providerAuditText=JSON.stringify(audit,null,2)+"\n";
+  const binding=bindPathwayAuditPolicy(input);
+  assert.equal(binding.providerState.source[0].label,"source:primary");
+  assert.equal(binding.providerState.source[0].state,"OPERATOR_EVIDENCE_REVIEWED");
+});
+
 test("emits stable, sanitized blockers for stale or mismatched repository evidence",async()=>{
   const cases=[
     ["invalid evaluation date",input=>{input.evaluationDate="2026-13-40"},"PATHWAY_AUDIT_POLICY_INVALID"],
@@ -212,13 +223,26 @@ test("binds exact manifest operator families to reviewed provider records instea
 
 test("parses only canonical closed DVN reviews and exposes exact validated chain entries",async()=>{
   const input=await reviewedInputs(),audit=reviewedDvnAudit();
+  audit.dvns[0].operatorFamily="independent:dvn";
   input.dvnOperatorAuditText=canonicalJson(audit);
   const binding=bindPathwayAuditPolicy(input);
   assert.equal(binding.dvnOperatorAuditSha256,sha256(input.dvnOperatorAuditText));
   assert.deepEqual(binding.reviewedDvns.source,audit.dvns.slice(0,1));
   assert.deepEqual(binding.reviewedDvns.destination,audit.dvns.slice(1));
   audit.dvns[0].operatorFamily="changed-after-binding";
-  assert.equal(binding.reviewedDvns.source[0].operatorFamily,"independent-dvn-a");
+  assert.equal(binding.reviewedDvns.source[0].operatorFamily,"independent:dvn");
+});
+
+test("provider and DVN registries reject identifiers outside the shared grammar",async()=>{
+  const providerInput=await reviewedInputs(),providerAudit=JSON.parse(providerInput.providerAuditText);
+  providerAudit.providers[0].label="provider\nname";
+  providerInput.providerAuditText=JSON.stringify(providerAudit,null,2)+"\n";
+  assert.throws(()=>bindPathwayAuditPolicy(providerInput),/PATHWAY_AUDIT_POLICY_INVALID/);
+
+  const dvnInput=await reviewedInputs(),dvnAudit=reviewedDvnAudit();
+  dvnAudit.dvns[0].operatorFamily="operator/unsafe";
+  dvnInput.dvnOperatorAuditText=canonicalJson(dvnAudit);
+  assert.throws(()=>bindPathwayAuditPolicy(dvnInput),/PATHWAY_AUDIT_POLICY_INVALID/);
 });
 
 test("the committed DVN registry is canonical, honest, and empty until identities are reviewed",async()=>{

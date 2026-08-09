@@ -5,6 +5,7 @@ import{
   type PathwayAuditBlocker,
   type PathwayAuditManifest
 }from"./pathway-audit-model.js";
+import{isPathwayAuditPublicIdentifier}from"./pathway-audit-public-identifier.js";
 
 export interface PathwayAuditorPolicy{
   schemaVersion:1;
@@ -235,8 +236,7 @@ function dvn(value:unknown):ReviewedDvn{
   const chain=root.chain,chainId=root.chainId;
   if((chain!==expectedSource&&chain!==expectedDestination)||
     (chain===expectedSource&&chainId!==11155111)||(chain===expectedDestination&&chainId!==421614)||
-    typeof root.operatorFamily!=="string"||root.operatorFamily.length<1||root.operatorFamily.length>128||
-    !/^[a-z0-9](?:[a-z0-9._ -]*[a-z0-9])?$/.test(root.operatorFamily)||!Array.isArray(root.sources))invalid();
+    !isPathwayAuditPublicIdentifier(root.operatorFamily)||!Array.isArray(root.sources))invalid();
   const sources=root.sources.map(source);
   if(sources.length===0||new Set(sources).size!==sources.length||!strictStrings(sources))invalid();
   return{
@@ -249,7 +249,7 @@ function detachDvn(value:ReviewedDvn):ReviewedDvn{return{...value,sources:[...va
 
 function provider(value:unknown):ReviewedProvider{
   const root=record(value);exactKeys(root,["label","operatorFamily","originSha256","operatorEvidenceSha256","sources"]);
-  if(!nonempty(root.label)||!nonempty(root.operatorFamily)||!Array.isArray(root.sources))invalid();
+  if(!isPathwayAuditPublicIdentifier(root.label)||!isPathwayAuditPublicIdentifier(root.operatorFamily)||!Array.isArray(root.sources))invalid();
   const sources=root.sources.map(source);
   if(sources.length===0||new Set(sources).size!==sources.length)invalid();
   return{label:root.label,operatorFamily:root.operatorFamily,originSha256:digest(root.originSha256),operatorEvidenceSha256:digest(root.operatorEvidenceSha256),sources};

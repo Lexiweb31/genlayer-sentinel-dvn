@@ -8,6 +8,7 @@ import type{
   PublicSourcePathObservation,PublicUlnObservation,RuntimeCodeObservation
 }from"./pathway-audit-observer.js";
 import type{PinnedBlockObservation}from"./pathway-audit-block.js";
+import{isPathwayAuditPublicIdentifier}from"./pathway-audit-public-identifier.js";
 
 export interface PathwayAuditBundle extends PathwayAuditObservation{
   schemaVersion:1;
@@ -29,7 +30,6 @@ const digestPattern=/^[a-f0-9]{64}$/;
 const hashPattern=/^0x[a-f0-9]{64}$/;
 const addressPattern=/^0x[a-fA-F0-9]{40}$/;
 const decimalPattern=/^(?:0|[1-9][0-9]*)$/;
-const identifierPattern=/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,127}$/;
 const secretKey=/(?:private|secret|mnemonic|seed|keystore|rpcurl|websocket|wallet|credential|token|password|apikey|environment|cloud|signerkey)/i;
 
 const blockerDefinitions:Record<PathwayAuditBlocker["code"],readonly[PathwayAuditBlocker["category"],PathwayAuditBlocker["remediation"]]>={
@@ -146,8 +146,26 @@ function observationValue(value:unknown,fromBundle:boolean):PathwayAuditObservat
     destination:destinationRaw===null?null:destinationPath(destinationRaw),
     configurationSha256:nullable(digest,field(root,"configurationSha256")),blockers
   };
+  assertObservationDigests(result);
   assertConsistentCompleteness(result);
   return result;
+}
+
+function assertObservationDigests(value:PathwayAuditObservation):void{
+  const expectedConfiguration=value.source&&value.destination?sha256(canonicalJson({destination:value.destination,source:value.source})):null;
+  const expectedSource=value.blocks.source?sha256(canonicalJson({
+    block:value.blocks.source,
+    deployments:value.deployments?{adapter:value.deployments.sourceAdapter,oapp:value.deployments.sourceOApp}:null,
+    officialCode:value.officialCode.source,path:value.source
+  })):null;
+  const expectedDestination=value.blocks.destination?sha256(canonicalJson({
+    block:value.blocks.destination,
+    deployments:value.deployments?{adapter:value.deployments.destinationAdapter,oapp:value.deployments.destinationOApp}:null,
+    officialCode:value.officialCode.destination,path:value.destination
+  })):null;
+  if(value.configurationSha256!==expectedConfiguration||
+    value.providerAgreement.source.resultSha256!==expectedSource||
+    value.providerAgreement.destination.resultSha256!==expectedDestination)invalid();
 }
 
 function assertConsistentCompleteness(value:PathwayAuditObservation):void{
@@ -162,7 +180,110 @@ function assertConsistentCompleteness(value:PathwayAuditObservation):void{
     [...value.officialCode.source,...value.officialCode.destination].some(item=>item.identity!=="CODE_IDENTITY_REVIEWED")||
     value.deployments===null||Object.values(value.deployments).some(item=>item===null)||
     value.source===null||value.destination===null||value.configurationSha256===null)invalid();
+  assertConsistentEvidence(value as CompleteConsistentObservation);
 }
+
+type CompleteConsistentObservation=PathwayAuditObservation&{
+  blocks:{source:PinnedBlockObservation;destination:PinnedBlockObservation};
+  deployments:{sourceOApp:PublicDeploymentEvidence;destinationOApp:PublicDeploymentEvidence;sourceAdapter:PublicDeploymentEvidence;destinationAdapter:PublicDeploymentEvidence};
+  source:PublicSourcePathObservation;destination:PublicDestinationPathObservation;configurationSha256:string;
+};
+
+type DeploymentRecord={
+  address:string;providerIdentities:ProviderAgreementObservation["providers"];
+  deploymentBlockNumber:string;creationBytecodeSha256:string;deployedBytecodeSha256:string;immutableReferencesSha256:string;
+  runtimeCodeKeccak256:string;
+  constructorArguments:{endpoint:string;delegate:string}|{
+    messageLib:string;verificationTarget:string;supportedDstEid:number;signers:string[];quorum:string;
+  };
+};
+
+function assertConsistentEvidence(value:CompleteConsistentObservation):void{
+  const source=value.source,destination=value.destination,deployments=value.deployments;
+  const sourceOApp=deployments.sourceOApp as unknown as DeploymentRecord;
+  const destinationOApp=deployments.destinationOApp as unknown as DeploymentRecord;
+  const sourceAdapter=deployments.sourceAdapter as unknown as DeploymentRecord;
+  const destinationAdapter=deployments.destinationAdapter as unknown as DeploymentRecord;
+  const sourceAdapterArguments=adapterArguments(sourceAdapter),destinationAdapterArguments=adapterArguments(destinationAdapter);
+  const sourceOAppArguments=oappArguments(sourceOApp),destinationOAppArguments=oappArguments(destinationOApp);
+
+  assertDistinctProviderPair(value.providerAgreement.source.providers);
+  assertDistinctProviderPair(value.providerAgreement.destination.providers);
+  const providers=[...value.providerAgreement.source.providers,...value.providerAgreement.destination.providers];
+  if(new Set(providers.map(item=>item.label)).size!==4||new Set(providers.map(item=>item.originSha256)).size!==4)invalid();
+  if(!sameCanonical(sourceOApp.providerIdentities,value.providerAgreement.source.providers)||
+    !sameCanonical(sourceAdapter.providerIdentities,value.providerAgreement.source.providers)||
+    !sameCanonical(destinationOApp.providerIdentities,value.providerAgreement.destination.providers)||
+    !sameCanonical(destinationAdapter.providerIdentities,value.providerAgreement.destination.providers))invalid();
+
+  if(!source.supportedEid||!destination.supportedEid||source.isDefaultSendLibrary||destination.isDefaultReceiveLibrary||
+    source.dstEid!==40231||destination.srcEid!==40161||source.adapter.quorum!=="3"||destination.adapter.quorum!=="3"||
+    !source.adapter.signersAuthorized.every(Boolean)||!destination.adapter.signersAuthorized.every(Boolean))invalid();
+
+  if(!sameAddress(sourceOApp.address,source.sourceOApp)||!sameAddress(destinationOApp.address,destination.oapp)||
+    !sameAddress(sourceAdapter.address,source.adapter.address)||!sameAddress(destinationAdapter.address,destination.adapter.address)||
+    !sameAddress(sourceOAppArguments.endpoint,source.endpoint)||!sameAddress(destinationOAppArguments.endpoint,destination.endpoint)||
+    !sameAddress(sourceAdapterArguments.messageLib,source.adapter.messageLib)||
+    !sameAddress(sourceAdapterArguments.verificationTarget,source.adapter.verificationTarget)||
+    !sameAddress(destinationAdapterArguments.messageLib,destination.adapter.messageLib)||
+    !sameAddress(destinationAdapterArguments.verificationTarget,destination.adapter.verificationTarget)||
+    source.adapter.supportedDstEid!==source.dstEid||destination.adapter.supportedDstEid!==source.dstEid||
+    sourceAdapterArguments.supportedDstEid!==source.dstEid||destinationAdapterArguments.supportedDstEid!==source.dstEid||
+    !sameAddress(source.adapter.messageLib,source.sendLibrary)||
+    !sameAddress(destination.adapter.verificationTarget,destination.receiveLibrary)||
+    !sameCanonical(sourceAdapterArguments.signers,destinationAdapterArguments.signers)||
+    !sameArtifactProvenance(sourceOApp,destinationOApp)||!sameArtifactProvenance(sourceAdapter,destinationAdapter))invalid();
+
+  const sourceSentinelCode=source.dvnCodeKeccak256.find(item=>sameAddress(item.address,source.adapter.address));
+  if(!sourceSentinelCode||sourceSentinelCode.codeKeccak256!==sourceAdapter.runtimeCodeKeccak256)invalid();
+
+  if(source.destinationPeer!==addressPeer(destination.oapp)||destination.sourcePeer!==addressPeer(source.sourceOApp)||
+    source.uln.confirmations!=="15"||destination.rawAppUln.confirmations!=="64"||
+    !sameCanonical(destination.rawAppUln,destination.resolvedUln)||
+    !validUln(source.uln,source.adapter.address)||!validUln(destination.rawAppUln,destination.adapter.address)||
+    !sameAddresses(source.uln.requiredDvns,destination.rawAppUln.requiredDvns)||
+    !sameCanonical(normalizedOptional(source.uln.optionalDvns,source.adapter.address),normalizedOptional(destination.rawAppUln.optionalDvns,destination.adapter.address))||
+    source.uln.optionalDvnThreshold!==destination.rawAppUln.optionalDvnThreshold)invalid();
+
+  if(!sameAddress(value.officialCode.source[0]!.address,source.endpoint)||
+    !sameAddress(value.officialCode.source[1]!.address,source.sendLibrary)||
+    !sameAddress(value.officialCode.source[2]!.address,source.executor.address)||
+    !sameAddress(value.officialCode.destination[0]!.address,destination.endpoint)||
+    !sameAddress(value.officialCode.destination[1]!.address,destination.receiveLibrary)||
+    BigInt(sourceOApp.deploymentBlockNumber)>BigInt(value.blocks.source.blockNumber)||
+    BigInt(sourceAdapter.deploymentBlockNumber)>BigInt(value.blocks.source.blockNumber)||
+    BigInt(destinationOApp.deploymentBlockNumber)>BigInt(value.blocks.destination.blockNumber)||
+    BigInt(destinationAdapter.deploymentBlockNumber)>BigInt(value.blocks.destination.blockNumber))invalid();
+}
+
+function assertDistinctProviderPair(value:ProviderAgreementObservation["providers"]):void{
+  if(new Set(value.map(item=>item.label)).size!==2||new Set(value.map(item=>item.originSha256)).size!==2||
+    new Set(value.map(item=>item.operatorFamily)).size!==2)invalid();
+}
+function sameArtifactProvenance(left:DeploymentRecord,right:DeploymentRecord):boolean{return left.creationBytecodeSha256===right.creationBytecodeSha256&&
+  left.deployedBytecodeSha256===right.deployedBytecodeSha256&&
+  left.immutableReferencesSha256===right.immutableReferencesSha256}
+
+function adapterArguments(value:DeploymentRecord):Extract<DeploymentRecord["constructorArguments"],{messageLib:string}>{
+  if(!("messageLib"in value.constructorArguments))return invalid();return value.constructorArguments;
+}
+function oappArguments(value:DeploymentRecord):Extract<DeploymentRecord["constructorArguments"],{endpoint:string}>{
+  if(!("endpoint"in value.constructorArguments))return invalid();return value.constructorArguments;
+}
+function validUln(value:PublicUlnObservation,sentinel:string):boolean{
+  const combined=[...value.requiredDvns,...value.optionalDvns].map(item=>item.toLowerCase());
+  const threshold=value.optionalDvns.length===0?value.optionalDvnThreshold===0:
+    value.optionalDvnThreshold>=1&&value.optionalDvnThreshold<=value.optionalDvns.length;
+  return combined.length===new Set(combined).size&&threshold&&
+    !value.requiredDvns.some(item=>sameAddress(item,sentinel))&&
+    value.optionalDvns.filter(item=>sameAddress(item,sentinel)).length===1&&
+    (value.requiredDvns.length>0||value.optionalDvnThreshold>1);
+}
+function normalizedOptional(value:string[],sentinel:string):string[]{return value.map(item=>sameAddress(item,sentinel)?"SENTINEL_OPTIONAL":item.toLowerCase()).sort()}
+function sameAddresses(left:string[],right:string[]):boolean{return left.length===right.length&&left.every((item,index)=>sameAddress(item,right[index]!))}
+function sameAddress(left:string,right:string):boolean{return left.toLowerCase()===right.toLowerCase()}
+function sameCanonical(left:unknown,right:unknown):boolean{return canonicalJson(left)===canonicalJson(right)}
+function addressPeer(value:string):string{return`0x${"0".repeat(24)}${value.slice(2).toLowerCase()}`}
 
 function agreementValue(value:unknown):ProviderAgreementObservation{
   const root=record(value);exactKeys(root,["state","providers","resultSha256"]);
@@ -367,7 +488,7 @@ function address(value:unknown):string{
   return value;
 }
 function decimal(value:unknown):string{if(typeof value!=="string"||!decimalPattern.test(value))return invalid();return value}
-function identifier(value:unknown):string{if(typeof value!=="string"||!identifierPattern.test(value))return invalid();return value}
+function identifier(value:unknown):string{if(!isPathwayAuditPublicIdentifier(value))return invalid();return value}
 function uint(value:unknown,allowZero:boolean):number{if(typeof value!=="number"||!Number.isSafeInteger(value)||value<0||(!allowZero&&value===0))return invalid();return value}
 function boolean(value:unknown):boolean{if(typeof value!=="boolean")return invalid();return value}
 

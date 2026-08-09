@@ -6,6 +6,7 @@ import{
   PathwayAuditError,
   type PathwayAuditManifest
 }from"./pathway-audit-model.js";
+import{isPathwayAuditPublicIdentifier}from"./pathway-audit-public-identifier.js";
 
 export{PathwayAuditError}from"./pathway-audit-model.js";
 export type{AuditDeploymentManifest,AuditRpcEndpoint,PathwayAuditManifest}from"./pathway-audit-model.js";
@@ -110,7 +111,7 @@ function rpcs(value:unknown):[AuditRpcEndpoint,AuditRpcEndpoint]{
 
 function endpoint(value:unknown):AuditRpcEndpoint{
   const endpoint=record(value);exactKeys(endpoint,["label","url","operatorFamily","originSha256"]);
-  if(!nonempty(endpoint.label)||!nonempty(endpoint.operatorFamily)||!url(endpoint.url))invalid();
+  if(!isPathwayAuditPublicIdentifier(endpoint.label)||!isPathwayAuditPublicIdentifier(endpoint.operatorFamily)||!url(endpoint.url))invalid();
   return{label:endpoint.label,url:endpoint.url,operatorFamily:endpoint.operatorFamily,originSha256:digest(endpoint.originSha256)};
 }
 
