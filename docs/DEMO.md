@@ -3,7 +3,7 @@
 ## Deployed web dashboard
 
 ```text
-Web dashboard: DEPLOYED — https://genlayer-sentinel-dvn.damilexi2005.chatgpt.site (owner-private; sign-in required)
+Web dashboard: DEPLOYED — https://genlayer-sentinel-console.damilexi2005.chatgpt.site (owner-private; sign-in required)
 Pathway contracts: NOT DEPLOYED BY THIS MILESTONE
 LayerZero DVN onboarding: NOT COMPLETED
 GenLayer live finality: NOT CLAIMED
