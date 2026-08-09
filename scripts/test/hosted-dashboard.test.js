@@ -77,13 +77,39 @@ test("the worker permits HEAD without returning the delegated HTML body",async()
   const page=await readFile("dist/public/index.html");
   const response=await worker.fetch(
     new Request("https://sentinel.example/",{method:"HEAD"}),
-    {ASSETS:{fetch:async()=>new Response(page,{headers:{"content-type":"text/html; charset=utf-8","x-binding":"used"}})}}
+    {ASSETS:{fetch:async request=>new Response(request.method==="GET"?page:null,{headers:{"content-type":"text/html; charset=utf-8","x-binding":"used"}})}}
   );
   assert.equal(response.status,200);
   assert.equal(await response.text(),"");
   assert.equal(response.headers.get("x-binding"),"used");
   assert.equal(response.headers.get("cache-control"),"no-store");
   assert.equal(response.headers.get("content-security-policy"),expectedCsp);
+});
+
+test("malformed hosted metadata produces GET and HEAD failure parity",async()=>{
+  for(const source of[
+    "<html><head></head><body>missing metadata</body></html>",
+    "<html><head>__SITE_ORIGIN__/assets/og.png</head></html>"
+  ]){
+    const env={ASSETS:{fetch:async request=>new Response(request.method==="GET"?source:null,{status:200,headers:{
+      "content-type":"text/html; charset=utf-8",
+      "content-length":String(Buffer.byteLength(source)),
+      "content-encoding":"gzip",
+      "etag":'"invalid-hosted-page"'
+    }})}};
+    const get=await worker.fetch(new Request("https://sentinel.example/"),env);
+    const head=await worker.fetch(new Request("https://sentinel.example/",{method:"HEAD"}),env);
+    assert.equal(get.status,500);
+    assert.equal(head.status,get.status);
+    assert.deepEqual(headersOf(head),headersOf(get));
+    assert.deepEqual(await get.json(),{error:"hosted metadata unavailable"});
+    assert.equal(await head.text(),"");
+    assert.equal(head.headers.get("cache-control"),"no-store");
+    assert.equal(head.headers.get("content-security-policy"),expectedCsp);
+    assert.equal(head.headers.get("content-length"),null);
+    assert.equal(head.headers.get("content-encoding"),null);
+    assert.equal(head.headers.get("etag"),null);
+  }
 });
 
 test("the worker rejects mutation methods before static delegation",async()=>{

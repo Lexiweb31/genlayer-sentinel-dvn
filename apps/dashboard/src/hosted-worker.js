@@ -31,17 +31,19 @@ export default{async fetch(request,env){
   const url=new URL(request.url);
   if(!PUBLIC_PATHS.has(url.pathname))return errorResponse(request.method,404,"not found");
   if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(request.method,503,"static assets unavailable");
+  const assetRequest=url.pathname==="/"&&request.method==="HEAD"?new Request(request,{method:"GET"}):request;
   let response;
-  try{response=await env.ASSETS.fetch(request)}catch{return errorResponse(request.method,502,"static asset request failed")}
+  try{response=await env.ASSETS.fetch(assetRequest)}catch{return errorResponse(request.method,502,"static asset request failed")}
   const headers=securityHeaders(response.headers,cachePolicy(url.pathname,response.status));
   if(url.pathname==="/")invalidateRepresentationHeaders(headers);
-  if(request.method==="HEAD")return new Response(null,{status:response.status,statusText:response.statusText,headers});
   if(url.pathname==="/"&&response.ok){
     const source=await response.text();
     const placeholders=source.split(`${SITE_ORIGIN}/assets/og.png`).length-1;
     if(placeholders!==2)return errorResponse(request.method,500,"hosted metadata unavailable");
+    if(request.method==="HEAD")return new Response(null,{status:response.status,statusText:response.statusText,headers});
     return new Response(source.replaceAll(SITE_ORIGIN,url.origin),{status:response.status,statusText:response.statusText,headers});
   }
+  if(request.method==="HEAD")return new Response(null,{status:response.status,statusText:response.statusText,headers});
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }};
 
