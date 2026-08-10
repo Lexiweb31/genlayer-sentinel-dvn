@@ -19,6 +19,20 @@
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body class="sentinel-experience">
+  <header class="portal-topbar">
+    <a class="portal-brand" href="#pathway" aria-label="GenLayer Sentinel overview"><span class="portal-mark">S</span>GenLayer Sentinel</a>
+    <div class="portal-topbar-meta"><span>TESTNET PROTOTYPE</span><span class="portal-live-dot" aria-hidden="true"></span><span id="portal-runtime-label">READ ONLY</span></div>
+    <a class="portal-action" href="#evidence">Review evidence</a>
+  </header>
+  <aside class="portal-sidebar" aria-label="Sentinel sections">
+    <p>WORKSPACE</p>
+    <a class="active" href="#pathway">Overview</a>
+    <a href="#evidence">Pathway evidence</a>
+    <a href="#demo-workspace">Governed action</a>
+    <a href="#packet-lifecycle">Packet lifecycle</a>
+    <a href="#trust-model">Trust model</a>
+    <div class="portal-sidebar-note"><strong>Honest testnet prototype</strong><span>Unsigned · not deployed · no mainnet claim</span></div>
+  </aside>
   <section class="hero-shell" id="pathway" aria-labelledby="hero-title">
     <video class="hero-media" src="/assets/sentinel-network-loop.mp4" poster="/assets/sentinel-network-poster.jpg" autoplay muted loop playsinline aria-hidden="true"></video>
     <div class="hero-gradient"></div>
@@ -150,7 +164,7 @@
         <div><dt>Recovery posture</dt><dd id="runtime-recovery-posture">Not observed</dd></div>
       </dl>
     </section>
-    <section>
+    <section id="packet-lifecycle">
       <div class="section-head"><div><p>OPERATIONS</p><h2>Packet lifecycle</h2></div><span class="status" id="connection-status">CONNECTING</span></div>
       <div class="packet-bar"><label for="job-select">Observed packet</label><select id="job-select" disabled><option>Waiting for coordinator</option></select><span id="refresh-time">Never refreshed</span></div>
       <div class="timeline" id="timeline" aria-live="polite"></div>

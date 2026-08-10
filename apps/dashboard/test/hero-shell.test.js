@@ -101,11 +101,13 @@ test("carries the Sentinel surface system through the operational workspace",()=
   for(const token of["--surface:",".operations-content::before",".pathway-evidence,.runtime-observation,.quarantine,.delivery,.operator-recovery",".section-head","border-radius:24px","backdrop-filter:blur(18px)"])assert.ok(css.includes(token),`missing unified workspace token: ${token}`);
 });
 
-test("keeps one dark Sentinel world from hero through operations",()=>{
-  assert.match(css,/\.sentinel-experience\s*\{[^}]*background\s*:\s*#0a0a0c/is);
-  assert.match(css,/\.hero-shell::after\s*\{[^}]*background\s*:\s*rgba\(0\s*,\s*0\s*,\s*0\s*,\s*\.66\)/is);
-  assert.match(css,/\.sentinel-experience \.operations-content\s*\{[^}]*background\s*:\s*#0a0a0c/is);
-  assert.match(css,/\.experience-section\s*\{[^}]*border-top\s*:\s*1px solid var\(--dash-line\)/is);
+test("uses the Sentinel Portal shell across the overview and operations",()=>{
+  assert.match(html,/<header class="portal-topbar"/i);
+  assert.match(html,/<aside class="portal-sidebar"/i);
+  for(const label of["Overview","Pathway evidence","Packet lifecycle","Trust model"])assert.ok(html.includes(label),`missing portal navigation label: ${label}`);
+  assert.match(css,/\.portal-topbar\s*\{[^}]*position\s*:\s*fixed/is);
+  assert.match(css,/\.portal-sidebar\s*\{[^}]*position\s*:\s*fixed/is);
+  assert.match(css,/\.sentinel-experience\s*\{[^}]*background\s*:\s*#f7f7f9/is);
 });
 
 test("uses a proof-story transition instead of a hard hero-to-dashboard seam",()=>{
