@@ -14,6 +14,7 @@ const EXPECTED_ASSETS=[
 const OG_SHA256="fbc94eafe380f47b5d2c47067222153c70dc49ef43c72b2568f44ae038c5386a";
 const COPIES=[
   ["apps/dashboard/src/app.js","src/app.js"],
+  ["apps/dashboard/src/console.css","src/console.css"],
   ["apps/dashboard/src/delivery.css","src/delivery.css"],
   ["apps/dashboard/src/demo.css","src/demo.css"],
   ["apps/dashboard/src/hero-motion.js","src/hero-motion.js"],
