@@ -3,203 +3,95 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Read-only operations and pathway evidence for the GenLayer Sentinel LayerZero DVN testnet prototype.">
+  <meta name="description" content="Sentinel puts deterministic packet evidence, finalized policy, and signer quorum before cross-chain execution.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="GenLayer Sentinel">
-  <meta property="og:description" content="Verify policy before messages cross chains.">
+  <meta property="og:description" content="Proof before value moves.">
   <meta property="og:image" content="/assets/og.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="GenLayer Sentinel">
-  <meta name="twitter:description" content="Verify policy before messages cross chains.">
+  <meta name="twitter:description" content="Proof before value moves.">
   <meta name="twitter:image" content="/assets/og.png">
-  <title>GenLayer Sentinel — Verify policy before messages cross chains.</title>
-  <link rel="stylesheet" href="./src/recovery.css">
-  <link rel="stylesheet" href="./src/delivery.css">
-  <link rel="stylesheet" href="./src/demo.css">
-  <link rel="stylesheet" href="./src/style.css">
+  <title>GenLayer Sentinel — Proof before value moves.</title>
+  <link rel="stylesheet" href="/src/landing.css">
 </head>
-<body class="sentinel-experience">
-  <header class="portal-topbar premium-shell">
-    <a class="portal-brand" href="#pathway" aria-label="GenLayer Sentinel overview"><span class="portal-mark">S</span>GenLayer Sentinel</a>
-    <div class="portal-topbar-meta"><span>TESTNET PROTOTYPE</span><span class="portal-live-dot" aria-hidden="true"></span><span id="portal-runtime-label">READ ONLY</span></div>
-    <div class="portal-actions">
-      <span class="layerzero-endpoint-status" id="layerzero-endpoint-status" role="status" aria-live="polite">LayerZero endpoint code not checked</span>
-      <span class="testnet-readiness-status" id="testnet-readiness-status" role="status" aria-live="polite">Testnet balances not checked</span>
-      <span class="wallet-account" id="wallet-account" role="status" aria-live="polite">Wallet not connected</span>
-      <button class="portal-action wallet-connect" id="wallet-connect" type="button">Connect wallet</button>
-      <button class="portal-action testnet-readiness-check" id="testnet-readiness-check" type="button">Check testnet funds</button>
-      <button class="portal-action layerzero-endpoint-check" id="layerzero-endpoint-check" type="button">Verify LZ endpoints</button>
-      <a class="portal-action portal-evidence-link" href="#evidence">Review evidence</a>
-    </div>
+<body>
+  <header class="landing-header">
+    <a class="landing-wordmark" href="/" aria-label="GenLayer Sentinel home">
+      <span class="landing-mark" aria-hidden="true">S</span>
+      <span>sentinel</span>
+    </a>
+    <nav class="landing-nav" aria-label="Primary navigation">
+      <a href="#trust-model">Trust model</a>
+      <a href="/console/">Open console</a>
+    </nav>
   </header>
-  <aside class="portal-sidebar" aria-label="Sentinel sections">
-    <p>WORKSPACE</p>
-    <a class="active" href="#pathway">Overview</a>
-    <a href="#evidence">Pathway evidence</a>
-    <a href="#demo-workspace">Governed action</a>
-    <a href="#packet-lifecycle">Packet lifecycle</a>
-    <a href="#trust-model">Trust model</a>
-    <div class="portal-sidebar-note"><strong>Honest testnet prototype</strong><span>Unsigned · not deployed · no mainnet claim</span></div>
-  </aside>
-  <section class="hero-shell premium-shell" id="pathway" aria-labelledby="hero-title">
-    <video class="hero-media" src="/assets/sentinel-network-loop.mp4" poster="/assets/sentinel-network-poster.jpg" autoplay muted loop playsinline aria-hidden="true"></video>
-    <div class="signal-orbit" aria-hidden="true"><i></i><i></i><i></i><span class="signal-core"></span></div>
-    <div class="hero-gradient"></div>
-    <div class="hero-content">
-      <nav class="hero-nav" aria-label="Primary navigation">
-        <a class="wordmark" href="#pathway" aria-label="GenLayer Sentinel home">sentinel</a>
-        <div class="hero-nav-links">
-          <a href="#pathway">Firewall</a>
-          <a href="#evidence">Evidence</a>
-          <a href="#trust-model">Trust model</a>
-        </div>
-        <div class="hero-actions">
-          <b id="runtime-mode">CHECKING MODE</b>
-          <button class="load-evidence" id="pathway-audit-load" type="button">Load Evidence</button>
-        </div>
-      </nav>
-      <div class="hero-body">
-        <p class="hero-kicker">GENLAYER × LAYERZERO · POLICY FIREWALL</p>
-        <div class="system-integrity"><span></span>SYSTEM INTEGRITY <b>READ-ONLY TESTNET</b></div>
-        <h1 id="hero-title">A policy firewall for messages that move value.</h1>
-        <p class="hero-summary">Sentinel gates high-value cross-chain actions with deterministic packet proof, finalized policy consensus, and an isolated signer quorum.</p>
-        <div class="evidence-glass action-command">
-          <p class="evidence-prompt">Inspect a local, read-only pathway audit before trusting a cross-chain action. Nothing is uploaded.</p>
-          <button class="evidence-upload" id="pathway-audit-upload" type="button" aria-label="Select local pathway audit evidence">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
-          </button>
-          <input id="pathway-audit-file" type="file" accept="application/json,.json" hidden>
-          <span class="evidence-state" id="pathway-audit-status" role="status" aria-live="polite">NOT OBSERVED</span>
-          <button class="inspect-evidence" id="pathway-audit-inspect" type="button" disabled>Inspect Evidence</button>
-        </div>
-        <p class="hero-boundary">READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED · This viewer cannot deploy, sign, onboard, or submit transactions.</p>
-        <p class="wallet-boundary">READ-ONLY WALLET CONNECTION · Connecting exposes your selected address and network in this tab only. Sentinel cannot request a signature or submit a transaction until its testnet pathway is deployed.</p>
-      </div>
-    </div>
-  </section>
 
-  <main class="operations-content">
-    <section class="homepage-intro experience-section" aria-labelledby="proof-story-title">
-      <p class="homepage-eyebrow">SENTINEL SECURITY MODEL</p>
-      <div class="homepage-story">
-        <h2 id="proof-story-title">One packet. Four independent gates.</h2>
-        <p>Sentinel does not treat a message as trustworthy because it was sent. Each gate has to establish its own proof before the next one can proceed.</p>
+  <main>
+    <section class="landing-hero" aria-labelledby="landing-title">
+      <div class="hero-copy">
+        <p class="eyebrow">GENLAYER × LAYERZERO · TESTNET PROTOTYPE</p>
+        <h1 id="landing-title">Proof before value moves.</h1>
+        <p class="hero-summary">Sentinel is a verification layer for governed cross-chain messages. It brings packet evidence, finalized policy, and signer authorization into one inspectable path before destination execution.</p>
       </div>
-      <ol class="trust-rail" aria-label="Sentinel verification sequence">
-        <li><span>01</span><strong>Packet proof</strong><small>RPC inclusion + confirmations</small></li>
-        <li><span>02</span><strong>Policy decision</strong><small>GenLayer finality required</small></li>
-        <li><span>03</span><strong>Signer quorum</strong><small>3-of-5 target architecture</small></li>
-        <li><span>04</span><strong>Destination check</strong><small>Idempotent execution gate</small></li>
+
+      <form class="landing-search" id="landing-search" action="/console/" method="get">
+        <label for="landing-query">Inspect a packet or transaction</label>
+        <div class="search-control">
+          <input id="landing-query" name="q" type="search" placeholder="Packet GUID or transaction hash" autocomplete="off" spellcheck="false">
+          <a id="landing-inspect" href="/console/">Inspect in console <span aria-hidden="true">↗</span></a>
+        </div>
+        <p>The value is carried only in the console URL; this page does not query the coordinator.</p>
+      </form>
+    </section>
+
+    <section class="status-strip" id="landing-status" aria-labelledby="status-title">
+      <div>
+        <p class="eyebrow">CURRENT STATUS</p>
+        <h2 id="status-title">Testnet prototype</h2>
+      </div>
+      <p>Sentinel is not deployed to mainnet. The public page exposes no live metrics, wallet actions, or transaction controls; operational evidence lives in the read-only console.</p>
+      <span>NOT MAINNET</span>
+    </section>
+
+    <section class="proof-section" aria-labelledby="proof-title">
+      <div class="section-intro">
+        <p class="eyebrow">THE PROOF PATH</p>
+        <h2 id="proof-title">One message. Five explicit gates.</h2>
+        <p>Each stage answers a separate question. Progress at one gate does not stand in for proof at the next.</p>
+      </div>
+      <ol id="landing-proof-path">
+        <li><span>01</span><div><strong>Source packet</strong><small>Canonical identity and inclusion evidence</small></div></li>
+        <li><span>02</span><div><strong>Confirmations</strong><small>Configured source-chain depth</small></div></li>
+        <li><span>03</span><div><strong>Finalized policy</strong><small>Semantic result only after finality</small></div></li>
+        <li><span>04</span><div><strong>Signer quorum</strong><small>Independent authorization threshold</small></div></li>
+        <li><span>05</span><div><strong>Destination execution</strong><small>Idempotent delivery outcome</small></div></li>
       </ol>
     </section>
-    <section class="pathway-evidence" id="evidence" aria-labelledby="evidence-title">
-      <div class="notice" id="live-notice" role="status">Connecting to the coordinator. No simulated state will be shown.</div>
-      <div class="section-head pathway-evidence-head">
-        <div><p>LOCAL FILE · CLOSED VALIDATION</p><h2 id="evidence-title">Verification desk</h2></div>
-        <span class="status">READ ONLY</span>
+
+    <section class="trust-section" id="trust-model" aria-labelledby="trust-title">
+      <div>
+        <p class="eyebrow">TRUST MODEL</p>
+        <h2 id="trust-title">Evidence is separated by responsibility.</h2>
       </div>
-      <p class="evidence-intro">The selected JSON stays in this browser tab. Sentinel verifies its canonical digest and closed presentation schema before showing the allowlisted fields below. It never becomes coordinator packet, delivery, signer, or demo state.</p>
-      <div class="evidence-boundaries" aria-label="Evidence scope">
-        <p><strong>What Sentinel can establish</strong> Canonical configuration binding, deterministic source and destination observations, and explicit blockers carried by the reviewed artifact.</p>
-        <p><strong>What it cannot establish from this file</strong> A live GenLayer result, signer authorization, destination execution, or production pathway readiness.</p>
-      </div>
-      <div class="pathway-evidence-grid">
-        <article id="pathway-audit-configuration">
-          <p>PATHWAY CONFIGURATION</p>
-          <dl>
-            <dt>Audit result</dt><dd id="pathway-audit-result">NOT OBSERVED</dd>
-            <dt>Truth label</dt><dd id="pathway-audit-truth-label">—</dd>
-            <dt>Observed at</dt><dd id="pathway-audit-observed-at">—</dd>
-            <dt>Configuration digest</dt><dd id="pathway-audit-configuration-digest">—</dd>
-          </dl>
-        </article>
-        <article id="pathway-audit-rpc">
-          <p>DETERMINISTIC RPC EVIDENCE</p>
-          <dl>
-            <dt>Source block</dt><dd id="pathway-audit-source-block">NOT OBSERVED</dd>
-            <dt>Destination block</dt><dd id="pathway-audit-destination-block">NOT OBSERVED</dd>
-          </dl>
-        </article>
-        <article id="pathway-audit-code">
-          <p>CODE &amp; EVIDENCE BINDING</p>
-          <dl>
-            <dt>Repository binding</dt><dd>The closed parser verifies this digest without exposing repository or filesystem paths.</dd>
-            <dt>Evidence digest</dt><dd id="pathway-audit-evidence-digest">—</dd>
-          </dl>
-        </article>
-        <article class="pathway-blockers">
-          <p>BLOCKERS &amp; NONCLAIMS</p>
-          <dl>
-            <dt>Blocking evidence</dt><dd id="pathway-audit-blockers">NOT OBSERVED</dd>
-            <dt>Local verification</dt><dd id="pathway-audit-notice">NOT OBSERVED</dd>
-          </dl>
-        </article>
+      <div class="trust-copy">
+        <p><strong>Deterministic checks</strong> bind a message to its source packet, payload, pathway, confirmations, and replay state.</p>
+        <p><strong>Semantic policy</strong> evaluates authorization meaning separately and must reach a finalized result before signing can begin.</p>
+        <p><strong>Signer isolation</strong> is a target architecture for independent operators. This prototype does not claim a deployed production quorum.</p>
       </div>
     </section>
 
-    <section class="demo-workspace" id="demo-workspace" aria-labelledby="demo-title">
-      <div class="section-head"><div><p>LOCAL TEST · FIXTURE POLICY</p><h2 id="demo-title">Send a governed treasury action</h2></div><span class="status" id="demo-status">CHECKING CAPABILITY</span></div>
-      <div class="demo-warning"><strong>Local proof path only.</strong> Your wallet sends a real transaction to locally deployed OApp bytecode. The semantic result is an explicitly labeled fixture—not live GenLayer consensus or testnet approval.</div>
-      <div class="demo-grid">
-        <article class="demo-control">
-          <div class="demo-step"><span>01</span><div><strong>Connect the action owner</strong><p>The wallet must be on local chain 31337 and match the source OApp’s on-chain owner.</p></div></div>
-          <button id="demo-connect" type="button" disabled>Connect wallet</button>
-          <dl class="demo-readout"><dt>Account</dt><dd id="demo-account">Not connected</dd><dt>Chain</dt><dd id="demo-chain">Not checked</dd></dl>
-        </article>
-        <article class="demo-control">
-          <div class="demo-step"><span>02</span><div><strong>Prepare the governed action</strong><p>The target, authorization ID, selector, action value, and LayerZero options are immutable.</p></div></div>
-          <label for="demo-record-label">Record value</label>
-          <input id="demo-record-label" type="text" maxlength="80" autocomplete="off" spellcheck="false" disabled>
-          <dl class="demo-readout"><dt>bytes32 argument</dt><dd><code id="demo-argument">—</code></dd><dt>Authorization match</dt><dd id="demo-match">Not evaluated</dd></dl>
-          <button id="demo-quote" type="button" disabled>Quote LayerZero fee</button>
-          <p class="demo-fee">Quoted native fee <strong id="demo-fee">—</strong></p>
-        </article>
-        <article class="demo-control">
-          <div class="demo-step"><span>03</span><div><strong>Emit the packet</strong><p>Wallet confirmation submits once. Mining proves emission only; Sentinel decides later.</p></div></div>
-          <button id="demo-send" type="button" disabled>Send governed action</button>
-          <dl class="demo-readout"><dt>Source transaction</dt><dd><code id="demo-transaction">—</code></dd><dt>Packet GUID</dt><dd><code id="demo-guid">—</code></dd></dl>
-        </article>
-      </div>
-      <div class="notice demo-message" id="demo-message" role="status" aria-live="polite">The wallet action is disabled until the local harness exposes a valid capability.</div>
-      <details class="demo-boundary"><summary>Immutable local action boundary</summary><dl><dt>Source OApp</dt><dd><code id="demo-source-oapp">—</code></dd><dt>Destination EID</dt><dd id="demo-destination-eid">—</dd><dt>Target</dt><dd><code id="demo-target">—</code></dd><dt>Function</dt><dd id="demo-signature">record(bytes32)</dd><dt>Action value</dt><dd>0 wei</dd><dt>Semantic source</dt><dd>LOCAL_POLICY_FIXTURE</dd></dl></details>
+    <section class="landing-cta" aria-labelledby="cta-title">
+      <p class="eyebrow">READ THE EVIDENCE</p>
+      <h2 id="cta-title">Follow the message, gate by gate.</h2>
+      <a href="/console/">Open Sentinel Console <span aria-hidden="true">↗</span></a>
     </section>
-    <section class="runtime-observation">
-      <div class="section-head"><div><p>COORDINATOR PROCESS</p><h2>Live runtime observation</h2></div><span class="status" id="runtime-status-badge">CONNECTING</span></div>
-      <p class="recovery-note">Live observation from this coordinator process only. This is not failover, high availability, or recovery authorization.</p>
-      <dl class="runtime-observation-grid">
-        <div><dt>Lifecycle</dt><dd id="runtime-lifecycle">Not observed</dd></div>
-        <div><dt>Lease relationship</dt><dd id="runtime-lease">Not observed</dd></div>
-        <div><dt>Current phase</dt><dd id="runtime-phase">Not observed</dd></div>
-        <div><dt>Last heartbeat</dt><dd id="runtime-heartbeat">Not observed</dd></div>
-        <div><dt>Last completed tick</dt><dd id="runtime-last-tick">Not observed</dd></div>
-        <div><dt>Recovery posture</dt><dd id="runtime-recovery-posture">Not observed</dd></div>
-      </dl>
-    </section>
-    <section id="packet-lifecycle">
-      <div class="section-head"><div><p>OPERATIONS</p><h2>Packet lifecycle</h2></div><span class="status" id="connection-status">CONNECTING</span></div>
-      <div class="packet-bar"><label for="job-select">Observed packet</label><select id="job-select" disabled><option>Waiting for coordinator</option></select><span id="refresh-time">Never refreshed</span></div>
-      <div class="timeline" id="timeline" aria-live="polite"></div>
-    </section>
-    <section class="quarantine"><div class="section-head"><div><p>INGESTION RECOVERY</p><h2>Quarantined packets</h2></div><span class="status" id="quarantine-status">CONNECTING</span></div><p class="recovery-note">This browser is read-only. Requeue requires an authenticated local operator using the coordinator recovery service after investigating the failure.</p><div id="dead-letters" class="dead-letters"><p class="empty">Loading durable quarantine state.</p></div></section>
-    <section class="delivery"><div class="section-head"><div><p>DESTINATION DELIVERY</p><h2>Verification outbox</h2></div><span class="status" id="delivery-status">CONNECTING</span></div><p class="recovery-note">Submission is crash-safe and read-only here. Ambiguous broadcasts stop in recovery-required state and are never automatically rebroadcast.</p><div id="deliveries" class="deliveries"><p class="empty">Loading destination delivery state.</p></div></section>
-    <section class="operator-recovery"><div class="section-head"><div><p>OPERATOR RECOVERY</p><h2>Applied recovery receipts</h2></div><span class="status" id="recovery-action-status">CONNECTING</span></div><p class="recovery-note">Read-only audit evidence. Every applied action required 3 of 5 approvals, an elapsed timelock, a stopped coordinator lease, and repeated deterministic verification. Proposal signing and application happen offline.</p><div id="recovery-actions" class="recovery-actions"><p class="empty">Loading hash-chained recovery receipts.</p></div></section>
-    <section class="inspector" id="inspector" hidden>
-      <article><p>CANONICAL PACKET</p><h2>Deterministic identity</h2><dl id="packet-details"></dl></article>
-      <article><p>PACKET PROOFS</p><h2>Inclusion &amp; confirmations</h2><div id="verification-details" class="cards"></div></article>
-      <article><p>SEMANTIC ENGINE</p><h2>Finalized policy decision</h2><dl id="policy-details"></dl></article>
-      <article><p>SIGNER GATE</p><h2>Quorum progress</h2><div id="signer-details"></div></article>
-    </section>
-    <section class="split" id="trust-model"><article><p>SECURITY POSTURE</p><h2>Two proofs. One signature gate.</h2><dl><dt>Deterministic</dt><dd>PacketSent inclusion · payload hash · confirmations · pathway · replay</dd><dt>Semantic</dt><dd>Authorization meaning · action-policy match · evidence interpretation</dd><dt>Signer target</dt><dd>Intended production design: 3-of-5 isolated operators. Local mode uses five in-process fixture identities.</dd></dl></article><article class="terminal"><div><i></i><i></i><i></i></div><pre>sentinel/status
-
-deployment        NOT DEPLOYED
-operations API    READ ONLY / LIVE DATA
-wallet action     LOCAL CAPABILITY ONLY
-genlayer finality NOT LIVE
-gasolina async    CONFIRMATION NEEDED
-mainnet ready     NO</pre></article></section>
   </main>
-  <footer>GenLayer Sentinel · honest-by-default testnet engineering</footer>
-  <script type="module" src="./src/app.js"></script>
-  <script type="module" src="/assets/demo.js"></script>
+
+  <footer>
+    <span>GenLayer Sentinel</span>
+    <span>Honest-by-default testnet engineering</span>
+  </footer>
+  <script type="module" src="/src/landing.js"></script>
 </body>
 </html>

@@ -17,6 +17,8 @@ const COPIES=[
   ["apps/dashboard/src/delivery.css","src/delivery.css"],
   ["apps/dashboard/src/demo.css","src/demo.css"],
   ["apps/dashboard/src/hero-motion.js","src/hero-motion.js"],
+  ["apps/dashboard/src/landing.css","src/landing.css"],
+  ["apps/dashboard/src/landing.js","src/landing.js"],
   ["apps/dashboard/src/pathway-audit.js","src/pathway-audit.js"],
   ["apps/dashboard/src/recovery.css","src/recovery.css"],
   ["apps/dashboard/src/runtime-status.js","src/runtime-status.js"],

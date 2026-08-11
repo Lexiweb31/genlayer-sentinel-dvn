@@ -19,6 +19,8 @@ const expectedPublicFiles=[
   "src/delivery.css",
   "src/demo.css",
   "src/hero-motion.js",
+  "src/landing.css",
+  "src/landing.js",
   "src/pathway-audit.js",
   "src/recovery.css",
   "src/runtime-status.js",
