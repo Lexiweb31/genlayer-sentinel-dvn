@@ -60,6 +60,18 @@ test("links navigation to the local pathway, evidence, and trust sections",()=>{
   }
 });
 
+test("offers a truthful top-level wallet connection that does not imply transaction authority",()=>{
+  const wallet=element("button","wallet-connect");
+  const account=html.match(/<[^>]+\bid="wallet-account"[^>]*>/i)?.[0]??"";
+  assert.notEqual(wallet,"","wallet connection button must be visible in the console top bar");
+  assert.match(wallet,/\btype="button"/i);
+  assert.equal(html.includes("READ-ONLY WALLET CONNECTION"),true);
+  assert.match(account,/\brole="status"/i);
+  assert.match(account,/\baria-live="polite"/i);
+  assert.equal(js.includes("eth_requestAccounts"),true);
+  assert.equal(js.includes("eth_sendTransaction"),false);
+});
+
 test("preserves the existing live operations and demo targets",()=>{
   for(const id of[
     "runtime-mode","live-notice","demo-workspace","demo-title","demo-status","demo-connect","demo-account","demo-chain",

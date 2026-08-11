@@ -22,7 +22,11 @@
   <header class="portal-topbar">
     <a class="portal-brand" href="#pathway" aria-label="GenLayer Sentinel overview"><span class="portal-mark">S</span>GenLayer Sentinel</a>
     <div class="portal-topbar-meta"><span>TESTNET PROTOTYPE</span><span class="portal-live-dot" aria-hidden="true"></span><span id="portal-runtime-label">READ ONLY</span></div>
-    <a class="portal-action" href="#evidence">Review evidence</a>
+    <div class="portal-actions">
+      <span class="wallet-account" id="wallet-account" role="status" aria-live="polite">Wallet not connected</span>
+      <button class="portal-action wallet-connect" id="wallet-connect" type="button">Connect wallet</button>
+      <a class="portal-action portal-evidence-link" href="#evidence">Review evidence</a>
+    </div>
   </header>
   <aside class="portal-sidebar" aria-label="Sentinel sections">
     <p>WORKSPACE</p>
@@ -63,6 +67,7 @@
           <button class="inspect-evidence" id="pathway-audit-inspect" type="button" disabled>Inspect Evidence</button>
         </div>
         <p class="hero-boundary">READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED · This viewer cannot deploy, sign, onboard, or submit transactions.</p>
+        <p class="wallet-boundary">READ-ONLY WALLET CONNECTION · Connecting exposes your selected address and network in this tab only. Sentinel cannot request a signature or submit a transaction until its testnet pathway is deployed.</p>
       </div>
     </div>
   </section>
