@@ -1,0 +1,6 @@
+import{runGenLayerFinalitySourceCommand}from"./genlayer-finality-source-command.js";
+
+process.exitCode=await runGenLayerFinalitySourceCommand(
+  process.argv.slice(2),
+  {stdout:value=>process.stdout.write(value),stderr:value=>process.stderr.write(value)}
+);
