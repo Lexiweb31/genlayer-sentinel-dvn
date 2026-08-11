@@ -1,6 +1,6 @@
 # LayerZero Interface-Conformance Primary-Source Audit
 
-Audit date: 2026-08-02
+Audit date: 2026-08-11
 
 Conclusion: `AUDITED_METADATA_NOT_DEPLOYMENT_AUTHORIZATION`
 
@@ -8,7 +8,7 @@ Conclusion: `AUDITED_METADATA_NOT_DEPLOYMENT_AUTHORIZATION`
 
 This audit refreshed the official public material needed to classify the current Sentinel contract and to keep the offline deployment-readiness gate current. It reviewed documentation and the dependency version locked in this repository. It did **not** call a live chain RPC, inspect deployed bytecode, validate an OApp pathway, select independent DVNs, onboard Sentinel, approve confirmation depths, deploy anything, create infrastructure, fund an account, or submit a transaction.
 
-Primary sources accessed on 2026-08-02:
+Primary sources accessed on 2026-08-11:
 
 - [LayerZero: Build DVNs](https://docs.layerzero.network/v2/workers/off-chain/build-dvns)
 - [LayerZero: DVN technical reference](https://docs.layerzero.network/v2/workers/off-chain/dvn-technical-reference)
@@ -16,6 +16,7 @@ Primary sources accessed on 2026-08-02:
 - [LayerZero: Gasolina API reference](https://docs.layerzero.network/v2/workers/off-chain/gasolina-api-reference)
 - [LayerZero: Ethereum Sepolia deployments](https://docs.layerzero.network/v2/deployments/chains/sepolia)
 - [LayerZero: Arbitrum Sepolia deployments](https://docs.layerzero.network/v2/deployments/chains/arbitrum-sepolia)
+- [LayerZero Labs address book: generated addresses](https://raw.githubusercontent.com/LayerZero-Labs/lz-address-book/refs/heads/main/src/generated/LZAddresses.sol)
 - [GenLayer: networks and RPCs](https://docs.genlayer.com/developers/networks)
 - [GenLayer: transaction-status RPC](https://docs.genlayer.com/api-references/genlayer-node/gen/gen_getTransactionStatus)
 - [GenLayer: Optimistic Democracy and finality](https://docs.genlayer.com/understand-genlayer-protocol/optimistic-democracy-how-genlayer-works)
@@ -33,7 +34,7 @@ Local dependency evidence:
 | Ethereum Sepolia | 11155111 | 40161 | `0x6EDCE65403992e310A62460808c4b910D972f10f` | `0xcc1ae8Cf5D3904Cef3360A9532B477529b177cCE` | `0xdAf00F5eE2158dD58E0d3857851c432E34A3A851` | `0x718B92b5CB0a5552039B593faF724D182A881eDA` | `0x8b450b0acF56E1B0e25C581bB04FBAbeeb0644b8` |
 | Arbitrum Sepolia | 421614 | 40231 | `0x6EDCE65403992e310A62460808c4b910D972f10f` | `0x4f7cd4DA19ABB31b0eC98b9066B9e857B1bf9C0E` | `0x75Db67CDab2824970131D5aa9CECfC9F69c69636` | `0x5Df3a1cEbBD9c8BA7F8dF51Fd632A9aef8308897` | `0xA85BE08A6Ce2771C730661766AACf2c8Bb24C611` |
 
-These values match the previous audit. They remain dated metadata, not proof of live bytecode or a valid directional pathway. Dead-DVN addresses are recorded only so tooling can reject them; they must never be selected as required or optional verifiers.
+On 2026-08-11, LayerZero Labs' generated address book reported provenance hash `0x791ea069afd9b57ee041ec7c97b915c5786b4728176c77bc01f8b7471bb45f77`. Its `LayerZeroV2SepoliaTestnet` and `LayerZeroV2ArbsepTestnet` records match every value in this table, including chain IDs, EIDs, EndpointV2, SendUln302, ReceiveUln302, Executor, and Dead DVN. These values remain dated metadata, not proof of live bytecode or a valid directional pathway. Dead-DVN addresses are recorded only so tooling can reject them; they must never be selected as required or optional verifiers.
 
 ## Interface and job-call finding
 
