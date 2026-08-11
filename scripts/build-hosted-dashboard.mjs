@@ -34,6 +34,7 @@ export async function buildHostedDashboard({root=process.cwd()}={}){
   const projectRoot=resolve(root);
   await validateAssets(projectRoot);
   const sourceHtml=await readFile(join(projectRoot,"apps/dashboard/index.html"),"utf8");
+  const consoleHtml=await readFile(join(projectRoot,"apps/dashboard/console/index.html"),"utf8");
   const localImage='content="/assets/og.png"';
   if(sourceHtml.split(localImage).length-1!==2||sourceHtml.includes("__SITE_ORIGIN__"))throw new Error("dashboard metadata must contain exactly two local social images");
   for(const[source]of COPIES)await readFile(join(projectRoot,source));
@@ -53,7 +54,13 @@ export async function buildHostedDashboard({root=process.cwd()}={}){
   }
   const hostedHtml=sourceHtml.replaceAll(localImage,'content="__SITE_ORIGIN__/assets/og.png"');
   await writeFile(join(publicRoot,"index.html"),hostedHtml,"utf8");
+  const publicConsole=join(publicRoot,"console/index.html");
+  await mkdir(dirname(publicConsole),{recursive:true});
+  await writeFile(publicConsole,consoleHtml,"utf8");
   await cp(publicRoot,clientRoot,{recursive:true});
+  const clientConsole=join(clientRoot,"console/index.html");
+  await mkdir(dirname(clientConsole),{recursive:true});
+  await writeFile(clientConsole,consoleHtml,"utf8");
   await copyFile(join(projectRoot,"apps/dashboard/src/hosted-worker.js"),join(serverRoot,"index.js"));
   return{publicRoot,clientRoot,serverRoot};
 }

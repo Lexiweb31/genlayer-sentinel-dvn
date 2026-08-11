@@ -13,6 +13,7 @@ const expectedPublicFiles=[
   "assets/sentinel-network-loop.mp4",
   "assets/sentinel-network-poster.jpg",
   "assets/special-elite-latin.woff2",
+  "console/index.html",
   "index.html",
   "src/app.js",
   "src/delivery.css",
@@ -87,6 +88,20 @@ test("the worker resolves the hosted root to the packaged index file",async()=>{
   );
   assert.equal(response.status,200);
   assert.match(await response.text(),/https:\/\/sentinel\.example\/assets\/og\.png/);
+});
+
+test("the worker resolves the console route to the packaged console HTML",async()=>{
+  const page=await readFile("dist/public/console/index.html");
+  const response=await worker.fetch(
+    new Request("https://sentinel.example/console/"),
+    {ASSETS:{fetch:async request=>
+      new URL(request.url).pathname==="/console/index.html"
+        ?new Response(page,{headers:{"content-type":"text/html; charset=utf-8"}})
+        :new Response("not found",{status:404})
+    }}
+  );
+  assert.equal(response.status,200);
+  assert.match(await response.text(),/Sentinel Console/);
 });
 
 test("the worker permits HEAD without returning the delegated HTML body",async()=>{

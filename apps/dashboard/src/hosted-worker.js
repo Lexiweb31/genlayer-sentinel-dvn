@@ -2,6 +2,9 @@ const CSP="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 
 const SITE_ORIGIN="__SITE_ORIGIN__";
 const PUBLIC_PATHS=new Set([
   "/",
+  "/console",
+  "/console/",
+  "/console/index.html",
   "/assets/demo.js",
   "/assets/geist-latin.woff2",
   "/assets/og.png",
@@ -33,6 +36,7 @@ export default{async fetch(request,env){
   if(!env?.ASSETS||typeof env.ASSETS.fetch!=="function")return errorResponse(request.method,503,"static assets unavailable");
   const assetUrl=new URL(request.url);
   if(assetUrl.pathname==="/")assetUrl.pathname="/index.html";
+  if(assetUrl.pathname==="/console"||assetUrl.pathname==="/console/")assetUrl.pathname="/console/index.html";
   const assetRequest=new Request(assetUrl,{method:"GET",headers:request.headers});
   let response;
   try{response=await env.ASSETS.fetch(assetRequest)}catch{return errorResponse(request.method,502,"static asset request failed")}
@@ -50,7 +54,7 @@ export default{async fetch(request,env){
 }};
 
 function cachePolicy(path,status){
-  if(path==="/"||status!==200)return"no-store";
+  if(path==="/"||path==="/console"||path==="/console/"||path==="/console/index.html"||status!==200)return"no-store";
   return IMMUTABLE_PATHS.has(path)?"public, max-age=31536000, immutable":"public, max-age=300";
 }
 
