@@ -74,6 +74,18 @@ test("offers a truthful top-level wallet connection that does not imply transact
   assert.equal(js.includes("eth_sendTransaction"),false);
 });
 
+test("offers a no-spend two-testnet balance readiness check",()=>{
+  const check=element("button","testnet-readiness-check");
+  const status=html.match(/<[^>]+\bid="testnet-readiness-status"[^>]*>/i)?.[0]??"";
+  assert.notEqual(check,"","testnet readiness check must be actionable");
+  assert.match(check,/\btype="button"/i);
+  assert.match(status,/\brole="status"/i);
+  assert.match(status,/\baria-live="polite"/i);
+  assert.equal(js.includes("eth_getBalance"),true);
+  assert.equal(js.includes("arbitrumSepoliaChainId=\"0x66eee\""),true);
+  assert.equal(js.includes("eth_sendTransaction"),false);
+});
+
 test("preserves the existing live operations and demo targets",()=>{
   for(const id of[
     "runtime-mode","live-notice","demo-workspace","demo-title","demo-status","demo-connect","demo-account","demo-chain",

@@ -7,9 +7,11 @@ const timeline=document.querySelector("#timeline"),status=document.querySelector
 const runtimeElements={badge:document.querySelector("#runtime-status-badge"),lifecycle:document.querySelector("#runtime-lifecycle"),lease:document.querySelector("#runtime-lease"),phase:document.querySelector("#runtime-phase"),heartbeat:document.querySelector("#runtime-heartbeat"),lastTick:document.querySelector("#runtime-last-tick"),recoveryPosture:document.querySelector("#runtime-recovery-posture")};
 const fileInput=document.querySelector("#pathway-audit-file"),inspectButton=document.querySelector("#pathway-audit-inspect"),pathwayStatus=document.querySelector("#pathway-audit-status"),loadEvidenceButton=document.querySelector("#pathway-audit-load"),uploadEvidenceButton=document.querySelector("#pathway-audit-upload");
 const pathwayElements={status:document.querySelector("#pathway-audit-result"),truthLabel:document.querySelector("#pathway-audit-truth-label"),observedAt:document.querySelector("#pathway-audit-observed-at"),evidenceDigest:document.querySelector("#pathway-audit-evidence-digest"),configurationDigest:document.querySelector("#pathway-audit-configuration-digest"),sourceBlock:document.querySelector("#pathway-audit-source-block"),destinationBlock:document.querySelector("#pathway-audit-destination-block"),blockers:document.querySelector("#pathway-audit-blockers"),notice:document.querySelector("#pathway-audit-notice")};
-const walletConnect=document.querySelector("#wallet-connect"),walletAccount=document.querySelector("#wallet-account");
+const walletConnect=document.querySelector("#wallet-connect"),walletAccount=document.querySelector("#wallet-account"),testnetReadinessCheck=document.querySelector("#testnet-readiness-check"),testnetReadinessStatus=document.querySelector("#testnet-readiness-status");
 const walletProvider=window.ethereum;
 const ethereumSepoliaChainId="0xaa36a7";
+const arbitrumSepoliaChainId="0x66eee";
+let connectedWalletAccount;
 const walletShort=value=>`${value.slice(0,6)}…${value.slice(-4)}`;
 function walletState(message,connected=false){
   if(!walletAccount||!walletConnect)return;
@@ -17,8 +19,10 @@ function walletState(message,connected=false){
   walletConnect.textContent=connected?"Wallet connected":"Connect wallet";
   walletConnect.disabled=false;
 }
+function readinessState(message){if(testnetReadinessStatus)testnetReadinessStatus.textContent=message}
 async function refreshWalletAccount(accounts){
-  if(!Array.isArray(accounts)||typeof accounts[0]!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0])){walletState("Wallet not connected");return}
+  if(!Array.isArray(accounts)||typeof accounts[0]!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0])){connectedWalletAccount=undefined;walletState("Wallet not connected");readinessState("Testnet balances not checked");return}
+  connectedWalletAccount=accounts[0];
   try{
     const chain=await walletProvider.request({method:"eth_chainId"});
     const network=chain===ethereumSepoliaChainId?"Ethereum Sepolia":typeof chain==="string"?`Switch to Ethereum Sepolia (${chain})`:"network unknown";
@@ -34,6 +38,28 @@ async function connectReadOnlyWallet(){
     await refreshWalletAccount(accounts);
   }catch{walletState("Connected wallet needs Ethereum Sepolia")}
 }
+function formatTestEth(value){
+  if(typeof value!=="string"||!/^0x[0-9a-fA-F]+$/.test(value))throw new Error();
+  const wei=BigInt(value),whole=wei/1000000000000000000n,fraction=(wei%1000000000000000000n).toString().padStart(18,"0").slice(0,5).replace(/0+$/,"");
+  return `${whole}${fraction?`.${fraction}`:""} ETH`;
+}
+async function readTestnetBalance(chainId,label){
+  await walletProvider.request({method:"wallet_switchEthereumChain",params:[{chainId}]});
+  const value=await walletProvider.request({method:"eth_getBalance",params:[connectedWalletAccount,"latest"]});
+  return `${label}: ${formatTestEth(value)}`;
+}
+async function checkTestnetReadiness(){
+  if(!walletProvider?.request){readinessState("No browser wallet found");return}
+  if(!connectedWalletAccount){await connectReadOnlyWallet();if(!connectedWalletAccount)return}
+  testnetReadinessCheck.disabled=true;testnetReadinessCheck.textContent="Checking…";readinessState("Checking Sepolia and Arbitrum Sepolia balances…");
+  try{
+    const sepolia=await readTestnetBalance(ethereumSepoliaChainId,"Sepolia");
+    const arbitrum=await readTestnetBalance(arbitrumSepoliaChainId,"Arbitrum Sepolia");
+    readinessState(`${sepolia} · ${arbitrum}`);
+    await refreshWalletAccount([connectedWalletAccount]);
+  }catch{readinessState("Could not read both testnet balances")}
+  finally{testnetReadinessCheck.disabled=false;testnetReadinessCheck.textContent="Check testnet funds"}
+}
 if(walletConnect){
   walletConnect.addEventListener("click",()=>void connectReadOnlyWallet());
   if(walletProvider?.request){
@@ -42,6 +68,7 @@ if(walletConnect){
     walletProvider.on?.("chainChanged",()=>void walletProvider.request({method:"eth_accounts"}).then(refreshWalletAccount).catch(()=>walletState("Wallet not connected")));
   }
 }
+if(testnetReadinessCheck)testnetReadinessCheck.addEventListener("click",()=>void checkTestnetReadiness());
 for(const button of[loadEvidenceButton,uploadEvidenceButton])button.addEventListener("click",()=>fileInput.click());
 const pathwayController=createPathwayAuditFileController({fileInput,inspectButton,status:pathwayStatus,elements:pathwayElements,formatTime:value=>new Date(value).toLocaleString()});
 const heroVideo=document.querySelector(".hero-media");
