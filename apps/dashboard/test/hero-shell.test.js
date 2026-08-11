@@ -69,6 +69,8 @@ test("offers a truthful top-level wallet connection that does not imply transact
   assert.match(account,/\brole="status"/i);
   assert.match(account,/\baria-live="polite"/i);
   assert.equal(js.includes("eth_requestAccounts"),true);
+  assert.equal(js.includes("wallet_switchEthereumChain"),true);
+  assert.equal(js.includes('ethereumSepoliaChainId="0xaa36a7"'),true);
   assert.equal(js.includes("eth_sendTransaction"),false);
 });
 

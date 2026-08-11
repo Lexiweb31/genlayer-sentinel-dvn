@@ -9,6 +9,7 @@ const fileInput=document.querySelector("#pathway-audit-file"),inspectButton=docu
 const pathwayElements={status:document.querySelector("#pathway-audit-result"),truthLabel:document.querySelector("#pathway-audit-truth-label"),observedAt:document.querySelector("#pathway-audit-observed-at"),evidenceDigest:document.querySelector("#pathway-audit-evidence-digest"),configurationDigest:document.querySelector("#pathway-audit-configuration-digest"),sourceBlock:document.querySelector("#pathway-audit-source-block"),destinationBlock:document.querySelector("#pathway-audit-destination-block"),blockers:document.querySelector("#pathway-audit-blockers"),notice:document.querySelector("#pathway-audit-notice")};
 const walletConnect=document.querySelector("#wallet-connect"),walletAccount=document.querySelector("#wallet-account");
 const walletProvider=window.ethereum;
+const ethereumSepoliaChainId="0xaa36a7";
 const walletShort=value=>`${value.slice(0,6)}…${value.slice(-4)}`;
 function walletState(message,connected=false){
   if(!walletAccount||!walletConnect)return;
@@ -20,14 +21,18 @@ async function refreshWalletAccount(accounts){
   if(!Array.isArray(accounts)||typeof accounts[0]!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0])){walletState("Wallet not connected");return}
   try{
     const chain=await walletProvider.request({method:"eth_chainId"});
-    walletState(`${walletShort(accounts[0])} · ${typeof chain==="string"?chain:"network unknown"}`,true);
+    const network=chain===ethereumSepoliaChainId?"Ethereum Sepolia":typeof chain==="string"?`Switch to Ethereum Sepolia (${chain})`:"network unknown";
+    walletState(`${walletShort(accounts[0])} · ${network}`,true);
   }catch{walletState(`${walletShort(accounts[0])} · network unavailable`,true)}
 }
 async function connectReadOnlyWallet(){
   if(!walletProvider||typeof walletProvider.request!=="function"){walletState("No browser wallet found");return}
   walletConnect.disabled=true;walletConnect.textContent="Connecting…";
-  try{await refreshWalletAccount(await walletProvider.request({method:"eth_requestAccounts"}))}
-  catch{walletState("Wallet connection declined or unavailable")}
+  try{
+    const accounts=await walletProvider.request({method:"eth_requestAccounts"});
+    await walletProvider.request({method:"wallet_switchEthereumChain",params:[{chainId:ethereumSepoliaChainId}]});
+    await refreshWalletAccount(accounts);
+  }catch{walletState("Connected wallet needs Ethereum Sepolia")}
 }
 if(walletConnect){
   walletConnect.addEventListener("click",()=>void connectReadOnlyWallet());
