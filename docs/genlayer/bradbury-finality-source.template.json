@@ -1,0 +1,11 @@
+{
+  "acknowledgement": "REVIEW_RECORD_NOT_SIGNER_AUTHORIZATION",
+  "callDataCodec": "UNAPPROVED",
+  "chainId": 4221,
+  "policyContract": "REPLACE_WITH_EIP55_DEPLOYED_POLICY_CONTRACT",
+  "policyRecordMode": "latest-final",
+  "reviewDate": "REPLACE_WITH_UTC_REVIEW_DATE",
+  "schemaVersion": 1,
+  "sourceLabel": "replace-with-reviewed-bradbury-source",
+  "sourceOriginSha256": "REPLACE_WITH_SHA256_OF_REVIEWED_PUBLIC_ORIGIN"
+}
