@@ -139,13 +139,13 @@ test("carries the Sentinel surface system through the operational workspace",()=
   for(const token of["--surface:",".operations-content::before",".pathway-evidence,.runtime-observation,.quarantine,.delivery,.operator-recovery",".section-head","border-radius:24px","backdrop-filter:blur(18px)"])assert.ok(css.includes(token),`missing unified workspace token: ${token}`);
 });
 
-test("uses the Sentinel Portal shell across the overview and operations",()=>{
-  assert.match(html,/<header class="portal-topbar"/i);
+test("keeps the Sentinel navigation and operations shell available beneath the premium terminal direction",()=>{
+  assert.match(html,/<header class="portal-topbar premium-shell"/i);
   assert.match(html,/<aside class="portal-sidebar"/i);
   for(const label of["Overview","Pathway evidence","Packet lifecycle","Trust model"])assert.ok(html.includes(label),`missing portal navigation label: ${label}`);
   assert.match(css,/\.portal-topbar\s*\{[^}]*position\s*:\s*fixed/is);
   assert.match(css,/\.portal-sidebar\s*\{[^}]*position\s*:\s*fixed/is);
-  assert.match(css,/\.sentinel-experience\s*\{[^}]*background\s*:\s*#f7f7f9/is);
+  assert.match(css,/\.sentinel-experience\s*\{[^}]*--terminal:#07090d/is);
 });
 
 test("uses a proof-story transition instead of a hard hero-to-dashboard seam",()=>{
@@ -182,6 +182,26 @@ test("keeps 44-pixel upload and 56-pixel inspect targets separated at a 390-pixe
   const clientWidth=375,cardWidth=390-48,cardLeft=(clientWidth-cardWidth)/2;
   assert.ok(cardLeft>=0);
   assert.ok(cardLeft+21>=0&&cardLeft+cardWidth-21<=clientWidth,"compact inspect target must remain within the 375-pixel client width");
+});
+
+test("uses a single premium Sentinel terminal direction instead of the retired portal shell",()=>{
+  for(const token of[
+    "premium-shell",
+    "signal-orbit",
+    "signal-core",
+    "action-command",
+    "SYSTEM INTEGRITY",
+    "READ-ONLY TESTNET"
+  ])assert.ok(html.includes(token),`missing premium terminal element: ${token}`);
+  for(const token of[
+    "--terminal:#07090d",
+    "--terminal-panel:#0e1218",
+    ".premium-shell",
+    ".signal-orbit",
+    ".action-command",
+    "linear-gradient(135deg,rgba(187,255,74",
+    "@media(max-width:860px)"
+  ])assert.ok(css.includes(token),`missing premium terminal styling: ${token}`);
 });
 
 test("initializes one independent local-file controller without joining coordinator or demo state",()=>{
