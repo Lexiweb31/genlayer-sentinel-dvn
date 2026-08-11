@@ -10,6 +10,7 @@
   --blue-wash:#e9f0ff;
   --line:#ccd5e2;
   --line-dark:#96a4b7;
+  --placeholder:#687386;
   --max-width:1440px;
 }
 
@@ -37,7 +38,7 @@ h1{max-width:1000px;margin-bottom:38px;font-size:clamp(70px,8vw,132px);font-weig
 .landing-search label{display:block;margin-bottom:14px;font-size:12px;font-weight:700;letter-spacing:.02em}
 .search-control{display:grid;grid-template-columns:1fr auto;min-height:58px;background:var(--white);border:1px solid var(--line-dark)}
 .search-control input{min-width:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;padding:0 18px;outline:0}
-.search-control input::placeholder{color:#758195}
+.search-control input::placeholder{color:var(--placeholder)}
 .search-control a{display:flex;align-items:center;gap:12px;background:var(--blue);color:var(--white);font-size:12px;font-weight:700;padding:0 18px;transition:background 160ms ease}
 .search-control a:hover{background:var(--blue-deep)}
 .landing-search>p{margin:13px 0 0;color:#667286;font-size:11px;line-height:1.55}
