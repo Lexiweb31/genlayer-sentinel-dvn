@@ -1,0 +1,39 @@
+{
+  "acknowledgement": "UNRESOLVED_LAYERZERO_ONBOARDING_NOT_DEPLOYMENT_AUTHORIZATION",
+  "destination": {
+    "chainId": 421614,
+    "eid": 40231,
+    "oApp": "REPLACE_WITH_DEPLOYED_ARBITRUM_SEPOLIA_OAPP",
+    "receive": {
+      "confirmations": "REPLACE_WITH_REVIEWED_VALUE",
+      "executor": "REPLACE_WITH_REVIEWED_EXECUTOR",
+      "optionalDvns": [
+        "REPLACE_WITH_REVIEWED_OPTIONAL_DVN"
+      ],
+      "optionalDvnThreshold": "REPLACE_WITH_REVIEWED_THRESHOLD",
+      "requiredDvns": [
+        "REPLACE_WITH_REVIEWED_INDEPENDENT_REQUIRED_DVN"
+      ],
+      "sentinelRole": "OPTIONAL_ONLY"
+    }
+  },
+  "direction": "ethereum-sepolia-to-arbitrum-sepolia",
+  "schemaVersion": 1,
+  "source": {
+    "chainId": 11155111,
+    "eid": 40161,
+    "oApp": "REPLACE_WITH_DEPLOYED_ETHEREUM_SEPOLIA_OAPP",
+    "send": {
+      "confirmations": "REPLACE_WITH_REVIEWED_VALUE",
+      "executor": "REPLACE_WITH_REVIEWED_EXECUTOR",
+      "optionalDvns": [
+        "REPLACE_WITH_REVIEWED_OPTIONAL_DVN"
+      ],
+      "optionalDvnThreshold": "REPLACE_WITH_REVIEWED_THRESHOLD",
+      "requiredDvns": [
+        "REPLACE_WITH_REVIEWED_INDEPENDENT_REQUIRED_DVN"
+      ],
+      "sentinelRole": "OPTIONAL_ONLY"
+    }
+  }
+}
