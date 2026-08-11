@@ -33,6 +33,7 @@
     "readiness:bundle": "npm run build && node dist/services/coordinator/src/deployment-readiness-cli.js",
     "audit:pathway": "npm run build && node dist/services/coordinator/src/pathway-audit-cli.js",
     "audit:finality-source": "npm run build && node dist/services/coordinator/src/genlayer-finality-source-cli.js",
+    "check:operator-attestation": "node scripts/validate-operator-attestation.mjs",
     "build": "tsc -p tsconfig.json && npm run compile:contracts && npm run check:ic && npm run build:dashboard && npm run check:dashboard",
     "test": "npm run build && node --test scripts/test/*.test.js apps/dashboard/test/*.test.js packages/core/test/*.test.js services/coordinator/test/*.test.js contracts/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

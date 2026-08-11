@@ -154,7 +154,7 @@ async function fixture(deployment){
     [join(root,"config/rpc-provider-audit.json"),providerAuditText(manifest)],[join(root,"config/dvn-operator-audit.json"),dvnAuditText()],
     [join(root,"dist/contracts/build-manifest.json"),buildManifestText],[join(root,"dist/contracts/SentinelDVNAdapter.json"),adapterArtifactText],[join(root,"dist/contracts/TreasuryPolicyOApp.json"),oappArtifactText]
   ]);
-  return{manifestPath,clients,dependencies:{repositoryRoot:root,readText:async path=>{if(!files.has(path))throw new Error("unexpected path");return files.get(path)},now:()=>"2026-08-09T12:34:56.789Z",writeExclusive:writePathwayAuditFileExclusive,bind:bindPathwayAuditPolicy,createClient:endpoint=>clients.byLabel.get(endpoint.label),observe:observePathway,build:buildPathwayAuditBundle,encode:encodePathwayAuditBundle}};
+  return{manifestPath,clients,dependencies:{repositoryRoot:root,readText:async path=>{if(!files.has(path))throw new Error("unexpected path");return files.get(path)},now:()=>"2026-08-11T12:34:56.789Z",writeExclusive:writePathwayAuditFileExclusive,bind:bindPathwayAuditPolicy,createClient:endpoint=>clients.byLabel.get(endpoint.label),observe:observePathway,build:buildPathwayAuditBundle,encode:encodePathwayAuditBundle}};
 }
 
 function capture(){const stdout=[],stderr=[];return{stdout,stderr,io:{stdout:value=>stdout.push(value),stderr:value=>stderr.push(value)}}}

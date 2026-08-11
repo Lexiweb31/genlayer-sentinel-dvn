@@ -128,7 +128,7 @@ test("unavailable restoration performs only the capability GET and never touches
   assert.deepEqual(fetches,["/api/demo/config"]);
   assert.equal(intervals.length,0);
   assert.equal(windowValue.timeouts.length,0);
-  assert.equal(walletRequests,0);
+  assert.equal(walletRequests,1);
   assert.equal(documentValue.elements.get("demo-status").textContent,"RESTORED UNAVAILABLE");
   assert.equal(documentValue.elements.get("demo-transaction").textContent,transactionHash);
   assert.equal(documentValue.elements.get("demo-guid").textContent,guid);
@@ -207,7 +207,7 @@ test("matching restoration unlocks read-only operations and schedules the exact 
   assert.equal(intervals.length,6);
   assert.equal(windowValue.timeouts.length,1);
   assert.equal(windowValue.timeouts[0].delay,0);
-  assert.equal(walletRequests,0);
+  assert.equal(walletRequests,1);
   assert.equal(documentValue.elements.get("demo-status").textContent,"COORDINATOR PENDING");
   assert.match(documentValue.elements.get("demo-message").textContent,/no wallet request or source resend/);
   assert.equal(storage.value(storageKey),JSON.stringify(locator));

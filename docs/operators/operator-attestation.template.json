@@ -1,0 +1,8 @@
+{
+  "operatorId": "operator-example-01",
+  "signerAddress": "0x1111111111111111111111111111111111111111",
+  "certificateSpkiSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "contactUrl": "https://operator.example.invalid/sentinel-review",
+  "submittedAt": "2026-08-11T12:00:00.000Z",
+  "attestation": "UNVERIFIED_OPERATOR_ATTESTATION"
+}
