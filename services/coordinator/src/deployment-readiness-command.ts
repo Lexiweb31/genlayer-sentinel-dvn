@@ -271,7 +271,9 @@ function validateLocalGitConfiguration(text:string):void{
     const separator=record.indexOf("\n");
     if(separator<1)throw new ReadinessCommandError("READINESS_GIT_FAILED");
     const key=record.slice(0,separator),value=record.slice(separator+1),expected=allowed.get(key);
-    if(!expected?.test(value))throw new ReadinessCommandError("READINESS_GIT_FAILED");
+    const inertRemote=/^remote\.[A-Za-z0-9_-]+\.(?:url|fetch)$/.test(key)&&
+      value.length>0&&!/[\0-\x1f\x7f]/.test(value);
+    if(!expected?.test(value)&&!inertRemote)throw new ReadinessCommandError("READINESS_GIT_FAILED");
   }
 }
 function parseArguments(args:string[]):{manifest:string;pathwayAudit?:string;output?:string}{

@@ -2,7 +2,7 @@ import test from"node:test";
 import assert from"node:assert/strict";
 import{createHash}from"node:crypto";
 import{execFileSync}from"node:child_process";
-import{chmod,mkdtemp,readFile,readdir,rm,writeFile}from"node:fs/promises";
+import{chmod,mkdtemp,readFile,readdir,realpath,rm,writeFile}from"node:fs/promises";
 import{tmpdir}from"node:os";
 import{join}from"node:path";
 import{getAddress}from"ethers";
@@ -255,6 +255,20 @@ test("default Git inspection refuses repository-local external helpers",async t=
     error=>error.code==="READINESS_GIT_FAILED"
   );
   await assert.rejects(readFile(marker),error=>error.code==="ENOENT");
+});
+
+test("default Git inspection accepts inert repository remote metadata",async t=>{
+  const directory=await mkdtemp(join(tmpdir(),"sentinel-readiness-remote-"));
+  t.after(()=>rm(directory,{recursive:true,force:true}));
+  execFileSync("git",["init","--quiet"],{cwd:directory});
+  execFileSync("git",[
+    "-c","user.name=Sentinel","-c","user.email=sentinel@example.invalid",
+    "commit","--quiet","--allow-empty","-m","base"
+  ],{cwd:directory});
+  execFileSync("git",["remote","add","origin","https://github.com/example/sentinel.git"],{cwd:directory});
+  const state=await readDeploymentReadinessGitState(await realpath(directory));
+  assert.match(state.commit,/^[a-f0-9]{40}$/);
+  assert.equal(state.dirty,false);
 });
 
 test("Git preflight fails before trusted compilation is invoked",async()=>{
