@@ -13,3 +13,4 @@ work/
 .venv-assurance/
 .cache/genlayer-sentinel/
 .cache/contract-assurance/
+.DS_Store
