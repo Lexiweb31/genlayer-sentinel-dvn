@@ -7,10 +7,11 @@ const timeline=document.querySelector("#timeline"),status=document.querySelector
 const runtimeElements={badge:document.querySelector("#runtime-status-badge"),lifecycle:document.querySelector("#runtime-lifecycle"),lease:document.querySelector("#runtime-lease"),phase:document.querySelector("#runtime-phase"),heartbeat:document.querySelector("#runtime-heartbeat"),lastTick:document.querySelector("#runtime-last-tick"),recoveryPosture:document.querySelector("#runtime-recovery-posture")};
 const fileInput=document.querySelector("#pathway-audit-file"),inspectButton=document.querySelector("#pathway-audit-inspect"),pathwayStatus=document.querySelector("#pathway-audit-status"),loadEvidenceButton=document.querySelector("#pathway-audit-load"),uploadEvidenceButton=document.querySelector("#pathway-audit-upload");
 const pathwayElements={status:document.querySelector("#pathway-audit-result"),truthLabel:document.querySelector("#pathway-audit-truth-label"),observedAt:document.querySelector("#pathway-audit-observed-at"),evidenceDigest:document.querySelector("#pathway-audit-evidence-digest"),configurationDigest:document.querySelector("#pathway-audit-configuration-digest"),sourceBlock:document.querySelector("#pathway-audit-source-block"),destinationBlock:document.querySelector("#pathway-audit-destination-block"),blockers:document.querySelector("#pathway-audit-blockers"),notice:document.querySelector("#pathway-audit-notice")};
-const walletConnect=document.querySelector("#wallet-connect"),walletAccount=document.querySelector("#wallet-account"),testnetReadinessCheck=document.querySelector("#testnet-readiness-check"),testnetReadinessStatus=document.querySelector("#testnet-readiness-status");
+const walletConnect=document.querySelector("#wallet-connect"),walletAccount=document.querySelector("#wallet-account"),testnetReadinessCheck=document.querySelector("#testnet-readiness-check"),testnetReadinessStatus=document.querySelector("#testnet-readiness-status"),layerzeroEndpointCheck=document.querySelector("#layerzero-endpoint-check"),layerzeroEndpointStatus=document.querySelector("#layerzero-endpoint-status");
 const walletProvider=window.ethereum;
 const ethereumSepoliaChainId="0xaa36a7";
 const arbitrumSepoliaChainId="0x66eee";
+const endpointV2Address="0x6EDCE65403992e310A62460808c4b910D972f10f";
 let connectedWalletAccount;
 const walletShort=value=>`${value.slice(0,6)}…${value.slice(-4)}`;
 function walletState(message,connected=false){
@@ -20,6 +21,7 @@ function walletState(message,connected=false){
   walletConnect.disabled=false;
 }
 function readinessState(message){if(testnetReadinessStatus)testnetReadinessStatus.textContent=message}
+function endpointState(message){if(layerzeroEndpointStatus)layerzeroEndpointStatus.textContent=message}
 async function refreshWalletAccount(accounts){
   if(!Array.isArray(accounts)||typeof accounts[0]!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(accounts[0])){connectedWalletAccount=undefined;walletState("Wallet not connected");readinessState("Testnet balances not checked");return}
   connectedWalletAccount=accounts[0];
@@ -60,6 +62,24 @@ async function checkTestnetReadiness(){
   }catch{readinessState("Could not read both testnet balances")}
   finally{testnetReadinessCheck.disabled=false;testnetReadinessCheck.textContent="Check testnet funds"}
 }
+async function readEndpointCode(chainId,label){
+  await walletProvider.request({method:"wallet_switchEthereumChain",params:[{chainId}]});
+  const code=await walletProvider.request({method:"eth_getCode",params:[endpointV2Address,"latest"]});
+  if(typeof code!=="string"||!/^0x[0-9a-fA-F]+$/.test(code))throw new Error("endpoint code missing");
+  return `${label}: code detected`;
+}
+async function checkLayerZeroEndpointCode(){
+  if(!walletProvider?.request){endpointState("No browser wallet found");return}
+  if(!connectedWalletAccount){await connectReadOnlyWallet();if(!connectedWalletAccount)return}
+  layerzeroEndpointCheck.disabled=true;layerzeroEndpointCheck.textContent="Verifying…";endpointState("Checking configured EndpointV2 code on both testnets…");
+  try{
+    const sepolia=await readEndpointCode(ethereumSepoliaChainId,"Ethereum Sepolia");
+    const arbitrum=await readEndpointCode(arbitrumSepoliaChainId,"Arbitrum Sepolia");
+    endpointState(`${sepolia} · ${arbitrum} · code presence only`);
+    await refreshWalletAccount([connectedWalletAccount]);
+  }catch{endpointState("Could not read configured EndpointV2 code on both testnets")}
+  finally{layerzeroEndpointCheck.disabled=false;layerzeroEndpointCheck.textContent="Verify LZ endpoints"}
+}
 if(walletConnect){
   walletConnect.addEventListener("click",()=>void connectReadOnlyWallet());
   if(walletProvider?.request){
@@ -69,6 +89,7 @@ if(walletConnect){
   }
 }
 if(testnetReadinessCheck)testnetReadinessCheck.addEventListener("click",()=>void checkTestnetReadiness());
+if(layerzeroEndpointCheck)layerzeroEndpointCheck.addEventListener("click",()=>void checkLayerZeroEndpointCode());
 for(const button of[loadEvidenceButton,uploadEvidenceButton])button.addEventListener("click",()=>fileInput.click());
 const pathwayController=createPathwayAuditFileController({fileInput,inspectButton,status:pathwayStatus,elements:pathwayElements,formatTime:value=>new Date(value).toLocaleString()});
 const heroVideo=document.querySelector(".hero-media");

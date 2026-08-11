@@ -23,10 +23,12 @@
     <a class="portal-brand" href="#pathway" aria-label="GenLayer Sentinel overview"><span class="portal-mark">S</span>GenLayer Sentinel</a>
     <div class="portal-topbar-meta"><span>TESTNET PROTOTYPE</span><span class="portal-live-dot" aria-hidden="true"></span><span id="portal-runtime-label">READ ONLY</span></div>
     <div class="portal-actions">
+      <span class="layerzero-endpoint-status" id="layerzero-endpoint-status" role="status" aria-live="polite">LayerZero endpoint code not checked</span>
       <span class="testnet-readiness-status" id="testnet-readiness-status" role="status" aria-live="polite">Testnet balances not checked</span>
       <span class="wallet-account" id="wallet-account" role="status" aria-live="polite">Wallet not connected</span>
       <button class="portal-action wallet-connect" id="wallet-connect" type="button">Connect wallet</button>
       <button class="portal-action testnet-readiness-check" id="testnet-readiness-check" type="button">Check testnet funds</button>
+      <button class="portal-action layerzero-endpoint-check" id="layerzero-endpoint-check" type="button">Verify LZ endpoints</button>
       <a class="portal-action portal-evidence-link" href="#evidence">Review evidence</a>
     </div>
   </header>

@@ -86,6 +86,18 @@ test("offers a no-spend two-testnet balance readiness check",()=>{
   assert.equal(js.includes("eth_sendTransaction"),false);
 });
 
+test("offers a no-spend LayerZero EndpointV2 code-presence check on both testnets",()=>{
+  const check=element("button","layerzero-endpoint-check");
+  const status=html.match(/<[^>]+\bid="layerzero-endpoint-status"[^>]*>/i)?.[0]??"";
+  assert.notEqual(check,"","LayerZero endpoint check must be actionable");
+  assert.match(check,/\btype="button"/i);
+  assert.match(status,/\brole="status"/i);
+  assert.match(status,/\baria-live="polite"/i);
+  assert.equal(js.includes("eth_getCode"),true);
+  assert.equal(js.includes('endpointV2Address="0x6EDCE65403992e310A62460808c4b910D972f10f"'),true);
+  assert.equal(js.includes("eth_sendTransaction"),false);
+});
+
 test("preserves the existing live operations and demo targets",()=>{
   for(const id of[
     "runtime-mode","live-notice","demo-workspace","demo-title","demo-status","demo-connect","demo-account","demo-chain",
