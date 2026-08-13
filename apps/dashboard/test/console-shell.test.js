@@ -85,6 +85,15 @@ test("an initial URL GUID stays canonical when the coordinator does not contain 
   assert.deepEqual(selection.resolve([job("packet-a")]),{state:"unavailable",guid:"packet-missing"});
 });
 
+test("an observed GUID cannot replace an existing URL-selected packet",async()=>{
+  const {createConsoleSelectionModel}=await importConsoleApp("?guid=packet-a");
+  const selection=createConsoleSelectionModel("packet-a");
+  selection.selectObserved("packet-b");
+  assert.equal(selection.selectedGuid,"packet-a");
+  assert.equal(selection.observedGuid,undefined);
+  assert.equal(selection.resolve([job("packet-a"),job("packet-b")]).job.packet.guid,"packet-a");
+});
+
 test("a selected GUID becomes unavailable instead of changing when a poll removes it",async()=>{
   const {createConsoleSelectionModel}=await importConsoleApp();
   const selection=createConsoleSelectionModel();

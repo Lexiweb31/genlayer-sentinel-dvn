@@ -15,7 +15,7 @@ export function createConsoleSelectionModel(initialGuid){
     get selectedGuid(){return selectedGuid},
     get observedGuid(){return observedGuid},
     selectManual(guid){selectedGuid=guid;observedGuid=undefined},
-    selectObserved(guid){selectedGuid=guid;observedGuid=guid.toLowerCase()},
+    selectObserved(guid){if(selectedGuid!==undefined)return;selectedGuid=guid;observedGuid=guid.toLowerCase()},
     resolve(jobs){
       if(selectedGuid!==undefined){
         const job=jobs.find(item=>sameGuid(item.packet.guid,selectedGuid));
@@ -151,7 +151,7 @@ async function refreshRuntime(){try{const response=await fetch("/health",{header
 async function refreshRuntimeStatus(){try{const response=await fetch("/api/runtime-status",{headers:{accept:"application/json"},cache:"no-store"});if(!response.ok)throw new Error(`status ${response.status}`);renderRuntimeStatus(runtimeElements,validateRuntimeStatus(await response.json()),value=>new Date(value*1000).toLocaleString())}catch{renderRuntimeUnavailable(runtimeElements)}}
 consoleSearch.addEventListener("input",()=>{consoleQuery=normalizeConsoleQuery(consoleSearch.value);populate()});
 select.addEventListener("change",()=>{const job=jobs.find(item=>sameGuid(item.packet.guid,select.value));if(job)selectJob(job,{updateUrl:true,manual:true})});
-window.addEventListener("sentinel:guid-observed",event=>{const guid=event.detail?.guid;if(typeof guid!=="string"||!/^0x[0-9a-fA-F]{64}$/.test(guid))return;consoleSelection.selectObserved(guid);const job=jobs.find(item=>sameGuid(item.packet.guid,guid));if(job)selectJob(job);else showSelectionUnavailable()});
+window.addEventListener("sentinel:guid-observed",event=>{const guid=event.detail?.guid;if(typeof guid!=="string"||!/^0x[0-9a-fA-F]{64}$/.test(guid))return;consoleSelection.selectObserved(guid);const job=jobs.find(item=>sameGuid(item.packet.guid,consoleSelection.selectedGuid));if(job)selectJob(job);else showSelectionUnavailable()});
 window.addEventListener("sentinel:demo-bootstrap",event=>{
   if(event.detail?.state==="OPERATIONS_ALLOWED")startPolling();
   else if(event.detail?.state==="RESTORED_UNAVAILABLE")showUnverifiedRestore();
