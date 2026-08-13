@@ -92,19 +92,34 @@ function fakeDocument(){
 }
 
 function installConsoleNavigationGlobals(){
+  const hadLocation=Object.hasOwn(globalThis,"location"),previousLocation=globalThis.location;
+  const hadHistory=Object.hasOwn(globalThis,"history"),previousHistory=globalThis.history;
   globalThis.location={pathname:"/console/",search:"",hash:""};
-  globalThis.history={replaceState(){}};
+  globalThis.history={replaceState(_state,_unused,url){
+    if(url===undefined)return;
+    const next=new URL(String(url),"https://sentinel.test/console/");
+    if(next.origin!=="https://sentinel.test")throw new Error("cross-origin history update");
+    globalThis.location.pathname=next.pathname;
+    globalThis.location.search=next.search;
+    globalThis.location.hash=next.hash;
+  }};
+  return()=>{
+    if(hadLocation)globalThis.location=previousLocation;else delete globalThis.location;
+    if(hadHistory)globalThis.history=previousHistory;else delete globalThis.history;
+  };
 }
 
-test("console integration fixtures expose stable read-only route globals",()=>{
-  installConsoleNavigationGlobals();
-  const initial={...globalThis.location};
-  globalThis.history.replaceState(null,"","/console/?guid=changed");
-  assert.deepEqual(globalThis.location,initial);
-  assert.deepEqual(initial,{pathname:"/console/",search:"",hash:""});
+test("console integration fixtures model history route updates",t=>{
+  t.after(installConsoleNavigationGlobals());
+  globalThis.history.replaceState(null,"","/console/?q=0xtransaction&guid=0xpacket#evidence");
+  assert.deepEqual(globalThis.location,{
+    pathname:"/console/",
+    search:"?q=0xtransaction&guid=0xpacket",
+    hash:"#evidence"
+  });
 });
 
-test("unavailable restoration performs only the capability GET and never touches the wallet",async()=>{
+test("unavailable restoration performs only the capability GET and never touches the wallet",async t=>{
   const locator={
     version:1,
     chainId:"31337",
@@ -123,7 +138,7 @@ test("unavailable restoration performs only the capability GET and never touches
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
-  installConsoleNavigationGlobals();
+  t.after(installConsoleNavigationGlobals());
   globalThis.fetch=async path=>{
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:false,status:404,json:async()=>({})};
@@ -149,7 +164,7 @@ test("unavailable restoration performs only the capability GET and never touches
   assert.equal(storage.value(storageKey),JSON.stringify(locator));
 });
 
-test("matching restoration unlocks read-only operations and schedules the exact GUID without touching the wallet",async()=>{
+test("matching restoration unlocks read-only operations and schedules the exact GUID without touching the wallet",async t=>{
   const publicConfig={
     mode:"LOCAL_WALLET_DEMO",
     chainId:"31337",
@@ -186,7 +201,7 @@ test("matching restoration unlocks read-only operations and schedules the exact 
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
-  installConsoleNavigationGlobals();
+  t.after(installConsoleNavigationGlobals());
   globalThis.fetch=async path=>{
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:true,status:200,json:async()=>publicConfig};
@@ -230,7 +245,7 @@ test("matching restoration unlocks read-only operations and schedules the exact 
   assert.equal(documentValue.elements.get("#runtime-lease").textContent,"NOT APPLICABLE · LOCAL FIXTURE");
 });
 
-test("runtime status failure renders unavailable without disrupting other operations panels",async()=>{
+test("runtime status failure renders unavailable without disrupting other operations panels",async t=>{
   const storage=memoryStorage();
   const windowValue=new FakeWindow(storage,undefined);
   const documentValue=fakeDocument();
@@ -239,7 +254,7 @@ test("runtime status failure renders unavailable without disrupting other operat
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
-  installConsoleNavigationGlobals();
+  t.after(installConsoleNavigationGlobals());
   globalThis.fetch=async path=>{
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:false,status:404,json:async()=>({})};
@@ -276,7 +291,7 @@ test("runtime status failure renders unavailable without disrupting other operat
   assert.equal(documentValue.elements.get("#recovery-action-status").textContent,"EMPTY");
 });
 
-test("a fresh wallet action persists nothing until the mined receipt yields its bound GUID",async()=>{
+test("a fresh wallet action persists nothing until the mined receipt yields its bound GUID",async t=>{
   const owner="0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const sourceOApp="0x1111111111111111111111111111111111111111";
   const target="0x3333333333333333333333333333333333333333";
@@ -338,7 +353,7 @@ test("a fresh wallet action persists nothing until the mined receipt yields its 
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
-  installConsoleNavigationGlobals();
+  t.after(installConsoleNavigationGlobals());
   globalThis.fetch=async path=>{
     if(path==="/api/demo/config")return{ok:true,status:200,json:async()=>publicConfig};
     if(path==="/health")return{ok:true,status:200,json:async()=>({presentationMode:"LOCAL_TEST"})};
