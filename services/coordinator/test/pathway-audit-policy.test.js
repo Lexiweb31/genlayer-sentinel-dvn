@@ -342,7 +342,7 @@ test("binds reviewed runtime-code evidence only to matching policy pins",async()
   assert.notEqual(binding.repositoryBindingSha256,previous.repositoryBindingSha256);
 });
 
-test("the committed runtime-code registry binds the two source-reviewed EndpointV2 identities while keeping the remaining pathway contracts unreviewed",async()=>{
+test("the committed runtime-code registry binds the three source-reviewed LayerZero identities while keeping the remaining pathway contracts unreviewed",async()=>{
   const text=await readFile(new URL("config/official-runtime-code-audit.json",root),"utf8");
   assert.equal(text,canonicalJson(JSON.parse(text)));
   const input=await inputs();
@@ -351,11 +351,12 @@ test("the committed runtime-code registry binds the two source-reviewed Endpoint
   const binding=bindPathwayAuditPolicy(input);
   assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.state,"REVIEWED");
   assert.equal(binding.officialRuntimeCodeReview.destinationEndpointV2.state,"REVIEWED");
-  assert.equal(binding.officialRuntimeCodeReview.sourceSendUln302.state,"UNREVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.sourceSendUln302.state,"REVIEWED");
   assert.equal(binding.officialRuntimeCodeReview.sourceExecutor.state,"UNREVIEWED");
   assert.equal(binding.officialRuntimeCodeReview.destinationReceiveUln302.state,"UNREVIEWED");
   assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.runtimeCodeKeccak256,"0xb9566c25069b67b14e7c081fa41cf1ca35575fb56f699518eefbd0206d3e502d");
   assert.equal(binding.officialRuntimeCodeReview.destinationEndpointV2.runtimeCodeKeccak256,"0x1317714d9fab30e7f81a3fbbe0d324ba9b93900e89e6a4b79357b0562c8d9e2a");
+  assert.equal(binding.officialRuntimeCodeReview.sourceSendUln302.runtimeCodeKeccak256,"0x192c7a91f9f55998f9c20b757128435caa71374924b6c6f3d0f55a523dff294c");
 });
 
 test("the runtime-code review workflow preserves all-five and not-deployed boundaries",async()=>{
