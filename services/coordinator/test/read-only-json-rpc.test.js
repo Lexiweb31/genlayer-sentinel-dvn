@@ -37,13 +37,14 @@ const address="0x1111111111111111111111111111111111111111";
 const transactionHash=`0x${"2".repeat(64)}`;
 const blockReference={blockHash:`0x${"3".repeat(64)}`,requireCanonical:true};
 
-test("allows only the seven read-only methods with their closed parameter grammar",async()=>{
+test("allows only the eight read-only methods with their closed parameter grammar",async()=>{
   const exchange=successfulExchange(),client=clientWith(exchange);
   const allowed=[
     ["eth_chainId",[]],
     ["eth_blockNumber",[]],
     ["eth_getBlockByNumber",["0x1",false]],
     ["eth_getCode",[address,blockReference]],
+    ["eth_getStorageAt",[address,`0x${"4".repeat(64)}`,blockReference]],
     ["eth_call",[{to:address,data:"0x1234"},blockReference]],
     ["eth_getTransactionByHash",[transactionHash]],
     ["eth_getTransactionReceipt",[transactionHash]]
@@ -61,6 +62,8 @@ test("allows only the seven read-only methods with their closed parameter gramma
     ["eth_getBlockByNumber",["0x1",true]],
     ["eth_getCode",[address,"latest"]],
     ["eth_getCode",[address,{...blockReference,extra:true}]],
+    ["eth_getStorageAt",[address,"0x4",blockReference]],
+    ["eth_getStorageAt",[address,`0x${"4".repeat(64)}`,"latest"]],
     ["eth_call",[{from:address,to:address,data:"0x"},blockReference]],
     ["eth_call",[{to:address,data:"0x1"},blockReference]],
     ["eth_getTransactionByHash",["0x2"]],

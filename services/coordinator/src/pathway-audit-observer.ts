@@ -1,5 +1,5 @@
 import{createHash}from"node:crypto";
-import{keccak256}from"ethers";
+import{getAddress,keccak256}from"ethers";
 import type{Hex}from"../../../packages/core/src/types.js";
 import{canonicalJson}from"./canonical-json.js";
 import{
@@ -85,6 +85,11 @@ export interface RuntimeCodeObservation{
   byteLength:number|null;
   runtimeCodeKeccak256:string|null;
   identity:"CODE_IDENTITY_REVIEWED"|"CODE_PRESENT_IDENTITY_UNPROVEN"|"CODE_MISSING"|"PROVIDER_DISAGREEMENT";
+  proxyEvidence?:{
+    wrapper:"ONCHAIN_AGREED";
+    implementationAddress:string|null;
+    implementation:"REVIEWED"|"UNREVIEWED"|"DISAGREED"|"MISSING";
+  };
 }
 
 export interface PublicDeploymentEvidence{
@@ -200,16 +205,16 @@ export async function observePathway(input:PathwayAuditObserverInput):Promise<Pa
   if(sourceBlock){
     const expected=input.policyBinding.officialRuntimeCodeKeccak256;
     officialCode.source=await Promise.all([
-      observeCode("sourceEndpointV2",input.manifest.source.contracts.endpointV2,expected.sourceEndpointV2,sourcePair,sourceBlock,blockers,agreement,"source"),
-      observeCode("sourceSendUln302",input.manifest.source.contracts.sendUln302,expected.sourceSendUln302,sourcePair,sourceBlock,blockers,agreement,"source"),
-      observeCode("sourceExecutor",input.manifest.source.contracts.executor,expected.sourceExecutor,sourcePair,sourceBlock,blockers,agreement,"source")
+      observeCode("sourceEndpointV2",input.manifest.source.contracts.endpointV2,expected.sourceEndpointV2,sourcePair,sourceBlock,blockers,agreement,"source",input.policyBinding.proxyRuntimeTargets.includes("sourceEndpointV2")),
+      observeCode("sourceSendUln302",input.manifest.source.contracts.sendUln302,expected.sourceSendUln302,sourcePair,sourceBlock,blockers,agreement,"source",input.policyBinding.proxyRuntimeTargets.includes("sourceSendUln302")),
+      observeCode("sourceExecutor",input.manifest.source.contracts.executor,expected.sourceExecutor,sourcePair,sourceBlock,blockers,agreement,"source",input.policyBinding.proxyRuntimeTargets.includes("sourceExecutor"))
     ]);
   }
   if(destinationBlock){
     const expected=input.policyBinding.officialRuntimeCodeKeccak256;
     officialCode.destination=await Promise.all([
-      observeCode("destinationEndpointV2",input.manifest.destination.contracts.endpointV2,expected.destinationEndpointV2,destinationPair,destinationBlock,blockers,agreement,"destination"),
-      observeCode("destinationReceiveUln302",input.manifest.destination.contracts.receiveUln302,expected.destinationReceiveUln302,destinationPair,destinationBlock,blockers,agreement,"destination")
+      observeCode("destinationEndpointV2",input.manifest.destination.contracts.endpointV2,expected.destinationEndpointV2,destinationPair,destinationBlock,blockers,agreement,"destination",input.policyBinding.proxyRuntimeTargets.includes("destinationEndpointV2")),
+      observeCode("destinationReceiveUln302",input.manifest.destination.contracts.receiveUln302,expected.destinationReceiveUln302,destinationPair,destinationBlock,blockers,agreement,"destination",input.policyBinding.proxyRuntimeTargets.includes("destinationReceiveUln302"))
     ]);
   }
 
@@ -382,7 +387,7 @@ function classifyBlockFailure(pair:TrackedPair,expectedChainId:number,blockers:P
 
 async function observeCode(
   name:string,address:string,expectedHash:string|null,pair:TrackedPair,block:PinnedBlockObservation,
-  blockers:PathwayAuditBlocker[],agreement:{source:boolean;destination:boolean},chain:"source"|"destination"
+  blockers:PathwayAuditBlocker[],agreement:{source:boolean;destination:boolean},chain:"source"|"destination",proxyRuntimeTarget:boolean
 ):Promise<RuntimeCodeObservation>{
   const results=await Promise.allSettled(pair.clients.map(client=>client.call("eth_getCode",[address,eip1898(block)])));
   if(results.some(result=>result.status==="rejected")){
@@ -393,8 +398,41 @@ async function observeCode(
   if(values[0]===null||values[1]===null){addBlocker(blockers,"AUDIT_CODE_MISSING");return{name,address,byteLength:null,runtimeCodeKeccak256:null,identity:"CODE_MISSING"}}
   if(values[0]!==values[1]){addBlocker(blockers,"AUDIT_PROVIDER_RESULT_DISAGREEMENT");agreement[chain]=false;return{name,address,byteLength:null,runtimeCodeKeccak256:null,identity:"PROVIDER_DISAGREEMENT"}}
   const digest=keccak256(values[0]!);
-  if(expectedHash===null||digest!==expectedHash){addBlocker(blockers,"AUDIT_CODE_IDENTITY_UNPROVEN");return{name,address,byteLength:(values[0]!.length-2)/2,runtimeCodeKeccak256:digest,identity:"CODE_PRESENT_IDENTITY_UNPROVEN"}}
-  return{name,address,byteLength:(values[0]!.length-2)/2,runtimeCodeKeccak256:digest,identity:"CODE_IDENTITY_REVIEWED"};
+  const proxyEvidence=proxyRuntimeTarget?await observeProxyEvidence(address,pair,block,blockers,agreement,chain):undefined;
+  if(expectedHash===null||digest!==expectedHash||proxyEvidence?.implementation!==undefined&&proxyEvidence.implementation!=="REVIEWED"){addBlocker(blockers,"AUDIT_CODE_IDENTITY_UNPROVEN");return{name,address,byteLength:(values[0]!.length-2)/2,runtimeCodeKeccak256:digest,identity:"CODE_PRESENT_IDENTITY_UNPROVEN",...(proxyEvidence?{proxyEvidence}:{})}}
+  return{name,address,byteLength:(values[0]!.length-2)/2,runtimeCodeKeccak256:digest,identity:"CODE_IDENTITY_REVIEWED",...(proxyEvidence?{proxyEvidence}:{})};
+}
+
+const eip1967ImplementationSlot="0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
+
+async function observeProxyEvidence(
+  address:string,pair:TrackedPair,block:PinnedBlockObservation,blockers:PathwayAuditBlocker[],
+  agreement:{source:boolean;destination:boolean},chain:"source"|"destination"
+):Promise<RuntimeCodeObservation["proxyEvidence"]>{
+  const results=await Promise.allSettled(pair.clients.map(client=>client.call("eth_getStorageAt",[address,eip1967ImplementationSlot,eip1898(block)])));
+  if(results.some(result=>result.status==="rejected")){
+    addBlocker(blockers,hasTransportFailure(pair)?"AUDIT_RPC_UNAVAILABLE":"AUDIT_PROVIDER_RESULT_DISAGREEMENT");agreement[chain]=false;
+    return{wrapper:"ONCHAIN_AGREED",implementationAddress:null,implementation:"DISAGREED"};
+  }
+  const values=results.map(result=>implementationAddress((result as PromiseFulfilledResult<unknown>).value));
+  if(values.some(value=>value===undefined)||values[0]!==values[1]){
+    addBlocker(blockers,"AUDIT_PROVIDER_RESULT_DISAGREEMENT");agreement[chain]=false;
+    return{wrapper:"ONCHAIN_AGREED",implementationAddress:null,implementation:"DISAGREED"};
+  }
+  if(values[0]===null)return{wrapper:"ONCHAIN_AGREED",implementationAddress:null,implementation:"MISSING"};
+  const implementation=values[0];
+  if(typeof implementation!=="string"){
+    addBlocker(blockers,"AUDIT_PROVIDER_RESULT_DISAGREEMENT");agreement[chain]=false;
+    return{wrapper:"ONCHAIN_AGREED",implementationAddress:null,implementation:"DISAGREED"};
+  }
+  return{wrapper:"ONCHAIN_AGREED",implementationAddress:implementation,implementation:"UNREVIEWED"};
+}
+
+function implementationAddress(value:unknown):string|null|undefined{
+  if(typeof value!=="string"||!/^0x[0-9a-fA-F]{64}$/.test(value))return undefined;
+  const raw=`0x${value.slice(-40)}`;
+  if(/^0x0{40}$/i.test(raw))return null;
+  try{return getAddress(raw)}catch{return undefined}
 }
 
 function normalizeAgreedSource(

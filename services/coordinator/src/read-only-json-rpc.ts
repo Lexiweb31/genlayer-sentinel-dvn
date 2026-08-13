@@ -12,7 +12,7 @@ export{PathwayAuditError}from"./pathway-audit-model.js";
 
 export type ReadOnlyRpcMethod=
   "eth_chainId"|"eth_blockNumber"|"eth_getBlockByNumber"|
-  "eth_getCode"|"eth_call"|"eth_getTransactionByHash"|
+  "eth_getCode"|"eth_getStorageAt"|"eth_call"|"eth_getTransactionByHash"|
   "eth_getTransactionReceipt";
 
 export interface ReadOnlyRpcClient{
@@ -59,7 +59,7 @@ const MAX_REQUEST_BYTES=256*1024;
 const MAX_HEADERS_COUNT=32;
 const methods=new Set<string>([
   "eth_chainId","eth_blockNumber","eth_getBlockByNumber","eth_getCode",
-  "eth_call","eth_getTransactionByHash","eth_getTransactionReceipt"
+  "eth_getStorageAt","eth_call","eth_getTransactionByHash","eth_getTransactionReceipt"
 ]);
 const addressPattern=/^0x[0-9a-fA-F]{40}$/;
 const hashPattern=/^0x[0-9a-fA-F]{64}$/;
@@ -162,6 +162,9 @@ function normalizeParams(method:unknown,params:unknown):unknown[]{
     case"eth_getCode":
       if(params.length!==2||!address(params[0]))failure();
       return[params[0],blockReference(params[1])];
+    case"eth_getStorageAt":
+      if(params.length!==3||!address(params[0])||!hash(params[1]))failure();
+      return[params[0],params[1],blockReference(params[2])];
     case"eth_call":
       if(params.length!==2)failure();
       return[callObject(params[0]),blockReference(params[1])];

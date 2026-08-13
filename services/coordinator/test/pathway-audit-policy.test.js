@@ -61,12 +61,22 @@ function policy(){
     dvnOperatorAudit:"config/dvn-operator-audit.json",
     officialRuntimeCodeAudit:"config/official-runtime-code-audit.json",
     pathway:{source:"ethereum-sepolia",destination:"arbitrum-sepolia"},
+    proxyRuntimeTargets:[],
     officialRuntimeCodeKeccak256:{
       sourceEndpointV2:null,sourceSendUln302:null,sourceExecutor:null,
       destinationEndpointV2:null,destinationReceiveUln302:null
     }
   };
 }
+
+test("binds only the explicitly declared proxy runtime targets",async()=>{
+  const input=await inputs();
+  const policy=JSON.parse(input.policyText);
+  policy.proxyRuntimeTargets=["sourceExecutor"];
+  input.policyText=JSON.stringify(policy,null,2)+"\n";
+  const binding=bindPathwayAuditPolicy(input);
+  assert.deepEqual(binding.proxyRuntimeTargets,["sourceExecutor"]);
+});
 
 async function inputs(){
   const [networksText,networkAuditEvidenceText]=await Promise.all([

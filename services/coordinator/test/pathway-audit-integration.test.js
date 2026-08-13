@@ -60,6 +60,7 @@ function policyText(){return JSON.stringify({
   networkConfig:"config/networks.json",networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
   providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",officialRuntimeCodeAudit:"config/official-runtime-code-audit.json",
   pathway:{source:"ethereum-sepolia",destination:"arbitrum-sepolia"},
+  proxyRuntimeTargets:[],
   officialRuntimeCodeKeccak256:{sourceEndpointV2:keccak256("0x6000"),sourceSendUln302:keccak256("0x6000"),sourceExecutor:keccak256("0x6000"),destinationEndpointV2:keccak256("0x6000"),destinationReceiveUln302:keccak256("0x6000")}
 },null,2)+"\n"}
 

@@ -120,6 +120,7 @@ function policyBinding(value){
       sourceEndpointV2:codeHash,sourceSendUln302:codeHash,sourceExecutor:codeHash,
       destinationEndpointV2:codeHash,destinationReceiveUln302:codeHash
     },
+    proxyRuntimeTargets:[],
     providerState:{
       source:value.source.rpcs.map(rpc=>({label:rpc.label,state:"OPERATOR_EVIDENCE_REVIEWED"})),
       destination:value.destination.rpcs.map(rpc=>({label:rpc.label,state:"OPERATOR_EVIDENCE_REVIEWED"}))
@@ -192,6 +193,14 @@ function chainFixture(value,chain,options={}){
             if(options.codeDisagreement&&index===1&&target===lower(network.endpoint))return"0x6002";
             if(options.deploymentCodeDisagreement&&index===1&&target===lower(isSource?contracts.sourceAdapter:contracts.destinationAdapter))return"0x6002";
             return codeByAddress.get(target)??"0x6000";
+          }
+          if(method==="eth_getStorageAt"){
+            const target=lower(params[0]);
+            if(isSource&&target===lower(network.executor)){
+              const implementation=index===1&&options.proxyImplementationDisagreement?address(0x799):options.proxyImplementation??address(0x795);
+              return `0x${"0".repeat(24)}${implementation.slice(2).toLowerCase()}`;
+            }
+            return `0x${"0".repeat(64)}`;
           }
           if(method==="eth_getTransactionByHash"){
             const result=structuredClone(deployments.get(params[0])?.transaction);
@@ -296,6 +305,52 @@ test("a partial official code review preserves the code-identity blocker before 
   assert.equal(observation.officialCode.source[1].identity,"CODE_PRESENT_IDENTITY_UNPROVEN");
   assert.equal(observation.status,"BLOCKED_CODE_IDENTITY");
   assert.deepEqual(codes(observation),["AUDIT_CODE_IDENTITY_UNPROVEN","AUDIT_PATHWAY_DEPLOYMENTS_MISSING"]);
+});
+
+test("reports an agreed proxy wrapper separately from its unreviewed implementation without clearing the identity blocker",async()=>{
+  const setup=fixture({deployment:false});
+  setup.input.policyBinding.proxyRuntimeTargets=["sourceExecutor"];
+  setup.input.policyBinding.officialRuntimeCodeKeccak256.sourceExecutor=null;
+  const observation=await observePathway(setup.input);
+  const executor=observation.officialCode.source.find(value=>value.name==="sourceExecutor");
+  assert.equal(executor.identity,"CODE_PRESENT_IDENTITY_UNPROVEN");
+  assert.deepEqual(executor.proxyEvidence,{
+    wrapper:"ONCHAIN_AGREED",implementationAddress:address(0x795),implementation:"UNREVIEWED"
+  });
+  assert.equal(codes(observation).includes("AUDIT_CODE_IDENTITY_UNPROVEN"),true);
+});
+
+test("does not promote a matching proxy wrapper while its implementation lacks official identity evidence",async()=>{
+  const setup=fixture({deployment:false});
+  setup.input.policyBinding.proxyRuntimeTargets=["sourceExecutor"];
+  const observation=await observePathway(setup.input);
+  const executor=observation.officialCode.source.find(value=>value.name==="sourceExecutor");
+  assert.equal(executor.identity,"CODE_PRESENT_IDENTITY_UNPROVEN");
+  assert.equal(executor.proxyEvidence?.implementation,"UNREVIEWED");
+  assert.equal(codes(observation).includes("AUDIT_CODE_IDENTITY_UNPROVEN"),true);
+});
+
+test("only reads proxy storage for an explicitly configured proxy runtime target",async()=>{
+  const setup=fixture({deployment:false});
+  const observation=await observePathway(setup.input);
+  const executor=observation.officialCode.source.find(value=>value.name==="sourceExecutor");
+  assert.equal(executor.proxyEvidence,undefined);
+  for(const groups of Object.values(setup.calls))for(const calls of groups){
+    assert.equal(calls.some(value=>value.method==="eth_getStorageAt"),false);
+  }
+});
+
+test("reports a proxy implementation disagreement without promoting the wrapper identity",async()=>{
+  const setup=fixture({deployment:false,source:{proxyImplementationDisagreement:true}});
+  setup.input.policyBinding.proxyRuntimeTargets=["sourceExecutor"];
+  setup.input.policyBinding.officialRuntimeCodeKeccak256.sourceExecutor=null;
+  const observation=await observePathway(setup.input);
+  const executor=observation.officialCode.source.find(value=>value.name==="sourceExecutor");
+  assert.equal(executor.identity,"CODE_PRESENT_IDENTITY_UNPROVEN");
+  assert.deepEqual(executor.proxyEvidence,{
+    wrapper:"ONCHAIN_AGREED",implementationAddress:null,implementation:"DISAGREED"
+  });
+  assert.equal(codes(observation).includes("AUDIT_PROVIDER_RESULT_DISAGREEMENT"),true);
 });
 
 test("predeployment missing-vs-code disagreement cannot be labeled transport agreement",async()=>{

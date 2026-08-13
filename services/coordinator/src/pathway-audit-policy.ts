@@ -17,6 +17,7 @@ export interface PathwayAuditorPolicy{
   dvnOperatorAudit:"config/dvn-operator-audit.json";
   officialRuntimeCodeAudit:"config/official-runtime-code-audit.json";
   pathway:{source:string;destination:string};
+  proxyRuntimeTargets:RuntimeCodeName[];
   officialRuntimeCodeKeccak256:{
     sourceEndpointV2:string|null;sourceSendUln302:string|null;sourceExecutor:string|null;
     destinationEndpointV2:string|null;destinationReceiveUln302:string|null;
@@ -84,6 +85,7 @@ export interface PathwayAuditPolicyBinding{
     destination:NetworkValues;
   };
   officialRuntimeCodeKeccak256:PathwayAuditorPolicy["officialRuntimeCodeKeccak256"];
+  proxyRuntimeTargets:PathwayAuditorPolicy["proxyRuntimeTargets"];
   officialRuntimeCodeReview:Record<RuntimeCodeName,RuntimeCodeReview>;
   providerState:{
     source:{label:string;state:ProviderEvidenceState}[];
@@ -141,7 +143,7 @@ const runtimeCodeNames:[RuntimeCodeName,...RuntimeCodeName[]]=[
 export function parsePathwayAuditorPolicy(text:string):PathwayAuditorPolicy{
   try{
     const root=record(parseJsonDocument(text));
-    exactKeys(root,["schemaVersion","toolVersion","maximumProviderAuditAgeDays","networkConfig","networkAuditEvidence","providerAudit","dvnOperatorAudit","officialRuntimeCodeAudit","pathway","officialRuntimeCodeKeccak256"]);
+    exactKeys(root,["schemaVersion","toolVersion","maximumProviderAuditAgeDays","networkConfig","networkAuditEvidence","providerAudit","dvnOperatorAudit","officialRuntimeCodeAudit","pathway","proxyRuntimeTargets","officialRuntimeCodeKeccak256"]);
     const pathway=record(root.pathway),official=record(root.officialRuntimeCodeKeccak256);
     exactKeys(pathway,["source","destination"]);
     exactKeys(official,["sourceEndpointV2","sourceSendUln302","sourceExecutor","destinationEndpointV2","destinationReceiveUln302"]);
@@ -149,12 +151,13 @@ export function parsePathwayAuditorPolicy(text:string):PathwayAuditorPolicy{
       !positiveInteger(root.maximumProviderAuditAgeDays)||root.networkConfig!=="config/networks.json"||
       root.networkAuditEvidence!=="docs/research/2026-08-02-layerzero-interface-conformance-audit.md"||
       root.providerAudit!=="config/rpc-provider-audit.json"||root.dvnOperatorAudit!=="config/dvn-operator-audit.json"||root.officialRuntimeCodeAudit!=="config/official-runtime-code-audit.json"||
-      !nonempty(pathway.source)||!nonempty(pathway.destination))invalid();
+      !nonempty(pathway.source)||!nonempty(pathway.destination)||!proxyRuntimeTargets(root.proxyRuntimeTargets))invalid();
     return{
       schemaVersion:1,toolVersion:"sentinel-pathway-auditor/v1",maximumProviderAuditAgeDays:root.maximumProviderAuditAgeDays,
       networkConfig:"config/networks.json",networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
       providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",officialRuntimeCodeAudit:"config/official-runtime-code-audit.json",
       pathway:{source:pathway.source,destination:pathway.destination},
+      proxyRuntimeTargets:[...root.proxyRuntimeTargets],
       officialRuntimeCodeKeccak256:{
         sourceEndpointV2:codeHash(official.sourceEndpointV2),sourceSendUln302:codeHash(official.sourceSendUln302),sourceExecutor:codeHash(official.sourceExecutor),
         destinationEndpointV2:codeHash(official.destinationEndpointV2),destinationReceiveUln302:codeHash(official.destinationReceiveUln302)
@@ -195,6 +198,7 @@ export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAud
     networkAuditSha256,providerAuditSha256,dvnOperatorAuditSha256,officialRuntimeCodeAuditSha256,repositoryBindingSha256,
     network:{source:networks.source,destination:networks.destination},
     officialRuntimeCodeKeccak256:{...policy.officialRuntimeCodeKeccak256},
+    proxyRuntimeTargets:[...policy.proxyRuntimeTargets],
     officialRuntimeCodeReview:runtimeCodeBinding(runtimeCodeAudit),
     providerState:{source:source.state,destination:destination.state},
     rpcIndependence:{source:source.independence,destination:destination.independence},
@@ -382,6 +386,9 @@ function provider(value:unknown):ReviewedProvider{
 }
 
 function source(value:unknown):string{if(!nonempty(value))invalid();return value}
+function proxyRuntimeTargets(value:unknown):value is RuntimeCodeName[]{
+  return Array.isArray(value)&&value.every(name=>name==="sourceExecutor")&&new Set(value).size===value.length;
+}
 function strictStrings(values:string[]):boolean{return values.every((value,index)=>index===0||value>values[index-1]!)}
 function lowerAddress(value:string):string{return value.toLowerCase()}
 

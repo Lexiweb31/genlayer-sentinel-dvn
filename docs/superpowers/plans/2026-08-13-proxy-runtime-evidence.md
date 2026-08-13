@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Expose a verified proxy wrapper and separately unresolved implementation evidence without weakening Sentinel's runtime-identity or deployment gates.
+**Goal:** Expose on-chain-agreed proxy wrapper and separately unresolved implementation evidence without weakening Sentinel's runtime-identity or deployment gates.
 
 **Architecture:** Extend the closed runtime observation schema with an optional proxy summary. The observer obtains the EIP-1967 implementation slot through its existing two-provider, block-pinned read path. The canonical pathway bundle and dashboard parser carry only sanitized proxy facts. The top-level identity remains unreviewed until both layers are reviewed.
 
@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Read-only evidence only: no wallet access, deployment, signing, funding, cloud writes, or chain mutations.
-- Proxy wrapper review must never yield top-level `CODE_IDENTITY_REVIEWED` while the implementation is unresolved.
+- On-chain wrapper agreement must never yield top-level `CODE_IDENTITY_REVIEWED` while the implementation is unresolved.
 - Existing blocker ordering and `BLOCKED_CODE_IDENTITY` behavior remain unchanged.
 - New public values must be closed-schema, bounded, sanitized, and free of URLs, raw RPC responses, transactions, secrets, and signer material.
 
@@ -20,17 +20,22 @@
 ### Task 1: Model and observe EIP-1967 proxy evidence
 
 **Files:**
+- Modify: `config/pathway-auditor.json`
 - Modify: `services/coordinator/src/pathway-audit-observer.ts`
+- Modify: `services/coordinator/src/pathway-audit-policy.ts`
+- Modify: `services/coordinator/src/read-only-json-rpc.ts`
 - Modify: `services/coordinator/test/pathway-audit-observer.test.js`
+- Modify: `services/coordinator/test/pathway-audit-policy.test.js`
+- Modify: `services/coordinator/test/read-only-json-rpc.test.js`
 
 **Interfaces:**
 - Produces optional `proxyEvidence` on `RuntimeCodeObservation`:
-  `{wrapper:"REVIEWED"|"UNREVIEWED"|"DISAGREED",implementationAddress:string|null,implementation:"REVIEWED"|"UNREVIEWED"|"DISAGREED"|"MISSING"}`.
+  `{wrapper:"ONCHAIN_AGREED",implementationAddress:string|null,implementation:"REVIEWED"|"UNREVIEWED"|"DISAGREED"|"MISSING"}`.
 - Consumes the two existing provider clients and the already pinned observation block.
 
 - [ ] **Step 1: Write failing observer tests**
 
-Add an executor fixture where both providers return matching wrapper runtime and matching EIP-1967 implementation address. Assert an unresolved implementation produces `wrapper:"REVIEWED"`, `implementation:"UNREVIEWED"`, and the existing top-level `CODE_PRESENT_IDENTITY_UNPROVEN`. Add a mismatch fixture that returns different slot words and asserts `implementation:"DISAGREED"` plus the existing canonical provider-result blocker.
+Add an executor fixture where both providers return matching wrapper runtime and matching EIP-1967 implementation address. Assert an unresolved implementation produces `wrapper:"ONCHAIN_AGREED"`, `implementation:"UNREVIEWED"`, and the existing top-level `CODE_PRESENT_IDENTITY_UNPROVEN`. Add a mismatch fixture that returns different slot words and asserts `implementation:"DISAGREED"` plus the existing canonical provider-result blocker.
 
 - [ ] **Step 2: Run the observer test to verify it fails**
 
@@ -40,7 +45,7 @@ Expected: FAIL because `proxyEvidence` is absent.
 
 - [ ] **Step 3: Implement the minimum closed proxy observation**
 
-Read `eth_getStorageAt` at the EIP-1967 implementation slot for configured proxy targets using the existing client method and pinned block tag. Decode only a 32-byte word with a nonzero last-20-byte address. Populate the optional summary without exposing slot words or transport data. Preserve the old code identity unless wrapper and implementation are each reviewed.
+Read `eth_getStorageAt` at the EIP-1967 implementation slot only for policy-configured proxy targets using the existing client method and pinned block tag. Decode only a 32-byte word with a nonzero last-20-byte address. Populate the optional summary without exposing slot words or transport data. Preserve the old code identity unless wrapper and implementation are each reviewed.
 
 - [ ] **Step 4: Run focused tests to verify they pass**
 
@@ -107,7 +112,7 @@ git commit -m "feat: publish closed proxy evidence"
 
 - [ ] **Step 1: Write a failing console test**
 
-Render a blocked audit with the executor proxy summary. Assert the detail contains “Proxy wrapper: reviewed” and “Implementation: unresolved” and does not contain “ready”, “safe”, or an action control.
+Render a blocked audit with the executor proxy summary. Assert the detail contains “Proxy wrapper: on-chain agreed” and “Implementation: unresolved” and does not contain “ready”, “safe”, or an action control.
 
 - [ ] **Step 2: Run the focused console test to verify it fails**
 
