@@ -195,7 +195,7 @@ For each approved observation window:
 7. Compare `configurationSha256` and the decoded source/destination fields. Any library, peer, Executor, confirmation, DVN, threshold, adapter, or signer drift is a stop-signing event until reviewed.
 8. Compare status and the complete sorted blocker set; a removed blocker must have corresponding authoritative evidence, not just changed labels.
 
-The operations-first dashboard can inspect one operator-selected local artifact. The browser validates the artifact in memory, uploads nothing, persists nothing, and keeps it separate from packet, GenLayer, signer, delivery, and execution state. `NOT OBSERVED` is the honest default. The packaged static site can be built with `npm run build:site` and checked with `npm run test:site`; it is not currently published and has no live URL.
+The operations-first dashboard can inspect one operator-selected local artifact. The browser validates the artifact in memory, uploads nothing, persists nothing, and keeps it separate from packet, GenLayer, signer, delivery, and execution state. `NOT OBSERVED` is the honest default. The public static console is available at [genlayer-sentinel-console.damilexi2005.chatgpt.site](https://genlayer-sentinel-console.damilexi2005.chatgpt.site). Publication serves the read-only interface only; it does not establish a deployed pathway, GenLayer finality, signer quorum, or LayerZero onboarding.
 
 ## Incident response, recovery, and rollback
 
