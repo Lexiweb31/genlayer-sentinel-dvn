@@ -12,10 +12,10 @@
     "destination": "arbitrum-sepolia"
   },
   "officialRuntimeCodeKeccak256": {
-    "sourceEndpointV2": null,
+    "sourceEndpointV2": "0xb9566c25069b67b14e7c081fa41cf1ca35575fb56f699518eefbd0206d3e502d",
     "sourceSendUln302": null,
     "sourceExecutor": null,
-    "destinationEndpointV2": null,
+    "destinationEndpointV2": "0x1317714d9fab30e7f81a3fbbe0d324ba9b93900e89e6a4b79357b0562c8d9e2a",
     "destinationReceiveUln302": null
   }
 }
