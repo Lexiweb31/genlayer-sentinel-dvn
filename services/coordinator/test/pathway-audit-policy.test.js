@@ -353,6 +353,19 @@ test("the committed runtime-code registry is canonical and unreviewed until iden
   });
 });
 
+test("the runtime-code review workflow preserves all-five and not-deployed boundaries",async()=>{
+  const [review,pathway,unknowns,readme]=await Promise.all([
+    readFile(new URL("docs/research/2026-08-13-official-runtime-code-review.md",root),"utf8"),
+    readFile(new URL("docs/PATHWAY_AUDITOR.md",root),"utf8"),
+    readFile(new URL("docs/UNKNOWNS.md",root),"utf8"),
+    readFile(new URL("README.md",root),"utf8")
+  ]);
+  for(const text of[review,pathway,unknowns,readme]){
+    assert.match(text,/all five/i);
+    assert.match(text,/not deployed/i);
+  }
+});
+
 test("rejects malformed or mismatched runtime-code registry evidence",async()=>{
   const cases=[
     ["unknown contract name",audit=>{audit.entries[0].name="unknown";return canonicalJson(audit)}],

@@ -103,7 +103,7 @@ canonicalJson({
 
 The manifest's EndpointV2, source SendUln302, source Executor, destination ReceiveUln302, Dead-DVN, chain ID, EID, and unapproved confirmation values must exactly match the reviewed repository network record. Refresh that record from official primary sources before relying on a later run.
 
-The official runtime-code expectations in `config/pathway-auditor.json` are currently `null`. Code can therefore be observed, but official code identity remains unproven and must produce `AUDIT_CODE_IDENTITY_UNPROVEN` until independently reviewed Keccak-256 runtime hashes are committed. Presence of bytecode is not identity evidence.
+The official runtime-code expectations in `config/pathway-auditor.json` are currently `null`. Code can therefore be observed, but official code identity remains unproven and must produce `AUDIT_CODE_IDENTITY_UNPROVEN` until independently reviewed Keccak-256 runtime hashes are committed. Presence of bytecode is not identity evidence. A reviewed pin is bound to `config/official-runtime-code-audit.json`, a pinned official deployment-address record, a pinned LayerZero V2 source/release record, and two-provider runtime agreement at one block. Partial review remains blocked: all five required identities must match before the code-identity category can clear, and Sentinel is still not deployed until separate deployment evidence exists.
 
 ## Null and complete deployment workflows
 
