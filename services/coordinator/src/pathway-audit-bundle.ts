@@ -321,16 +321,28 @@ function codeArray(value:unknown,allowed:readonly string[]):RuntimeCodeObservati
 }
 
 function codeValue(value:unknown):RuntimeCodeObservation{
-  const root=record(value);exactKeys(root,["name","address","byteLength","runtimeCodeKeccak256","identity"]);
+  const root=record(value),hasProxyEvidence=Object.prototype.hasOwnProperty.call(root,"proxyEvidence");
+  exactKeys(root,hasProxyEvidence?["name","address","byteLength","runtimeCodeKeccak256","identity","proxyEvidence"]:["name","address","byteLength","runtimeCodeKeccak256","identity"]);
   const name=identifier(field(root,"name")),identity=field(root,"identity");
   if(identity!=="CODE_IDENTITY_REVIEWED"&&identity!=="CODE_PRESENT_IDENTITY_UNPROVEN"&&identity!=="CODE_MISSING"&&identity!=="PROVIDER_DISAGREEMENT")invalid();
   const byteLengthRaw=field(root,"byteLength"),codeHashRaw=field(root,"runtimeCodeKeccak256");
   const present=identity==="CODE_IDENTITY_REVIEWED"||identity==="CODE_PRESENT_IDENTITY_UNPROVEN";
   if(present&&(byteLengthRaw===null||codeHashRaw===null)||!present&&(byteLengthRaw!==null||codeHashRaw!==null))invalid();
+  const proxyEvidence=hasProxyEvidence?proxyEvidenceValue(field(root,"proxyEvidence"),identity):undefined;
   return{
     name,address:address(field(root,"address")),byteLength:byteLengthRaw===null?null:uint(byteLengthRaw,false),
-    runtimeCodeKeccak256:codeHashRaw===null?null:hash(codeHashRaw),identity
+    runtimeCodeKeccak256:codeHashRaw===null?null:hash(codeHashRaw),identity,...(proxyEvidence?{proxyEvidence}:{})
   };
+}
+
+function proxyEvidenceValue(value:unknown,identity:RuntimeCodeObservation["identity"]):NonNullable<RuntimeCodeObservation["proxyEvidence"]>{
+  const root=record(value);exactKeys(root,["wrapper","implementationAddress","implementation"]);
+  const implementation=field(root,"implementation");
+  if(field(root,"wrapper")!=="ONCHAIN_AGREED"||implementation!=="REVIEWED"&&implementation!=="UNREVIEWED"&&implementation!=="DISAGREED"&&implementation!=="MISSING")invalid();
+  const implementationAddressRaw=field(root,"implementationAddress");
+  const hasImplementation=implementation==="REVIEWED"||implementation==="UNREVIEWED";
+  if(hasImplementation!== (implementationAddressRaw!==null)||identity!=="CODE_PRESENT_IDENTITY_UNPROVEN"&&identity!=="CODE_IDENTITY_REVIEWED"||identity==="CODE_IDENTITY_REVIEWED"&&implementation!=="REVIEWED")invalid();
+  return{wrapper:"ONCHAIN_AGREED",implementationAddress:implementationAddressRaw===null?null:address(implementationAddressRaw),implementation};
 }
 
 function deploymentsValue(value:unknown):PathwayDeploymentObservations{

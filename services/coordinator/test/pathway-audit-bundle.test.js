@@ -147,6 +147,20 @@ test("bundle is canonical public evidence with sorted blockers and a reproducibl
   assert.notDeepEqual(parsed,bundle);
 });
 
+test("round-trips an on-chain-agreed proxy wrapper without promoting its unresolved implementation",()=>{
+  const input=observation();
+  input.officialCode.source[2].identity="CODE_PRESENT_IDENTITY_UNPROVEN";
+  input.officialCode.source[2].proxyEvidence={
+    wrapper:"ONCHAIN_AGREED",implementationAddress:address(795),implementation:"UNREVIEWED"
+  };
+  input.blockers=[{code:"AUDIT_CODE_IDENTITY_UNPROVEN",category:"CODE_IDENTITY",remediation:"PIN_REVIEWED_CODE_IDENTITY"}];
+  bindInnerDigests(input);
+  const bundle=buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"});
+  const parsed=parsePathwayAuditBundleText(encodePathwayAuditBundle(bundle));
+  assert.deepEqual(parsed.officialCode.source[2].proxyEvidence,input.officialCode.source[2].proxyEvidence);
+  assert.equal(parsed.officialCode.source[2].identity,"CODE_PRESENT_IDENTITY_UNPROVEN");
+});
+
 test("builder canonicalizes repeated endpoint blockers into one blocker",()=>{
   const input=observation();
   input.blockers=[

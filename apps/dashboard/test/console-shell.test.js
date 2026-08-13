@@ -57,6 +57,15 @@ test("selected-message detail covers every evidence gate and destination state",
   }
 });
 
+test("local evidence inspector explains proxy wrapper agreement without calling it ready",()=>{
+  assert.match(html,/id="pathway-audit-proxy-evidence"/);
+  assert.match(html,/Proxy wrapper evidence/i);
+  assert.match(js,/proxyEvidence/);
+  for(const prohibited of["Proxy wrapper: reviewed","proxy ready","implementation safe"]){
+    assert.equal(html.includes(prohibited),false,`unsafe proxy claim remains: ${prohibited}`);
+  }
+});
+
 test("console styles provide an ink-blue responsive inspector with accessible targets",()=>{
   assert.notEqual(css,"","console stylesheet must exist");
   for(const token of["--console-ink:","--console-blue:","#message-list",".message-row",".console-detail-grid"]){

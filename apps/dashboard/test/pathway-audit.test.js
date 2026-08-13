@@ -140,7 +140,7 @@ test("accepts a canonical blocked artifact and returns only the public presentat
   const view=await validatePathwayAuditView(validBundle());
   assert.deepEqual(Object.keys(view),[
     "schemaVersion","toolVersion","runTimestamp","status","truthLabel","repositoryBindingSha256",
-    "rpcIndependence","providerAgreement","blocks","pathway","configurationSha256","blockers","evidenceSha256"
+    "rpcIndependence","providerAgreement","blocks","proxyEvidence","pathway","configurationSha256","blockers","evidenceSha256"
   ]);
   assert.equal(view.truthLabel,"READ_ONLY_UNSIGNED_NOT_DEPLOYED_NOT_ONBOARDED");
   assert.equal(view.status,"BLOCKED_PATHWAY_CONFIGURATION");
@@ -148,6 +148,17 @@ test("accepts a canonical blocked artifact and returns only the public presentat
   assert.equal(view.providerAgreement.source.providers,undefined);
   assert.equal(view.pathway.source,null);
   assert.equal(JSON.stringify(view).includes("transactionInput"),false);
+});
+
+test("exposes only the closed proxy evidence needed to explain an unresolved runtime identity",async()=>{
+  const observation=completeObservation();
+  observation.officialCode.source[2].identity="CODE_PRESENT_IDENTITY_UNPROVEN";
+  observation.officialCode.source[2].proxyEvidence={wrapper:"ONCHAIN_AGREED",implementationAddress:address(795),implementation:"UNREVIEWED"};
+  observation.blockers=[{code:"AUDIT_CODE_IDENTITY_UNPROVEN",category:"CODE_IDENTITY",remediation:"PIN_REVIEWED_CODE_IDENTITY"}];
+  rebindComplete(observation);
+  const bundle=buildPathwayAuditBundle({observation,runTimestamp:"2026-08-09T12:34:56.789Z"});
+  const view=await validatePathwayAuditView(bundle);
+  assert.deepEqual(view.proxyEvidence,[{name:"sourceExecutor",identity:"CODE_PRESENT_IDENTITY_UNPROVEN",wrapper:"ONCHAIN_AGREED",implementationAddress:address(795),implementation:"UNREVIEWED"}]);
 });
 
 test("accepts path-bound evidence only when the configuration digest is recomputed",async()=>{

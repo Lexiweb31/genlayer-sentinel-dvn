@@ -83,6 +83,7 @@ export function renderPathwayAudit(elements,value,formatTime){
   elements.configurationDigest.textContent=value.configurationSha256??"NOT OBSERVED";
   elements.sourceBlock.textContent=formatBlock(value.blocks.source);
   elements.destinationBlock.textContent=formatBlock(value.blocks.destination);
+  if(elements.proxyEvidence)elements.proxyEvidence.textContent=value.proxyEvidence.length?value.proxyEvidence.map(item=>`${item.name}: on-chain wrapper agreed · implementation ${item.implementation.toLowerCase()}${item.implementationAddress?` (${item.implementationAddress})`:""}`).join("\n"):"NO PROXY EVIDENCE";
   elements.blockers.textContent=value.blockers.length?value.blockers.map(item=>`${item.code} · ${item.remediation}`).join("\n"):"NONE";
   elements.notice.textContent="VERIFIED LOCALLY · NOTHING UPLOADED";
 }
@@ -257,12 +258,23 @@ function codeArray(value,allowed){
 }
 
 function codeValue(value){
-  const root=record(value);exactKeys(root,["name","address","byteLength","runtimeCodeKeccak256","identity"]);
+  const root=record(value),hasProxyEvidence=Object.prototype.hasOwnProperty.call(root,"proxyEvidence");
+  exactKeys(root,hasProxyEvidence?["name","address","byteLength","runtimeCodeKeccak256","identity","proxyEvidence"]:["name","address","byteLength","runtimeCodeKeccak256","identity"]);
   const name=identifier(field(root,"name")),identity=field(root,"identity");
   if(!["CODE_IDENTITY_REVIEWED","CODE_PRESENT_IDENTITY_UNPROVEN","CODE_MISSING","PROVIDER_DISAGREEMENT"].includes(identity))fail();
   const byteLength=field(root,"byteLength"),runtimeHash=field(root,"runtimeCodeKeccak256"),present=identity==="CODE_IDENTITY_REVIEWED"||identity==="CODE_PRESENT_IDENTITY_UNPROVEN";
   if(present&&(byteLength===null||runtimeHash===null)||!present&&(byteLength!==null||runtimeHash!==null))fail();
-  return{name,address:address(field(root,"address")),byteLength:byteLength===null?null:uint(byteLength,false),runtimeCodeKeccak256:runtimeHash===null?null:hash(runtimeHash),identity};
+  const proxyEvidence=hasProxyEvidence?proxyEvidenceValue(field(root,"proxyEvidence"),identity):undefined;
+  return{name,address:address(field(root,"address")),byteLength:byteLength===null?null:uint(byteLength,false),runtimeCodeKeccak256:runtimeHash===null?null:hash(runtimeHash),identity,...(proxyEvidence?{proxyEvidence}:{})};
+}
+
+function proxyEvidenceValue(value,identity){
+  const root=record(value);exactKeys(root,["wrapper","implementationAddress","implementation"]);
+  const implementation=field(root,"implementation");
+  if(field(root,"wrapper")!=="ONCHAIN_AGREED"||!["REVIEWED","UNREVIEWED","DISAGREED","MISSING"].includes(implementation))fail();
+  const implementationAddress=field(root,"implementationAddress"),hasImplementation=implementation==="REVIEWED"||implementation==="UNREVIEWED";
+  if(hasImplementation!==(implementationAddress!==null)||!["CODE_PRESENT_IDENTITY_UNPROVEN","CODE_IDENTITY_REVIEWED"].includes(identity)||identity==="CODE_IDENTITY_REVIEWED"&&implementation!=="REVIEWED")fail();
+  return{wrapper:"ONCHAIN_AGREED",implementationAddress:implementationAddress===null?null:address(implementationAddress),implementation};
 }
 
 function deploymentsValue(value){
@@ -357,6 +369,7 @@ function publicView(bundle){
     rpcIndependence:{...bundle.rpcIndependence},
     providerAgreement:{source:publicAgreement(bundle.providerAgreement.source),destination:publicAgreement(bundle.providerAgreement.destination)},
     blocks:{source:publicBlock(bundle.blocks.source),destination:publicBlock(bundle.blocks.destination)},
+    proxyEvidence:[...bundle.officialCode.source,...bundle.officialCode.destination].flatMap(item=>item.proxyEvidence?[{name:item.name,identity:item.identity,...item.proxyEvidence}]:[]),
     pathway:{source:publicSourcePath(bundle.source),destination:publicDestinationPath(bundle.destination)},
     configurationSha256:bundle.configurationSha256,blockers:bundle.blockers.map(item=>({...item})),evidenceSha256:bundle.evidenceSha256
   };
