@@ -59,6 +59,7 @@ function policy(){
     networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
     providerAudit:"config/rpc-provider-audit.json",
     dvnOperatorAudit:"config/dvn-operator-audit.json",
+    officialRuntimeCodeAudit:"config/official-runtime-code-audit.json",
     pathway:{source:"ethereum-sepolia",destination:"arbitrum-sepolia"},
     officialRuntimeCodeKeccak256:{
       sourceEndpointV2:null,sourceSendUln302:null,sourceExecutor:null,
@@ -89,6 +90,7 @@ async function inputs(){
       warning:"URL diversity is transport diversity, not operator independence."
     },null,2)+"\n",
     dvnOperatorAuditText:canonicalJson(emptyDvnAudit()),
+    officialRuntimeCodeAuditText:canonicalJson(emptyRuntimeCodeAudit()),
     evaluationDate:"2026-08-02"
   };
 }
@@ -97,6 +99,29 @@ function emptyDvnAudit(){
   return{
     schemaVersion:1,auditDate:"2026-08-03",status:"NO_DVN_OPERATORS_REVIEWED",dvns:[],sources:[],
     warning:"No LayerZero DVN operator identity or independence evidence has been reviewed."
+  };
+}
+
+function emptyRuntimeCodeAudit(){
+  return{
+    schemaVersion:1,status:"NO_RUNTIME_CODE_IDENTITIES_REVIEWED",entries:[],sources:[],
+    warning:"Bytecode presence is not official runtime-code identity evidence."
+  };
+}
+
+function reviewedRuntimeCodeAudit(input){
+  const url="https://example.com/layerzero-runtime-code";
+  const sourceSha256=sha256("reviewed runtime-code source");
+  return{
+    schemaVersion:1,status:"RUNTIME_CODE_IDENTITIES_REVIEWED",
+    entries:[{
+      name:"sourceEndpointV2",chainId:input.manifest.source.chainId,eid:input.manifest.source.eid,
+      address:input.manifest.source.contracts.endpointV2,runtimeCodeKeccak256:"0x"+"1".repeat(64),
+      evidenceSha256:sha256("reviewed runtime-code evidence"),sourceSha256,provenanceUrl:url,
+      block:{number:1,hash:"0x"+"2".repeat(64)}
+    }],
+    sources:[{url,sha256:sourceSha256}],
+    warning:"Reviewed entries bind public evidence only; they do not establish deployment or pathway suitability."
   };
 }
 
@@ -290,4 +315,53 @@ test("binds raw DVN registry bytes into the repository digest",async()=>{
   const second=bindPathwayAuditPolicy(input);
   assert.notEqual(second.dvnOperatorAuditSha256,first.dvnOperatorAuditSha256);
   assert.notEqual(second.repositoryBindingSha256,first.repositoryBindingSha256);
+});
+
+test("binds reviewed runtime-code evidence only to matching policy pins",async()=>{
+  const input=await inputs(),previous=bindPathwayAuditPolicy(input),policyValue=JSON.parse(input.policyText);
+  policyValue.officialRuntimeCodeKeccak256.sourceEndpointV2="0x"+"1".repeat(64);
+  input.policyText=JSON.stringify(policyValue,null,2)+"\n";
+  input.officialRuntimeCodeAuditText=canonicalJson(reviewedRuntimeCodeAudit(input));
+  const binding=bindPathwayAuditPolicy(input);
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.state,"REVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.sourceSendUln302.state,"UNREVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.sourceExecutor.state,"UNREVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.destinationEndpointV2.state,"UNREVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.destinationReceiveUln302.state,"UNREVIEWED");
+  assert.notEqual(binding.repositoryBindingSha256,previous.repositoryBindingSha256);
+});
+
+test("the committed runtime-code registry is canonical and unreviewed until identities are reviewed",async()=>{
+  const text=await readFile(new URL("config/official-runtime-code-audit.json",root),"utf8");
+  assert.equal(text,canonicalJson(emptyRuntimeCodeAudit()));
+  const input=await inputs();input.officialRuntimeCodeAuditText=text;
+  const binding=bindPathwayAuditPolicy(input);
+  assert.deepEqual(binding.officialRuntimeCodeReview,{
+    destinationEndpointV2:{state:"UNREVIEWED"},destinationReceiveUln302:{state:"UNREVIEWED"},
+    sourceEndpointV2:{state:"UNREVIEWED"},sourceExecutor:{state:"UNREVIEWED"},sourceSendUln302:{state:"UNREVIEWED"}
+  });
+});
+
+test("rejects malformed or mismatched runtime-code registry evidence",async()=>{
+  const cases=[
+    ["unknown contract name",audit=>{audit.entries[0].name="unknown";return canonicalJson(audit)}],
+    ["duplicate name",audit=>{audit.entries.push(structuredClone(audit.entries[0]));return canonicalJson(audit)}],
+    ["wrong chain ID",audit=>{audit.entries[0].chainId=1;return canonicalJson(audit)}],
+    ["wrong EID",audit=>{audit.entries[0].eid=1;return canonicalJson(audit)}],
+    ["wrong address",audit=>{audit.entries[0].address=address(1);return canonicalJson(audit)}],
+    ["non-HTTPS provenance URL",audit=>{audit.entries[0].provenanceUrl="http://example.com/evidence";return canonicalJson(audit)}],
+    ["malformed digest",audit=>{audit.entries[0].evidenceSha256="bad";return canonicalJson(audit)}],
+    ["malformed runtime hash",audit=>{audit.entries[0].runtimeCodeKeccak256="0xBAD";return canonicalJson(audit)}],
+    ["source digest mismatch",audit=>{audit.entries[0].sourceSha256=digest("f");return canonicalJson(audit)}],
+    ["noncanonical JSON",audit=>JSON.stringify(audit,null,2)+"\n"],
+    ["reviewed registry entry for a null policy pin",audit=>canonicalJson(audit)],
+    ["non-null policy pin without matching reviewed registry entry",audit=>canonicalJson(emptyRuntimeCodeAudit())]
+  ];
+  for(const[name,encode]of cases){
+    const input=await inputs(),audit=reviewedRuntimeCodeAudit(input),policyValue=JSON.parse(input.policyText);
+    if(name!=="reviewed registry entry for a null policy pin")policyValue.officialRuntimeCodeKeccak256.sourceEndpointV2="0x"+"1".repeat(64);
+    input.policyText=JSON.stringify(policyValue,null,2)+"\n";
+    input.officialRuntimeCodeAuditText=encode(audit);
+    assert.throws(()=>bindPathwayAuditPolicy(input),/PATHWAY_AUDIT_POLICY_INVALID/,name);
+  }
 });

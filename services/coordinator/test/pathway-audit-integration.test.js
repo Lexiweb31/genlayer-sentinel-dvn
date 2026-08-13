@@ -58,7 +58,7 @@ function publicManifest(networkAuditSha256,deployment=true){
 function policyText(){return JSON.stringify({
   schemaVersion:1,toolVersion:"sentinel-pathway-auditor/v1",maximumProviderAuditAgeDays:30,
   networkConfig:"config/networks.json",networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
-  providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",
+  providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",officialRuntimeCodeAudit:"config/official-runtime-code-audit.json",
   pathway:{source:"ethereum-sepolia",destination:"arbitrum-sepolia"},
   officialRuntimeCodeKeccak256:{sourceEndpointV2:keccak256("0x6000"),sourceSendUln302:keccak256("0x6000"),sourceExecutor:keccak256("0x6000"),destinationEndpointV2:keccak256("0x6000"),destinationReceiveUln302:keccak256("0x6000")}
 },null,2)+"\n"}
@@ -76,6 +76,18 @@ function dvnAuditText(){const source="docs/research/reviewed-dvn-operators.md";r
     {chain:"arbitrum-sepolia",chainId:421614,address:contracts.independentDvn,operatorFamily:"independent-dvn-a",operatorEvidenceSha256:"7".repeat(64),sources:[source]}
   ],sources:[source],warning:"Reviewed deterministic integration evidence."
 })}
+
+function runtimeCodeAuditText(){
+  const url="https://example.com/layerzero-runtime-code",sourceSha256=sha256("runtime-code source"),runtimeCodeKeccak256=keccak256("0x6000");
+  const entry=(name,chainId,eid,address)=>({name,chainId,eid,address,runtimeCodeKeccak256,evidenceSha256:sha256(`evidence:${name}`),sourceSha256,provenanceUrl:url,block:{number:1,hash:hash("a")}});
+  return canonicalJson({
+    schemaVersion:1,status:"RUNTIME_CODE_IDENTITIES_REVIEWED",
+    entries:[
+      entry("destinationEndpointV2",421614,40231,contracts.destination.endpoint),entry("destinationReceiveUln302",421614,40231,contracts.destination.receive),
+      entry("sourceEndpointV2",11155111,40161,contracts.source.endpoint),entry("sourceExecutor",11155111,40161,contracts.source.executor),entry("sourceSendUln302",11155111,40161,contracts.source.send)
+    ],sources:[{url,sha256:sourceSha256}],warning:"Reviewed deterministic integration evidence."
+  });
+}
 
 function header(number,chain){return{number:`0x${number.toString(16)}`,hash:hash(chain==="source"?"a":"b"),parentHash:hash("c"),stateRoot:hash("d"),transactionsRoot:hash("e"),timestamp:"0x6553f100"}}
 
@@ -152,6 +164,7 @@ async function fixture(deployment){
     [manifestPath,canonicalJson(manifest)],[join(root,"config/pathway-auditor.json"),policyText()],
     [join(root,"config/networks.json"),networksText],[join(root,"docs/research/2026-08-02-layerzero-interface-conformance-audit.md"),networkAuditEvidenceText],
     [join(root,"config/rpc-provider-audit.json"),providerAuditText(manifest)],[join(root,"config/dvn-operator-audit.json"),dvnAuditText()],
+    [join(root,"config/official-runtime-code-audit.json"),runtimeCodeAuditText()],
     [join(root,"dist/contracts/build-manifest.json"),buildManifestText],[join(root,"dist/contracts/SentinelDVNAdapter.json"),adapterArtifactText],[join(root,"dist/contracts/TreasuryPolicyOApp.json"),oappArtifactText]
   ]);
   return{manifestPath,clients,dependencies:{repositoryRoot:root,readText:async path=>{if(!files.has(path))throw new Error("unexpected path");return files.get(path)},now:()=>"2026-08-11T12:34:56.789Z",writeExclusive:writePathwayAuditFileExclusive,bind:bindPathwayAuditPolicy,createClient:endpoint=>clients.byLabel.get(endpoint.label),observe:observePathway,build:buildPathwayAuditBundle,encode:encodePathwayAuditBundle}};

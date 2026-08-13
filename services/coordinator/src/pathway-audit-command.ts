@@ -41,6 +41,7 @@ const repositoryInputs=[
   "config/pathway-auditor.json","config/networks.json",
   "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
   "config/rpc-provider-audit.json","config/dvn-operator-audit.json",
+  "config/official-runtime-code-audit.json",
   "dist/contracts/build-manifest.json","dist/contracts/SentinelDVNAdapter.json",
   "dist/contracts/TreasuryPolicyOApp.json"
 ]as const;
@@ -76,7 +77,7 @@ export async function runPathwayAuditCommand(
   try{
     policyBinding=await dependencies.bind({
       manifest,policyText:inputs[0]!,networksText:inputs[1]!,networkAuditEvidenceText:inputs[2]!,
-      providerAuditText:inputs[3]!,dvnOperatorAuditText:inputs[4]!,evaluationDate:runTimestamp.slice(0,10)
+      providerAuditText:inputs[3]!,dvnOperatorAuditText:inputs[4]!,officialRuntimeCodeAuditText:inputs[5]!,evaluationDate:runTimestamp.slice(0,10)
     });
   }catch{return fail(io,"PATHWAY_AUDIT_POLICY_BINDING_FAILED")}
 
@@ -90,7 +91,7 @@ export async function runPathwayAuditCommand(
   let observation:PathwayAuditObservation;
   try{
     observation=await dependencies.observe({
-      manifest,policyBinding,clients,buildManifestText:inputs[5]!,adapterArtifactText:inputs[6]!,oappArtifactText:inputs[7]!
+      manifest,policyBinding,clients,buildManifestText:inputs[6]!,adapterArtifactText:inputs[7]!,oappArtifactText:inputs[8]!
     });
   }catch(error){return fail(io,observationError(error))}
 

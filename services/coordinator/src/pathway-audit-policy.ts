@@ -15,6 +15,7 @@ export interface PathwayAuditorPolicy{
   networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md";
   providerAudit:"config/rpc-provider-audit.json";
   dvnOperatorAudit:"config/dvn-operator-audit.json";
+  officialRuntimeCodeAudit:"config/official-runtime-code-audit.json";
   pathway:{source:string;destination:string};
   officialRuntimeCodeKeccak256:{
     sourceEndpointV2:string|null;sourceSendUln302:string|null;sourceExecutor:string|null;
@@ -39,6 +40,18 @@ export interface ReviewedDvn{
   sources:string[];
 }
 
+export interface ReviewedRuntimeCode{
+  name:RuntimeCodeName;
+  chainId:number;
+  eid:number;
+  address:string;
+  runtimeCodeKeccak256:string;
+  evidenceSha256:string;
+  sourceSha256:string;
+  provenanceUrl:string;
+  block:{number:number;hash:string};
+}
+
 export interface PathwayAuditPolicyInput{
   manifest:PathwayAuditManifest;
   policyText:string;
@@ -46,6 +59,7 @@ export interface PathwayAuditPolicyInput{
   networkAuditEvidenceText:string;
   providerAuditText:string;
   dvnOperatorAuditText:string;
+  officialRuntimeCodeAuditText:string;
   evaluationDate:string;
 }
 
@@ -56,12 +70,14 @@ export interface PathwayAuditPolicyBinding{
   networkAuditSha256:string;
   providerAuditSha256:string;
   dvnOperatorAuditSha256:string;
+  officialRuntimeCodeAuditSha256:string;
   repositoryBindingSha256:string;
   network:{
     source:NetworkValues;
     destination:NetworkValues;
   };
   officialRuntimeCodeKeccak256:PathwayAuditorPolicy["officialRuntimeCodeKeccak256"];
+  officialRuntimeCodeReview:Record<RuntimeCodeName,RuntimeCodeReview>;
   providerState:{
     source:{label:string;state:ProviderEvidenceState}[];
     destination:{label:string;state:ProviderEvidenceState}[];
@@ -95,25 +111,39 @@ interface DvnOperatorAudit{
   warning:string;
 }
 
+type RuntimeCodeName="sourceEndpointV2"|"sourceSendUln302"|"sourceExecutor"|"destinationEndpointV2"|"destinationReceiveUln302";
+type RuntimeCodeReview={state:"UNREVIEWED"}|({state:"REVIEWED"}&ReviewedRuntimeCode);
+
+interface RuntimeCodeAudit{
+  schemaVersion:1;
+  status:"NO_RUNTIME_CODE_IDENTITIES_REVIEWED"|"RUNTIME_CODE_IDENTITIES_REVIEWED";
+  entries:ReviewedRuntimeCode[];
+  sources:{url:string;sha256:string}[];
+  warning:string;
+}
+
 const digestPattern=/^[a-f0-9]{64}$/;
 const expectedSource="ethereum-sepolia",expectedDestination="arbitrum-sepolia";
+const runtimeCodeNames:[RuntimeCodeName,...RuntimeCodeName[]]=[
+  "destinationEndpointV2","destinationReceiveUln302","sourceEndpointV2","sourceExecutor","sourceSendUln302"
+];
 
 export function parsePathwayAuditorPolicy(text:string):PathwayAuditorPolicy{
   try{
     const root=record(parseJsonDocument(text));
-    exactKeys(root,["schemaVersion","toolVersion","maximumProviderAuditAgeDays","networkConfig","networkAuditEvidence","providerAudit","dvnOperatorAudit","pathway","officialRuntimeCodeKeccak256"]);
+    exactKeys(root,["schemaVersion","toolVersion","maximumProviderAuditAgeDays","networkConfig","networkAuditEvidence","providerAudit","dvnOperatorAudit","officialRuntimeCodeAudit","pathway","officialRuntimeCodeKeccak256"]);
     const pathway=record(root.pathway),official=record(root.officialRuntimeCodeKeccak256);
     exactKeys(pathway,["source","destination"]);
     exactKeys(official,["sourceEndpointV2","sourceSendUln302","sourceExecutor","destinationEndpointV2","destinationReceiveUln302"]);
     if(root.schemaVersion!==1||root.toolVersion!=="sentinel-pathway-auditor/v1"||
       !positiveInteger(root.maximumProviderAuditAgeDays)||root.networkConfig!=="config/networks.json"||
       root.networkAuditEvidence!=="docs/research/2026-08-02-layerzero-interface-conformance-audit.md"||
-      root.providerAudit!=="config/rpc-provider-audit.json"||root.dvnOperatorAudit!=="config/dvn-operator-audit.json"||
+      root.providerAudit!=="config/rpc-provider-audit.json"||root.dvnOperatorAudit!=="config/dvn-operator-audit.json"||root.officialRuntimeCodeAudit!=="config/official-runtime-code-audit.json"||
       !nonempty(pathway.source)||!nonempty(pathway.destination))invalid();
     return{
       schemaVersion:1,toolVersion:"sentinel-pathway-auditor/v1",maximumProviderAuditAgeDays:root.maximumProviderAuditAgeDays,
       networkConfig:"config/networks.json",networkAuditEvidence:"docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
-      providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",
+      providerAudit:"config/rpc-provider-audit.json",dvnOperatorAudit:"config/dvn-operator-audit.json",officialRuntimeCodeAudit:"config/official-runtime-code-audit.json",
       pathway:{source:pathway.source,destination:pathway.destination},
       officialRuntimeCodeKeccak256:{
         sourceEndpointV2:codeHash(official.sourceEndpointV2),sourceSendUln302:codeHash(official.sourceSendUln302),sourceExecutor:codeHash(official.sourceExecutor),
@@ -127,6 +157,7 @@ export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAud
   const policy=parsePathwayAuditorPolicy(input.policyText),evaluationDate=date(input.evaluationDate);
   const networks=parseNetworks(input.networksText),providerAudit=parseProviderAudit(input.providerAuditText);
   const dvnOperatorAudit=parseDvnOperatorAudit(input.dvnOperatorAuditText);
+  const runtimeCodeAudit=parseRuntimeCodeAudit(input.officialRuntimeCodeAuditText,policy,networks);
   const networkAuditSha256=sha256(canonicalJson({
     destination:expectedDestination,
     networkAuditEvidenceSha256:sha256(input.networkAuditEvidenceText),
@@ -135,8 +166,9 @@ export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAud
   }));
   const providerAuditSha256=sha256(input.providerAuditText);
   const dvnOperatorAuditSha256=sha256(input.dvnOperatorAuditText);
+  const officialRuntimeCodeAuditSha256=sha256(input.officialRuntimeCodeAuditText);
   const repositoryBindingSha256=sha256(canonicalJson({
-    dvnOperatorAuditSha256,networkAuditSha256,pathwayAuditorPolicySha256:sha256(input.policyText),providerAuditSha256
+    dvnOperatorAuditSha256,networkAuditSha256,officialRuntimeCodeAuditSha256,pathwayAuditorPolicySha256:sha256(input.policyText),providerAuditSha256
   }));
   const blockers:PathwayAuditBlocker[]=[];
   const metadataMatches=policy.pathway.source===expectedSource&&policy.pathway.destination===expectedDestination&&
@@ -150,9 +182,10 @@ export function bindPathwayAuditPolicy(input:PathwayAuditPolicyInput):PathwayAud
   const source=providerBinding(input.manifest.source.rpcs,providerAudit,providerStale,blockers);
   const destination=providerBinding(input.manifest.destination.rpcs,providerAudit,providerStale,blockers);
   return{
-    networkAuditSha256,providerAuditSha256,dvnOperatorAuditSha256,repositoryBindingSha256,
+    networkAuditSha256,providerAuditSha256,dvnOperatorAuditSha256,officialRuntimeCodeAuditSha256,repositoryBindingSha256,
     network:{source:networks.source,destination:networks.destination},
     officialRuntimeCodeKeccak256:{...policy.officialRuntimeCodeKeccak256},
+    officialRuntimeCodeReview:runtimeCodeBinding(runtimeCodeAudit),
     providerState:{source:source.state,destination:destination.state},
     rpcIndependence:{source:source.independence,destination:destination.independence},
     reviewedDvns:{
@@ -230,6 +263,73 @@ function parseDvnOperatorAudit(text:string):DvnOperatorAudit{
   }catch(error){if(error instanceof PathwayAuditPolicyError)throw error;return invalid()}
 }
 
+function parseRuntimeCodeAudit(text:string,policy:PathwayAuditorPolicy,networks:{source:NetworkValues;destination:NetworkValues}):RuntimeCodeAudit{
+  try{
+    const root=record(parseCanonicalJsonDocument(text));
+    exactKeys(root,["schemaVersion","status","entries","sources","warning"]);
+    if(root.schemaVersion!==1||!Array.isArray(root.entries)||!Array.isArray(root.sources)||!nonempty(root.warning)||
+      (root.status!=="NO_RUNTIME_CODE_IDENTITIES_REVIEWED"&&root.status!=="RUNTIME_CODE_IDENTITIES_REVIEWED"))invalid();
+    const sources=root.sources.map(runtimeCodeSource),entries=root.entries.map(runtimeCodeEntry);
+    if(!strictRuntimeCodeSources(sources)||!strictRuntimeCodeEntries(entries)||
+      entries.some(entry=>!sources.some(source=>source.url===entry.provenanceUrl&&source.sha256===entry.sourceSha256))||
+      (root.status==="NO_RUNTIME_CODE_IDENTITIES_REVIEWED"&&(entries.length!==0||sources.length!==0))||
+      (root.status==="RUNTIME_CODE_IDENTITIES_REVIEWED"&&(entries.length===0||sources.length===0)))invalid();
+    for(const name of runtimeCodeNames){
+      const entry=entries.find(value=>value.name===name),pin=policy.officialRuntimeCodeKeccak256[name];
+      if((entry===undefined)!==(pin===null)||entry&&entry.runtimeCodeKeccak256!==pin)invalid();
+      if(entry){
+        const expected=runtimeCodeLocation(name,networks);
+        if(entry.chainId!==expected.chainId||entry.eid!==expected.eid||entry.address!==expected.address)invalid();
+      }
+    }
+    return{schemaVersion:1,status:root.status,entries,sources,warning:root.warning};
+  }catch(error){if(error instanceof PathwayAuditPolicyError)throw error;return invalid()}
+}
+
+function runtimeCodeSource(value:unknown):{url:string;sha256:string}{
+  const root=record(value);exactKeys(root,["url","sha256"]);
+  return{url:httpsUrl(root.url),sha256:nonzeroDigest(root.sha256)};
+}
+
+function runtimeCodeEntry(value:unknown):ReviewedRuntimeCode{
+  const root=record(value);exactKeys(root,["name","chainId","eid","address","runtimeCodeKeccak256","evidenceSha256","sourceSha256","provenanceUrl","block"]);
+  if(!runtimeCodeNames.includes(root.name as RuntimeCodeName)||!positiveInteger(root.chainId)||!positiveInteger(root.eid))invalid();
+  const block=record(root.block);exactKeys(block,["number","hash"]);
+  if(!positiveInteger(block.number))invalid();
+  return{
+    name:root.name as RuntimeCodeName,chainId:root.chainId,eid:root.eid,address:address(root.address),
+    runtimeCodeKeccak256:codeHash(root.runtimeCodeKeccak256)??invalid(),evidenceSha256:nonzeroDigest(root.evidenceSha256),
+    sourceSha256:nonzeroDigest(root.sourceSha256),provenanceUrl:httpsUrl(root.provenanceUrl),
+    block:{number:block.number,hash:codeHash(block.hash)??invalid()}
+  };
+}
+
+function strictRuntimeCodeSources(values:{url:string;sha256:string}[]):boolean{
+  return values.every((value,index)=>index===0||value.url>values[index-1]!.url)&&
+    new Set(values.map(value=>value.url)).size===values.length&&new Set(values.map(value=>value.sha256)).size===values.length;
+}
+
+function strictRuntimeCodeEntries(values:ReviewedRuntimeCode[]):boolean{
+  return values.every((value,index)=>index===0||value.name>values[index-1]!.name)&&
+    new Set(values.map(value=>value.name)).size===values.length;
+}
+
+function runtimeCodeLocation(name:RuntimeCodeName,networks:{source:NetworkValues;destination:NetworkValues}):{chainId:number;eid:number;address:string}{
+  const sourceName=name.startsWith("source"),network=sourceName?networks.source:networks.destination;
+  const contract=name==="sourceEndpointV2"||name==="destinationEndpointV2"?"endpointV2":
+    name==="sourceSendUln302"?"sendUln302":name==="sourceExecutor"?"executor":"receiveUln302";
+  return{chainId:network.chainId,eid:network.eid,address:network.contracts[contract]};
+}
+
+function runtimeCodeBinding(audit:RuntimeCodeAudit):Record<RuntimeCodeName,RuntimeCodeReview>{
+  const binding={}as Record<RuntimeCodeName,RuntimeCodeReview>;
+  for(const name of runtimeCodeNames){
+    const entry=audit.entries.find(value=>value.name===name);
+    binding[name]=entry?{...entry,block:{...entry.block},state:"REVIEWED"}:{state:"UNREVIEWED"};
+  }
+  return binding;
+}
+
 function dvn(value:unknown):ReviewedDvn{
   const root=record(value);
   exactKeys(root,["chain","chainId","address","operatorFamily","operatorEvidenceSha256","sources"]);
@@ -281,6 +381,10 @@ function digest(value:unknown):string{if(typeof value!=="string"||!digestPattern
 function nonzeroDigest(value:unknown):string{const result=digest(value);if(result==="0".repeat(64))invalid();return result}
 function codeHash(value:unknown):string|null{if(value===null)return null;if(typeof value!=="string"||!/^0x[0-9a-f]{64}$/.test(value))invalid();return value}
 function address(value:unknown):string{if(typeof value!=="string")invalid();try{if(getAddress(value)!==value)invalid();return value}catch{return invalid()}}
+function httpsUrl(value:unknown):string{
+  if(typeof value!=="string")invalid();
+  try{const parsed=new URL(value);if(parsed.protocol!=="https:"||!parsed.hostname||parsed.username||parsed.password||parsed.search||parsed.hash)invalid();return value}catch{return invalid()}
+}
 function date(value:unknown):string{if(typeof value!=="string"||!/^\d{4}-\d{2}-\d{2}$/.test(value))invalid();const parsed=new Date(`${value}T00:00:00.000Z`);if(Number.isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==value)invalid();return value}
 function daysBetween(start:string,end:string):number{return(Math.round(Date.parse(`${end}T00:00:00.000Z`)-Date.parse(`${start}T00:00:00.000Z`))/86400000)}
 function invalid():never{throw new PathwayAuditPolicyError()}

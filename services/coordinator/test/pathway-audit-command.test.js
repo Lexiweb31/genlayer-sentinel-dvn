@@ -18,6 +18,7 @@ const repositoryFiles=[
   "config/pathway-auditor.json","config/networks.json",
   "docs/research/2026-08-02-layerzero-interface-conformance-audit.md",
   "config/rpc-provider-audit.json","config/dvn-operator-audit.json",
+  "config/official-runtime-code-audit.json",
   "dist/contracts/build-manifest.json","dist/contracts/SentinelDVNAdapter.json",
   "dist/contracts/TreasuryPolicyOApp.json"
 ];
@@ -190,7 +191,7 @@ test("a blocked run cannot touch dangerous capabilities or mutate repository evi
   const immutable=[
     "contracts/src/SentinelDVNAdapter.sol","contracts/src/TreasuryPolicyOApp.sol",
     "dist/contracts/SentinelDVNAdapter.json","dist/contracts/TreasuryPolicyOApp.json","dist/contracts/build-manifest.json",
-    "config/networks.json","config/pathway-auditor.json","config/rpc-provider-audit.json","config/dvn-operator-audit.json"
+    "config/networks.json","config/pathway-auditor.json","config/rpc-provider-audit.json","config/dvn-operator-audit.json","config/official-runtime-code-audit.json"
   ];
   const before={files:await fileDigests(immutable),deployments:await treeDigest(join(root,"deployments"))};
   assert.equal(await runPathwayAuditCommand(["--manifest",manifestPath],capture.io,fixture.dependencies),2);
