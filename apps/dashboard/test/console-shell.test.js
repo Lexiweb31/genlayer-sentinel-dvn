@@ -7,6 +7,31 @@ const cssPath=new URL("../src/console.css",import.meta.url);
 const css=fs.existsSync(cssPath)?fs.readFileSync(cssPath,"utf8"):"";
 const js=fs.readFileSync(new URL("../src/app.js",import.meta.url),"utf8");
 
+async function importConsoleApp(search=""){
+  const previousDocument=globalThis.document;
+  const previousWindow=globalThis.window;
+  const previousLocation=globalThis.location;
+  const previousHistory=globalThis.history;
+  const nodes=new Map();
+  const node=()=>({
+    addEventListener(){},removeEventListener(){},replaceChildren(){},append(){},setAttribute(){},click(){},
+    className:"",disabled:false,hidden:false,textContent:"",title:"",value:"",files:[]
+  });
+  globalThis.document={querySelector(selector){if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector)},createElement:node};
+  globalThis.window={ethereum:undefined,addEventListener(){}};
+  globalThis.location={search,pathname:"/console/",hash:""};
+  globalThis.history={replaceState(){}};
+  try{return await import(`../src/app.js?console-shell=${Date.now()}-${Math.random()}`)}
+  finally{
+    if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;
+    if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;
+    if(previousLocation===undefined)delete globalThis.location;else globalThis.location=previousLocation;
+    if(previousHistory===undefined)delete globalThis.history;else globalThis.history=previousHistory;
+  }
+}
+
+const job=guid=>({packet:{guid,txHash:`tx-${guid}`,srcEid:40161,dstEid:40231},stage:"DETECTED"});
+
 test("console starts with an inbox and an explicit empty observation state",()=>{
   for(const id of["console-search","message-list","console-empty","console-detail"]){
     assert.match(html,new RegExp(`\\bid="${id}"`,"i"));
@@ -44,42 +69,43 @@ test("console styles provide an ink-blue responsive inspector with accessible ta
 });
 
 test("query helpers normalize input and match canonical packet fields",async()=>{
-  const previousDocument=globalThis.document;
-  const previousWindow=globalThis.window;
-  const previousLocation=globalThis.location;
-  const previousHistory=globalThis.history;
-  const nodes=new Map();
-  const node=()=>({
-    addEventListener(){},removeEventListener(){},replaceChildren(){},append(){},setAttribute(){},click(){},
-    className:"",disabled:false,hidden:false,textContent:"",title:"",value:"",files:[]
-  });
-  globalThis.document={
-    querySelector(selector){if(selector===".hero-media")return null;if(!nodes.has(selector))nodes.set(selector,node());return nodes.get(selector)},
-    createElement:node
-  };
-  globalThis.window={ethereum:undefined,addEventListener(){}};
-  globalThis.location={search:"?q=%20TxHash%20&guid=0xselected"};
-  globalThis.history={replaceState(){}};
-  try{
-    const {matchesConsoleQuery,normalizeConsoleQuery}=await import(`../src/app.js?console-shell=${Date.now()}`);
-    assert.equal(normalizeConsoleQuery("  0xABCD  "),"0xabcd");
-    assert.equal(normalizeConsoleQuery(null),"");
-    const job={packet:{guid:"0xGUID",txHash:"0xTransaction",srcEid:40161,dstEid:40231},stage:"POLICY_FINALIZED"};
-    for(const query of["0xguid","transaction","40161","40231","policy_finalized",""]){
-      assert.equal(matchesConsoleQuery(job,query),true,`query should match ${query}`);
-    }
-    assert.equal(matchesConsoleQuery(job,"missing"),false);
-  }finally{
-    if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;
-    if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;
-    if(previousLocation===undefined)delete globalThis.location;else globalThis.location=previousLocation;
-    if(previousHistory===undefined)delete globalThis.history;else globalThis.history=previousHistory;
+  const {matchesConsoleQuery,normalizeConsoleQuery}=await importConsoleApp("?q=%20TxHash%20&guid=0xselected");
+  assert.equal(normalizeConsoleQuery("  0xABCD  "),"0xabcd");
+  assert.equal(normalizeConsoleQuery(null),"");
+  const value={packet:{guid:"0xGUID",txHash:"0xTransaction",srcEid:40161,dstEid:40231},stage:"POLICY_FINALIZED"};
+  for(const query of["0xguid","transaction","40161","40231","policy_finalized",""]){
+    assert.equal(matchesConsoleQuery(value,query),true,`query should match ${query}`);
   }
+  assert.equal(matchesConsoleQuery(value,"missing"),false);
+});
+
+test("an initial URL GUID stays canonical when the coordinator does not contain it",async()=>{
+  const {createConsoleSelectionModel}=await importConsoleApp("?guid=packet-missing");
+  const selection=createConsoleSelectionModel("packet-missing");
+  assert.deepEqual(selection.resolve([job("packet-a")]),{state:"unavailable",guid:"packet-missing"});
+});
+
+test("a selected GUID becomes unavailable instead of changing when a poll removes it",async()=>{
+  const {createConsoleSelectionModel}=await importConsoleApp();
+  const selection=createConsoleSelectionModel();
+  selection.selectManual("packet-a");
+  assert.equal(selection.resolve([job("packet-a")]).job.packet.guid,"packet-a");
+  assert.deepEqual(selection.resolve([job("packet-b")]),{state:"unavailable",guid:"packet-a"});
+});
+
+test("manual row selection clears an observed GUID before the next poll",async()=>{
+  const {createConsoleSelectionModel}=await importConsoleApp();
+  const selection=createConsoleSelectionModel();
+  selection.selectObserved("packet-a");
+  selection.selectManual("packet-b");
+  assert.equal(selection.observedGuid,undefined);
+  assert.equal(selection.resolve([job("packet-a"),job("packet-b")]).job.packet.guid,"packet-b");
 });
 
 test("console reads URL query and selection state without coordinator mutation requests",()=>{
   assert.match(js,/new URLSearchParams\(location\.search\)/);
   assert.match(js,/history\.replaceState\(/);
   assert.ok(js.includes("No observed packet matches this query."));
+  assert.ok(js.includes("Selected packet is not currently observed."));
   assert.equal(/fetch\([^)]*,\s*\{[^}]*method\s*:\s*["'](?:POST|PUT|PATCH|DELETE)/is.test(js),false);
 });

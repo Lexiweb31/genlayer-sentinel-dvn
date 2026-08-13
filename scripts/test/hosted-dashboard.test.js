@@ -16,6 +16,7 @@ const expectedPublicFiles=[
   "console/index.html",
   "index.html",
   "src/app.js",
+  "src/console.css",
   "src/delivery.css",
   "src/demo.css",
   "src/hero-motion.js",
