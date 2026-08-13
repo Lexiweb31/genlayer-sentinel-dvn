@@ -94,6 +94,15 @@ test("an observed GUID cannot replace an existing URL-selected packet",async()=>
   assert.equal(selection.resolve([job("packet-a"),job("packet-b")]).job.packet.guid,"packet-a");
 });
 
+test("an observed GUID replaces an automatic default selection",async()=>{
+  const {createConsoleSelectionModel}=await importConsoleApp();
+  const selection=createConsoleSelectionModel();
+  assert.equal(selection.resolve([job("packet-a")]).job.packet.guid,"packet-a");
+  selection.selectObserved("packet-b");
+  assert.equal(selection.observedGuid,"packet-b");
+  assert.equal(selection.resolve([job("packet-a"),job("packet-b")]).job.packet.guid,"packet-b");
+});
+
 test("a selected GUID becomes unavailable instead of changing when a poll removes it",async()=>{
   const {createConsoleSelectionModel}=await importConsoleApp();
   const selection=createConsoleSelectionModel();

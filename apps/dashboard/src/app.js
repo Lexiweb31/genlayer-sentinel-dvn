@@ -10,12 +10,12 @@ export function matchesConsoleQuery(job,query){
   return query===""||haystack.includes(query);
 }
 export function createConsoleSelectionModel(initialGuid){
-  let selectedGuid=typeof initialGuid==="string"&&initialGuid?initialGuid:undefined,observedGuid;
+  let selectedGuid=typeof initialGuid==="string"&&initialGuid?initialGuid:undefined,observedGuid,explicitSelection=selectedGuid!==undefined;
   return{
     get selectedGuid(){return selectedGuid},
     get observedGuid(){return observedGuid},
-    selectManual(guid){selectedGuid=guid;observedGuid=undefined},
-    selectObserved(guid){if(selectedGuid!==undefined)return;selectedGuid=guid;observedGuid=guid.toLowerCase()},
+    selectManual(guid){selectedGuid=guid;observedGuid=undefined;explicitSelection=true},
+    selectObserved(guid){if(explicitSelection)return;selectedGuid=guid;observedGuid=guid.toLowerCase()},
     resolve(jobs){
       if(selectedGuid!==undefined){
         const job=jobs.find(item=>sameGuid(item.packet.guid,selectedGuid));
