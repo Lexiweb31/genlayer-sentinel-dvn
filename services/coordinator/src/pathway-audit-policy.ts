@@ -53,6 +53,7 @@ export interface ReviewedRuntimeCode{
 }
 
 export interface RuntimeCodePrimarySource{
+  name:RuntimeCodeName;
   kind:"OFFICIAL_DEPLOYMENT_ADDRESS"|"OFFICIAL_SOURCE_RELEASE";
   url:string;
   rawSha256:string;
@@ -279,7 +280,7 @@ function parseRuntimeCodeAudit(text:string,policy:PathwayAuditorPolicy,networks:
     if(root.schemaVersion!==1||!Array.isArray(root.entries)||!Array.isArray(root.sources)||!nonempty(root.warning)||
       (root.status!=="NO_RUNTIME_CODE_IDENTITIES_REVIEWED"&&root.status!=="RUNTIME_CODE_IDENTITIES_REVIEWED"))invalid();
     const sources=root.sources.map(runtimeCodeSource),entries=root.entries.map(runtimeCodeEntry);
-    if(!strictRuntimeCodeEntries(entries)||(root.status==="RUNTIME_CODE_IDENTITIES_REVIEWED"&&!strictRuntimeCodeSources(sources))||
+    if(!strictRuntimeCodeEntries(entries)||(root.status==="RUNTIME_CODE_IDENTITIES_REVIEWED"&&!strictRuntimeCodeSources(sources,entries))||
       entries.some(entry=>!runtimeCodeSourcesForEntry(entry,sources))||
       (root.status==="NO_RUNTIME_CODE_IDENTITIES_REVIEWED"&&(entries.length!==0||sources.length!==0))||
       (root.status==="RUNTIME_CODE_IDENTITIES_REVIEWED"&&(entries.length===0||sources.length===0)))invalid();
@@ -296,9 +297,9 @@ function parseRuntimeCodeAudit(text:string,policy:PathwayAuditorPolicy,networks:
 }
 
 function runtimeCodeSource(value:unknown):RuntimeCodePrimarySource{
-  const root=record(value);exactKeys(root,["kind","url","rawSha256"]);
-  if(root.kind!=="OFFICIAL_DEPLOYMENT_ADDRESS"&&root.kind!=="OFFICIAL_SOURCE_RELEASE")invalid();
-  return{kind:root.kind,url:httpsUrl(root.url),rawSha256:nonzeroDigest(root.rawSha256)};
+  const root=record(value);exactKeys(root,["name","kind","url","rawSha256"]);
+  if(!runtimeCodeNames.includes(root.name as RuntimeCodeName)||(root.kind!=="OFFICIAL_DEPLOYMENT_ADDRESS"&&root.kind!=="OFFICIAL_SOURCE_RELEASE"))invalid();
+  return{name:root.name as RuntimeCodeName,kind:root.kind,url:httpsUrl(root.url),rawSha256:nonzeroDigest(root.rawSha256)};
 }
 
 function runtimeCodeEntry(value:unknown):ReviewedRuntimeCode{
@@ -314,9 +315,13 @@ function runtimeCodeEntry(value:unknown):ReviewedRuntimeCode{
   };
 }
 
-function strictRuntimeCodeSources(values:RuntimeCodePrimarySource[]):boolean{
-  return values.length===2&&values[0]?.kind==="OFFICIAL_DEPLOYMENT_ADDRESS"&&values[1]?.kind==="OFFICIAL_SOURCE_RELEASE"&&
-    values[0].url!==values[1].url&&values[0].rawSha256!==values[1].rawSha256;
+function strictRuntimeCodeSources(values:RuntimeCodePrimarySource[],entries:ReviewedRuntimeCode[]):boolean{
+  return values.length===entries.length*2&&
+    values.every((value,index)=>index===0||`${value.name}:${value.kind}`>`${values[index-1]!.name}:${values[index-1]!.kind}`)&&
+    new Set(values.map(value=>`${value.name}:${value.kind}`)).size===values.length&&
+    new Set(values.map(value=>value.url)).size===values.length&&new Set(values.map(value=>value.rawSha256)).size===values.length&&
+    entries.every(entry=>values.some(source=>source.name===entry.name&&source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS")&&
+      values.some(source=>source.name===entry.name&&source.kind==="OFFICIAL_SOURCE_RELEASE"));
 }
 
 function strictRuntimeCodeEntries(values:ReviewedRuntimeCode[]):boolean{
@@ -336,8 +341,8 @@ function runtimeCodeBinding(audit:RuntimeCodeAudit):Record<RuntimeCodeName,Runti
   for(const name of runtimeCodeNames){
     const entry=audit.entries.find(value=>value.name===name);
     if(!entry){binding[name]={state:"UNREVIEWED"};continue}
-    const deploymentAddressSource=audit.sources.find(source=>source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS");
-    const sourceReleaseSource=audit.sources.find(source=>source.kind==="OFFICIAL_SOURCE_RELEASE");
+    const deploymentAddressSource=audit.sources.find(source=>source.name===name&&source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS");
+    const sourceReleaseSource=audit.sources.find(source=>source.name===name&&source.kind==="OFFICIAL_SOURCE_RELEASE");
     if(!deploymentAddressSource||!sourceReleaseSource)invalid();
     binding[name]={...entry,block:{...entry.block},deploymentAddressSource:{...deploymentAddressSource},sourceReleaseSource:{...sourceReleaseSource},state:"REVIEWED"};
   }
@@ -345,8 +350,8 @@ function runtimeCodeBinding(audit:RuntimeCodeAudit):Record<RuntimeCodeName,Runti
 }
 
 function runtimeCodeSourcesForEntry(entry:ReviewedRuntimeCode,sources:RuntimeCodePrimarySource[]):boolean{
-  const deploymentAddressSource=sources.find(source=>source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS");
-  const sourceReleaseSource=sources.find(source=>source.kind==="OFFICIAL_SOURCE_RELEASE");
+  const deploymentAddressSource=sources.find(source=>source.name===entry.name&&source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS");
+  const sourceReleaseSource=sources.find(source=>source.name===entry.name&&source.kind==="OFFICIAL_SOURCE_RELEASE");
   return Boolean(deploymentAddressSource&&sourceReleaseSource&&
     deploymentAddressSource.rawSha256===entry.deploymentAddressSourceSha256&&sourceReleaseSource.rawSha256===entry.sourceReleaseSourceSha256);
 }

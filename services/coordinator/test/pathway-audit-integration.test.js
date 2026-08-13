@@ -78,18 +78,21 @@ function dvnAuditText(){const source="docs/research/reviewed-dvn-operators.md";r
 })}
 
 function runtimeCodeAuditText(){
-  const deploymentAddressUrl="https://example.com/layerzero-v2-deployments",sourceReleaseUrl="https://example.com/layerzero-v2-source-release";
-  const deploymentAddressSourceSha256=sha256("runtime-code deployment-address source"),sourceReleaseSourceSha256=sha256("runtime-code source-release source"),runtimeCodeKeccak256=keccak256("0x6000");
-  const entry=(name,chainId,eid,address)=>({name,chainId,eid,address,runtimeCodeKeccak256,layerZeroV2SourceRevision:"v2.0.0",deploymentAddressSourceSha256,sourceReleaseSourceSha256,block:{number:1,hash:hash("a")}});
+  const runtimeCodeKeccak256=keccak256("0x6000");
+  const entry=(name,chainId,eid,address)=>{
+    const deploymentAddressSourceSha256=sha256(`runtime-code deployment-address source:${name}`),sourceReleaseSourceSha256=sha256(`runtime-code source-release source:${name}`);
+    return{name,chainId,eid,address,runtimeCodeKeccak256,layerZeroV2SourceRevision:"v2.0.0",deploymentAddressSourceSha256,sourceReleaseSourceSha256,block:{number:1,hash:hash("a")}};
+  };
+  const entries=[
+    entry("destinationEndpointV2",421614,40231,contracts.destination.endpoint),entry("destinationReceiveUln302",421614,40231,contracts.destination.receive),
+    entry("sourceEndpointV2",11155111,40161,contracts.source.endpoint),entry("sourceExecutor",11155111,40161,contracts.source.executor),entry("sourceSendUln302",11155111,40161,contracts.source.send)
+  ];
   return canonicalJson({
     schemaVersion:1,status:"RUNTIME_CODE_IDENTITIES_REVIEWED",
-    entries:[
-      entry("destinationEndpointV2",421614,40231,contracts.destination.endpoint),entry("destinationReceiveUln302",421614,40231,contracts.destination.receive),
-      entry("sourceEndpointV2",11155111,40161,contracts.source.endpoint),entry("sourceExecutor",11155111,40161,contracts.source.executor),entry("sourceSendUln302",11155111,40161,contracts.source.send)
-    ],sources:[
-      {kind:"OFFICIAL_DEPLOYMENT_ADDRESS",url:deploymentAddressUrl,rawSha256:deploymentAddressSourceSha256},
-      {kind:"OFFICIAL_SOURCE_RELEASE",url:sourceReleaseUrl,rawSha256:sourceReleaseSourceSha256}
-    ],warning:"Reviewed deterministic integration evidence."
+    entries,sources:entries.flatMap(value=>[
+      {name:value.name,kind:"OFFICIAL_DEPLOYMENT_ADDRESS",url:`https://example.com/${value.name}-deployment`,rawSha256:value.deploymentAddressSourceSha256},
+      {name:value.name,kind:"OFFICIAL_SOURCE_RELEASE",url:`https://example.com/${value.name}-source`,rawSha256:value.sourceReleaseSourceSha256}
+    ]).sort((left,right)=>`${left.name}:${left.kind}`.localeCompare(`${right.name}:${right.kind}`)),warning:"Reviewed deterministic integration evidence."
   });
 }
 

@@ -124,8 +124,8 @@ function reviewedRuntimeCodeAudit(input){
       block:{number:1,hash:"0x"+"2".repeat(64)}
     }],
     sources:[
-      {kind:"OFFICIAL_DEPLOYMENT_ADDRESS",url:deploymentAddressUrl,rawSha256:deploymentAddressSourceSha256},
-      {kind:"OFFICIAL_SOURCE_RELEASE",url:sourceReleaseUrl,rawSha256:sourceReleaseSourceSha256}
+      {name:"sourceEndpointV2",kind:"OFFICIAL_DEPLOYMENT_ADDRESS",url:deploymentAddressUrl,rawSha256:deploymentAddressSourceSha256},
+      {name:"sourceEndpointV2",kind:"OFFICIAL_SOURCE_RELEASE",url:sourceReleaseUrl,rawSha256:sourceReleaseSourceSha256}
     ],
     warning:"Reviewed entries bind public evidence only; they do not establish deployment or pathway suitability."
   };

@@ -22,7 +22,9 @@ At one canonical block, the reviewer must read the contract runtime bytes from
 both reviewed public RPC operator families, verify equality, compute their
 Keccak-256 digest, and record the block number and hash. The review registry
 must bind those two evidence digests, the source revision, address, chain ID,
-endpoint ID, block, and runtime digest.
+endpoint ID, block, and runtime digest. The two primary-source records are
+named for that exact contract; they cannot be shared across a different
+contract name merely because it uses the same chain or address-book file.
 
 No value may be copied from an explorer, local compilation, a provider result
 alone, or an unpinned branch URL. A source revision is provenance evidence; it
