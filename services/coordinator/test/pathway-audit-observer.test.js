@@ -285,6 +285,19 @@ test("a null deployment still records all official code and never probes pathway
   }
 });
 
+test("a partial official code review preserves the code-identity blocker before deployment",async()=>{
+  const setup=fixture({deployment:false}),codeHash=keccak256("0x6000");
+  setup.input.policyBinding.officialRuntimeCodeKeccak256={
+    sourceEndpointV2:codeHash,sourceSendUln302:null,sourceExecutor:null,
+    destinationEndpointV2:null,destinationReceiveUln302:null
+  };
+  const observation=await observePathway(setup.input);
+  assert.equal(observation.officialCode.source[0].identity,"CODE_IDENTITY_REVIEWED");
+  assert.equal(observation.officialCode.source[1].identity,"CODE_PRESENT_IDENTITY_UNPROVEN");
+  assert.equal(observation.status,"BLOCKED_CODE_IDENTITY");
+  assert.deepEqual(codes(observation),["AUDIT_CODE_IDENTITY_UNPROVEN","AUDIT_PATHWAY_DEPLOYMENTS_MISSING"]);
+});
+
 test("predeployment missing-vs-code disagreement cannot be labeled transport agreement",async()=>{
   const observation=await observePathway(fixture({deployment:false,source:{codeMissing:true}}).input);
   assert.equal(observation.blockers.some(value=>value.code==="AUDIT_CODE_MISSING"),true);
