@@ -1,16 +1,24 @@
 # Demo and submission plan
 
-## Deployed web dashboard
+## Public site and read-only console
 
 ```text
-Web dashboard: DEPLOYED — https://genlayer-sentinel-console.damilexi2005.chatgpt.site (owner-private; sign-in required)
+Prior static web deployment: DEPLOYED — https://genlayer-sentinel-console.damilexi2005.chatgpt.site (owner-private; sign-in required)
+Route-separated package: LOCALLY VERIFIED — NOT DEPLOYED BY THIS CHANGE
 Pathway contracts: NOT DEPLOYED BY THIS MILESTONE
 LayerZero DVN onboarding: NOT COMPLETED
 GenLayer live finality: NOT CLAIMED
 Production readiness: NO
 ```
 
-The deployed page is a static, self-origin presentation and local pathway-evidence inspector. It does not host the coordinator API, signer services, GenLayer account integration, or testnet contracts. Before a local artifact is selected it remains `NOT OBSERVED`; hosted coordinator-backed sections fail closed as unavailable and never substitute fixture data.
+Walk through the route-separated package in this order:
+
+1. Open `/` first. This is the public product site: explain the five proof gates and the separation between deterministic packet evidence, semantic policy, signer authorization, and destination execution. The page exposes no live metrics, wallet action, or transaction control.
+2. Enter a packet GUID or transaction hash on the public site and continue to `/console/?q=...`. The public page only carries the value in the URL; it does not query a coordinator.
+3. At `/console/`, use **Search observed packets** and the **Observed message inbox**. A selected message presents packet, policy, signer, and destination evidence without offering a mutation control.
+4. Show the fail-closed states explicitly: `COORDINATOR UNAVAILABLE` when the static host has no coordinator API, `NO PACKETS DETECTED` when a connected coordinator has no jobs, `SELECTION UNAVAILABLE` when a requested GUID is not observed, and `NOT OBSERVED` before a local evidence file passes closed validation. No state is replaced with fixture data.
+
+The route-separated package is not deployed by this documentation change, so the prior owner-private URL is not evidence that `/` and `/console/` have switched. Even after a separate approved web deployment, these routes would remain presentation only: they do not host the coordinator, signer services, GenLayer account integration, testnet contracts, or a live DVN pathway. Only the explicit loopback local demo below can expose a capability that enables the wallet action workspace.
 
 ## Runnable local wallet demo
 
@@ -68,7 +76,7 @@ npm run audit:pathway -- --manifest /absolute/path/to/public-pathway-observation
 
 Before deployments, the truthful expected outcome is exit `2`: the command may establish provider-agreed blocks and public protocol code, but its artifact records `AUDIT_PATHWAY_DEPLOYMENTS_MISSING` and leaves pathway configuration absent. It never substitutes local EDR data. A later complete record must contain both OApps, both adapters, four creation transaction hashes, two OApp delegates, five sorted authorized signers, and quorum three.
 
-Open the local operations dashboard or the owner-private deployed dashboard and use **Inspect Evidence** to select the generated artifact. Selection is local and in-memory; the browser uploads and persists nothing. The panel remains `NOT OBSERVED` until a strict canonical artifact passes its integrity and semantic-consistency checks. It never combines audit evidence with coordinator packet, GenLayer, signer, destination, or execution state. The hosted dashboard URL above is a web deployment only, not pathway deployment evidence.
+Open the local `/console/` route and use **Inspect Evidence** to select the generated artifact. After a separately approved route deployment, the same inspector may be used on the hosted console. Selection is local and in-memory; the browser uploads and persists nothing. The panel remains `NOT OBSERVED` until a strict canonical artifact passes its integrity and semantic-consistency checks. It never combines audit evidence with coordinator packet, GenLayer, signer, destination, or execution state. The prior hosted dashboard URL above is a web deployment only, not evidence that the route split or pathway has been deployed.
 
 For a credible recorded demo, show the command, exit code, immutable file hash, artifact truth label, two transport-agreement fields, separate operator-independence fields, pinned blocks, code identities, configuration digest or blockers, and dashboard rejection of one tampered copy. Do not call a blocked artifact validated, call transport diversity decentralization, or present `LOCAL_POLICY_FIXTURE` as GenLayer consensus.
 

@@ -91,6 +91,19 @@ function fakeDocument(){
   };
 }
 
+function installConsoleNavigationGlobals(){
+  globalThis.location={pathname:"/console/",search:"",hash:""};
+  globalThis.history={replaceState(){}};
+}
+
+test("console integration fixtures expose stable read-only route globals",()=>{
+  installConsoleNavigationGlobals();
+  const initial={...globalThis.location};
+  globalThis.history.replaceState(null,"","/console/?guid=changed");
+  assert.deepEqual(globalThis.location,initial);
+  assert.deepEqual(initial,{pathname:"/console/",search:"",hash:""});
+});
+
 test("unavailable restoration performs only the capability GET and never touches the wallet",async()=>{
   const locator={
     version:1,
@@ -110,6 +123,7 @@ test("unavailable restoration performs only the capability GET and never touches
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
+  installConsoleNavigationGlobals();
   globalThis.fetch=async path=>{
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:false,status:404,json:async()=>({})};
@@ -172,6 +186,7 @@ test("matching restoration unlocks read-only operations and schedules the exact 
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
+  installConsoleNavigationGlobals();
   globalThis.fetch=async path=>{
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:true,status:200,json:async()=>publicConfig};
@@ -224,6 +239,7 @@ test("runtime status failure renders unavailable without disrupting other operat
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
+  installConsoleNavigationGlobals();
   globalThis.fetch=async path=>{
     fetches.push(String(path));
     if(path==="/api/demo/config")return{ok:false,status:404,json:async()=>({})};
@@ -322,6 +338,7 @@ test("a fresh wallet action persists nothing until the mined receipt yields its 
   globalThis.window=windowValue;
   globalThis.document=documentValue;
   globalThis.CustomEvent=FakeCustomEvent;
+  installConsoleNavigationGlobals();
   globalThis.fetch=async path=>{
     if(path==="/api/demo/config")return{ok:true,status:200,json:async()=>publicConfig};
     if(path==="/health")return{ok:true,status:200,json:async()=>({presentationMode:"LOCAL_TEST"})};

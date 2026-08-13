@@ -52,6 +52,14 @@ test("build:site emits only the reviewed public and worker files",async()=>{
   assert.equal(createHash("sha256").update(await readFile("dist/public/assets/og.png")).digest("hex"),ogDigest);
 });
 
+test("the package contains distinct public and console experiences",async()=>{
+  const publicPage=await readFile("dist/public/index.html","utf8");
+  const consolePage=await readFile("dist/public/console/index.html","utf8");
+  assert.match(publicPage,/Proof before value moves\./);
+  assert.match(consolePage,/Sentinel Console/);
+  assert.equal(publicPage.includes("demo-workspace"),false);
+});
+
 test("the worker injects only the request origin into hosted social metadata",async()=>{
   const page=await readFile("dist/public/index.html");
   const response=await worker.fetch(
