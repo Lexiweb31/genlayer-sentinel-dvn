@@ -392,3 +392,31 @@ test("rejects malformed or mismatched runtime-code registry evidence",async()=>{
     assert.throws(()=>bindPathwayAuditPolicy(input),/PATHWAY_AUDIT_POLICY_INVALID/,name);
   }
 });
+
+test("permits the same immutable official source document to support matching contracts on both pathway chains",async()=>{
+  const input=await inputs(),audit=reviewedRuntimeCodeAudit(input);
+  const source=audit.entries[0];
+  const destination={
+    ...source,
+    name:"destinationEndpointV2",
+    chainId:input.manifest.destination.chainId,
+    eid:input.manifest.destination.eid,
+    address:input.manifest.destination.contracts.endpointV2
+  };
+  audit.entries=[destination,source];
+  audit.sources=[
+    { ...audit.sources[0],name:"destinationEndpointV2" },
+    { ...audit.sources[1],name:"destinationEndpointV2" },
+    ...audit.sources
+  ].sort((left,right)=>`${left.name}:${left.kind}`.localeCompare(`${right.name}:${right.kind}`));
+  const policy=JSON.parse(input.policyText);
+  policy.officialRuntimeCodeKeccak256.sourceEndpointV2="0x"+"1".repeat(64);
+  policy.officialRuntimeCodeKeccak256.destinationEndpointV2="0x"+"1".repeat(64);
+  input.policyText=JSON.stringify(policy,null,2)+"\n";
+  input.officialRuntimeCodeAuditText=canonicalJson(audit);
+
+  const binding=bindPathwayAuditPolicy(input);
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.state,"REVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.destinationEndpointV2.state,"REVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.sourceReleaseSource.rawSha256,binding.officialRuntimeCodeReview.destinationEndpointV2.sourceReleaseSource.rawSha256);
+});

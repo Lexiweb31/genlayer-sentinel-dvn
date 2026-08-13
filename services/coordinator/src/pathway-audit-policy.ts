@@ -319,7 +319,7 @@ function strictRuntimeCodeSources(values:RuntimeCodePrimarySource[],entries:Revi
   return values.length===entries.length*2&&
     values.every((value,index)=>index===0||`${value.name}:${value.kind}`>`${values[index-1]!.name}:${values[index-1]!.kind}`)&&
     new Set(values.map(value=>`${value.name}:${value.kind}`)).size===values.length&&
-    new Set(values.map(value=>value.url)).size===values.length&&new Set(values.map(value=>value.rawSha256)).size===values.length&&
+    values.every(value=>values.filter(other=>other.url===value.url).every(other=>other.rawSha256===value.rawSha256))&&
     entries.every(entry=>values.some(source=>source.name===entry.name&&source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS")&&
       values.some(source=>source.name===entry.name&&source.kind==="OFFICIAL_SOURCE_RELEASE"));
 }
