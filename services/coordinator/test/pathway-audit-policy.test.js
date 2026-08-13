@@ -110,17 +110,23 @@ function emptyRuntimeCodeAudit(){
 }
 
 function reviewedRuntimeCodeAudit(input){
-  const url="https://example.com/layerzero-runtime-code";
-  const sourceSha256=sha256("reviewed runtime-code source");
+  const deploymentAddressUrl="https://example.com/layerzero-v2-deployments";
+  const sourceReleaseUrl="https://example.com/layerzero-v2-source-release";
+  const deploymentAddressSourceSha256=sha256("reviewed deployment-address source");
+  const sourceReleaseSourceSha256=sha256("reviewed source-release source");
   return{
     schemaVersion:1,status:"RUNTIME_CODE_IDENTITIES_REVIEWED",
     entries:[{
       name:"sourceEndpointV2",chainId:input.manifest.source.chainId,eid:input.manifest.source.eid,
       address:input.manifest.source.contracts.endpointV2,runtimeCodeKeccak256:"0x"+"1".repeat(64),
-      evidenceSha256:sha256("reviewed runtime-code evidence"),sourceSha256,provenanceUrl:url,
+      layerZeroV2SourceRevision:"v2.0.0",
+      deploymentAddressSourceSha256,sourceReleaseSourceSha256,
       block:{number:1,hash:"0x"+"2".repeat(64)}
     }],
-    sources:[{url,sha256:sourceSha256}],
+    sources:[
+      {kind:"OFFICIAL_DEPLOYMENT_ADDRESS",url:deploymentAddressUrl,rawSha256:deploymentAddressSourceSha256},
+      {kind:"OFFICIAL_SOURCE_RELEASE",url:sourceReleaseUrl,rawSha256:sourceReleaseSourceSha256}
+    ],
     warning:"Reviewed entries bind public evidence only; they do not establish deployment or pathway suitability."
   };
 }
@@ -328,6 +334,11 @@ test("binds reviewed runtime-code evidence only to matching policy pins",async()
   assert.equal(binding.officialRuntimeCodeReview.sourceExecutor.state,"UNREVIEWED");
   assert.equal(binding.officialRuntimeCodeReview.destinationEndpointV2.state,"UNREVIEWED");
   assert.equal(binding.officialRuntimeCodeReview.destinationReceiveUln302.state,"UNREVIEWED");
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.layerZeroV2SourceRevision,"v2.0.0");
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.deploymentAddressSource.url,"https://example.com/layerzero-v2-deployments");
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.deploymentAddressSource.rawSha256,sha256("reviewed deployment-address source"));
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.sourceReleaseSource.url,"https://example.com/layerzero-v2-source-release");
+  assert.equal(binding.officialRuntimeCodeReview.sourceEndpointV2.sourceReleaseSource.rawSha256,sha256("reviewed source-release source"));
   assert.notEqual(binding.repositoryBindingSha256,previous.repositoryBindingSha256);
 });
 
@@ -349,10 +360,13 @@ test("rejects malformed or mismatched runtime-code registry evidence",async()=>{
     ["wrong chain ID",audit=>{audit.entries[0].chainId=1;return canonicalJson(audit)}],
     ["wrong EID",audit=>{audit.entries[0].eid=1;return canonicalJson(audit)}],
     ["wrong address",audit=>{audit.entries[0].address=address(1);return canonicalJson(audit)}],
-    ["non-HTTPS provenance URL",audit=>{audit.entries[0].provenanceUrl="http://example.com/evidence";return canonicalJson(audit)}],
-    ["malformed digest",audit=>{audit.entries[0].evidenceSha256="bad";return canonicalJson(audit)}],
+    ["non-HTTPS deployment-address URL",audit=>{audit.sources[0].url="http://example.com/evidence";return canonicalJson(audit)}],
+    ["malformed deployment-address digest",audit=>{audit.sources[0].rawSha256="bad";return canonicalJson(audit)}],
     ["malformed runtime hash",audit=>{audit.entries[0].runtimeCodeKeccak256="0xBAD";return canonicalJson(audit)}],
-    ["source digest mismatch",audit=>{audit.entries[0].sourceSha256=digest("f");return canonicalJson(audit)}],
+    ["deployment-address source digest mismatch",audit=>{audit.entries[0].deploymentAddressSourceSha256=digest("f");return canonicalJson(audit)}],
+    ["source-release source digest mismatch",audit=>{audit.entries[0].sourceReleaseSourceSha256=digest("f");return canonicalJson(audit)}],
+    ["missing LayerZero V2 source revision",audit=>{delete audit.entries[0].layerZeroV2SourceRevision;return canonicalJson(audit)}],
+    ["duplicated primary source URL",audit=>{audit.sources[1].url=audit.sources[0].url;return canonicalJson(audit)}],
     ["noncanonical JSON",audit=>JSON.stringify(audit,null,2)+"\n"],
     ["reviewed registry entry for a null policy pin",audit=>canonicalJson(audit)],
     ["non-null policy pin without matching reviewed registry entry",audit=>canonicalJson(emptyRuntimeCodeAudit())]

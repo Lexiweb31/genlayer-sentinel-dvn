@@ -78,14 +78,18 @@ function dvnAuditText(){const source="docs/research/reviewed-dvn-operators.md";r
 })}
 
 function runtimeCodeAuditText(){
-  const url="https://example.com/layerzero-runtime-code",sourceSha256=sha256("runtime-code source"),runtimeCodeKeccak256=keccak256("0x6000");
-  const entry=(name,chainId,eid,address)=>({name,chainId,eid,address,runtimeCodeKeccak256,evidenceSha256:sha256(`evidence:${name}`),sourceSha256,provenanceUrl:url,block:{number:1,hash:hash("a")}});
+  const deploymentAddressUrl="https://example.com/layerzero-v2-deployments",sourceReleaseUrl="https://example.com/layerzero-v2-source-release";
+  const deploymentAddressSourceSha256=sha256("runtime-code deployment-address source"),sourceReleaseSourceSha256=sha256("runtime-code source-release source"),runtimeCodeKeccak256=keccak256("0x6000");
+  const entry=(name,chainId,eid,address)=>({name,chainId,eid,address,runtimeCodeKeccak256,layerZeroV2SourceRevision:"v2.0.0",deploymentAddressSourceSha256,sourceReleaseSourceSha256,block:{number:1,hash:hash("a")}});
   return canonicalJson({
     schemaVersion:1,status:"RUNTIME_CODE_IDENTITIES_REVIEWED",
     entries:[
       entry("destinationEndpointV2",421614,40231,contracts.destination.endpoint),entry("destinationReceiveUln302",421614,40231,contracts.destination.receive),
       entry("sourceEndpointV2",11155111,40161,contracts.source.endpoint),entry("sourceExecutor",11155111,40161,contracts.source.executor),entry("sourceSendUln302",11155111,40161,contracts.source.send)
-    ],sources:[{url,sha256:sourceSha256}],warning:"Reviewed deterministic integration evidence."
+    ],sources:[
+      {kind:"OFFICIAL_DEPLOYMENT_ADDRESS",url:deploymentAddressUrl,rawSha256:deploymentAddressSourceSha256},
+      {kind:"OFFICIAL_SOURCE_RELEASE",url:sourceReleaseUrl,rawSha256:sourceReleaseSourceSha256}
+    ],warning:"Reviewed deterministic integration evidence."
   });
 }
 

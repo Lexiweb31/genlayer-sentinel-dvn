@@ -46,10 +46,16 @@ export interface ReviewedRuntimeCode{
   eid:number;
   address:string;
   runtimeCodeKeccak256:string;
-  evidenceSha256:string;
-  sourceSha256:string;
-  provenanceUrl:string;
+  layerZeroV2SourceRevision:string;
+  deploymentAddressSourceSha256:string;
+  sourceReleaseSourceSha256:string;
   block:{number:number;hash:string};
+}
+
+export interface RuntimeCodePrimarySource{
+  kind:"OFFICIAL_DEPLOYMENT_ADDRESS"|"OFFICIAL_SOURCE_RELEASE";
+  url:string;
+  rawSha256:string;
 }
 
 export interface PathwayAuditPolicyInput{
@@ -112,13 +118,16 @@ interface DvnOperatorAudit{
 }
 
 type RuntimeCodeName="sourceEndpointV2"|"sourceSendUln302"|"sourceExecutor"|"destinationEndpointV2"|"destinationReceiveUln302";
-type RuntimeCodeReview={state:"UNREVIEWED"}|({state:"REVIEWED"}&ReviewedRuntimeCode);
+type RuntimeCodeReview={state:"UNREVIEWED"}|({state:"REVIEWED"}&ReviewedRuntimeCode&{
+  deploymentAddressSource:RuntimeCodePrimarySource;
+  sourceReleaseSource:RuntimeCodePrimarySource;
+});
 
 interface RuntimeCodeAudit{
   schemaVersion:1;
   status:"NO_RUNTIME_CODE_IDENTITIES_REVIEWED"|"RUNTIME_CODE_IDENTITIES_REVIEWED";
   entries:ReviewedRuntimeCode[];
-  sources:{url:string;sha256:string}[];
+  sources:RuntimeCodePrimarySource[];
   warning:string;
 }
 
@@ -270,8 +279,8 @@ function parseRuntimeCodeAudit(text:string,policy:PathwayAuditorPolicy,networks:
     if(root.schemaVersion!==1||!Array.isArray(root.entries)||!Array.isArray(root.sources)||!nonempty(root.warning)||
       (root.status!=="NO_RUNTIME_CODE_IDENTITIES_REVIEWED"&&root.status!=="RUNTIME_CODE_IDENTITIES_REVIEWED"))invalid();
     const sources=root.sources.map(runtimeCodeSource),entries=root.entries.map(runtimeCodeEntry);
-    if(!strictRuntimeCodeSources(sources)||!strictRuntimeCodeEntries(entries)||
-      entries.some(entry=>!sources.some(source=>source.url===entry.provenanceUrl&&source.sha256===entry.sourceSha256))||
+    if(!strictRuntimeCodeEntries(entries)||(root.status==="RUNTIME_CODE_IDENTITIES_REVIEWED"&&!strictRuntimeCodeSources(sources))||
+      entries.some(entry=>!runtimeCodeSourcesForEntry(entry,sources))||
       (root.status==="NO_RUNTIME_CODE_IDENTITIES_REVIEWED"&&(entries.length!==0||sources.length!==0))||
       (root.status==="RUNTIME_CODE_IDENTITIES_REVIEWED"&&(entries.length===0||sources.length===0)))invalid();
     for(const name of runtimeCodeNames){
@@ -286,27 +295,28 @@ function parseRuntimeCodeAudit(text:string,policy:PathwayAuditorPolicy,networks:
   }catch(error){if(error instanceof PathwayAuditPolicyError)throw error;return invalid()}
 }
 
-function runtimeCodeSource(value:unknown):{url:string;sha256:string}{
-  const root=record(value);exactKeys(root,["url","sha256"]);
-  return{url:httpsUrl(root.url),sha256:nonzeroDigest(root.sha256)};
+function runtimeCodeSource(value:unknown):RuntimeCodePrimarySource{
+  const root=record(value);exactKeys(root,["kind","url","rawSha256"]);
+  if(root.kind!=="OFFICIAL_DEPLOYMENT_ADDRESS"&&root.kind!=="OFFICIAL_SOURCE_RELEASE")invalid();
+  return{kind:root.kind,url:httpsUrl(root.url),rawSha256:nonzeroDigest(root.rawSha256)};
 }
 
 function runtimeCodeEntry(value:unknown):ReviewedRuntimeCode{
-  const root=record(value);exactKeys(root,["name","chainId","eid","address","runtimeCodeKeccak256","evidenceSha256","sourceSha256","provenanceUrl","block"]);
-  if(!runtimeCodeNames.includes(root.name as RuntimeCodeName)||!positiveInteger(root.chainId)||!positiveInteger(root.eid))invalid();
+  const root=record(value);exactKeys(root,["name","chainId","eid","address","runtimeCodeKeccak256","layerZeroV2SourceRevision","deploymentAddressSourceSha256","sourceReleaseSourceSha256","block"]);
+  if(!runtimeCodeNames.includes(root.name as RuntimeCodeName)||!positiveInteger(root.chainId)||!positiveInteger(root.eid)||!isPathwayAuditPublicIdentifier(root.layerZeroV2SourceRevision))invalid();
   const block=record(root.block);exactKeys(block,["number","hash"]);
   if(!positiveInteger(block.number))invalid();
   return{
     name:root.name as RuntimeCodeName,chainId:root.chainId,eid:root.eid,address:address(root.address),
-    runtimeCodeKeccak256:codeHash(root.runtimeCodeKeccak256)??invalid(),evidenceSha256:nonzeroDigest(root.evidenceSha256),
-    sourceSha256:nonzeroDigest(root.sourceSha256),provenanceUrl:httpsUrl(root.provenanceUrl),
+    runtimeCodeKeccak256:codeHash(root.runtimeCodeKeccak256)??invalid(),layerZeroV2SourceRevision:root.layerZeroV2SourceRevision,
+    deploymentAddressSourceSha256:nonzeroDigest(root.deploymentAddressSourceSha256),sourceReleaseSourceSha256:nonzeroDigest(root.sourceReleaseSourceSha256),
     block:{number:block.number,hash:codeHash(block.hash)??invalid()}
   };
 }
 
-function strictRuntimeCodeSources(values:{url:string;sha256:string}[]):boolean{
-  return values.every((value,index)=>index===0||value.url>values[index-1]!.url)&&
-    new Set(values.map(value=>value.url)).size===values.length&&new Set(values.map(value=>value.sha256)).size===values.length;
+function strictRuntimeCodeSources(values:RuntimeCodePrimarySource[]):boolean{
+  return values.length===2&&values[0]?.kind==="OFFICIAL_DEPLOYMENT_ADDRESS"&&values[1]?.kind==="OFFICIAL_SOURCE_RELEASE"&&
+    values[0].url!==values[1].url&&values[0].rawSha256!==values[1].rawSha256;
 }
 
 function strictRuntimeCodeEntries(values:ReviewedRuntimeCode[]):boolean{
@@ -325,9 +335,20 @@ function runtimeCodeBinding(audit:RuntimeCodeAudit):Record<RuntimeCodeName,Runti
   const binding={}as Record<RuntimeCodeName,RuntimeCodeReview>;
   for(const name of runtimeCodeNames){
     const entry=audit.entries.find(value=>value.name===name);
-    binding[name]=entry?{...entry,block:{...entry.block},state:"REVIEWED"}:{state:"UNREVIEWED"};
+    if(!entry){binding[name]={state:"UNREVIEWED"};continue}
+    const deploymentAddressSource=audit.sources.find(source=>source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS");
+    const sourceReleaseSource=audit.sources.find(source=>source.kind==="OFFICIAL_SOURCE_RELEASE");
+    if(!deploymentAddressSource||!sourceReleaseSource)invalid();
+    binding[name]={...entry,block:{...entry.block},deploymentAddressSource:{...deploymentAddressSource},sourceReleaseSource:{...sourceReleaseSource},state:"REVIEWED"};
   }
   return binding;
+}
+
+function runtimeCodeSourcesForEntry(entry:ReviewedRuntimeCode,sources:RuntimeCodePrimarySource[]):boolean{
+  const deploymentAddressSource=sources.find(source=>source.kind==="OFFICIAL_DEPLOYMENT_ADDRESS");
+  const sourceReleaseSource=sources.find(source=>source.kind==="OFFICIAL_SOURCE_RELEASE");
+  return Boolean(deploymentAddressSource&&sourceReleaseSource&&
+    deploymentAddressSource.rawSha256===entry.deploymentAddressSourceSha256&&sourceReleaseSource.rawSha256===entry.sourceReleaseSourceSha256);
 }
 
 function dvn(value:unknown):ReviewedDvn{
