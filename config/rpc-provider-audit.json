@@ -1,8 +1,47 @@
 {
   "schemaVersion": 1,
-  "auditDate": "2026-08-02",
-  "status": "NO_PROVIDER_OPERATORS_REVIEWED",
-  "providers": [],
-  "sources": [],
-  "warning": "URL diversity is transport diversity, not operator independence."
+  "auditDate": "2026-08-13",
+  "status": "PROVIDER_OPERATORS_REVIEWED",
+  "providers": [
+    {
+      "label": "arbitrum-publicnode",
+      "operatorFamily": "publicnode",
+      "originSha256": "b290f0154fffbfcf92b01e44993e5a79d9bfecf955f77a79566ee001e4e172c0",
+      "operatorEvidenceSha256": "c6310626f3d87db8068b0e736eb5c06c38371b9b3dc5b1a89321713054e2b855",
+      "sources": [
+        "docs/research/2026-08-13-rpc-provider-operator-audit.md"
+      ]
+    },
+    {
+      "label": "arbitrum-tenderly",
+      "operatorFamily": "tenderly",
+      "originSha256": "0eda6394fd9321ce555692d81c26ef1ff89dc0359faec6eb06918ccc6dc57e3d",
+      "operatorEvidenceSha256": "c6310626f3d87db8068b0e736eb5c06c38371b9b3dc5b1a89321713054e2b855",
+      "sources": [
+        "docs/research/2026-08-13-rpc-provider-operator-audit.md"
+      ]
+    },
+    {
+      "label": "sepolia-publicnode",
+      "operatorFamily": "publicnode",
+      "originSha256": "18dddd47c8f4b183a5b2322a292c534f78b4c31ed168fbbc1af18f41767f3899",
+      "operatorEvidenceSha256": "c6310626f3d87db8068b0e736eb5c06c38371b9b3dc5b1a89321713054e2b855",
+      "sources": [
+        "docs/research/2026-08-13-rpc-provider-operator-audit.md"
+      ]
+    },
+    {
+      "label": "sepolia-tenderly",
+      "operatorFamily": "tenderly",
+      "originSha256": "9b025308414c5c9b57a91234bfbf73b541d3e3c7093fc7fab4bb4eed9b5c3f1e",
+      "operatorEvidenceSha256": "c6310626f3d87db8068b0e736eb5c06c38371b9b3dc5b1a89321713054e2b855",
+      "sources": [
+        "docs/research/2026-08-13-rpc-provider-operator-audit.md"
+      ]
+    }
+  ],
+  "sources": [
+    "docs/research/2026-08-13-rpc-provider-operator-audit.md"
+  ],
+  "warning": "Operator-family evidence distinguishes documented PublicNode and Tenderly origins; it does not prove infrastructure, ownership, availability, or production suitability."
 }

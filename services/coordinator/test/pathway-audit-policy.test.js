@@ -253,6 +253,21 @@ test("the committed DVN registry is canonical, honest, and empty until identitie
   assert.deepEqual(binding.reviewedDvns,{source:[],destination:[]});
 });
 
+test("the committed RPC registry binds each documented public operator independently",async()=>{
+  const text=await readFile(new URL("config/rpc-provider-audit.json",root),"utf8");
+  const audit=JSON.parse(text);
+  assert.equal(audit.status,"PROVIDER_OPERATORS_REVIEWED");
+  assert.equal(audit.auditDate,"2026-08-13");
+  assert.deepEqual(audit.sources,["docs/research/2026-08-13-rpc-provider-operator-audit.md"]);
+  assert.deepEqual(audit.providers.map(value=>[value.label,value.operatorFamily]),[
+    ["arbitrum-publicnode","publicnode"],
+    ["arbitrum-tenderly","tenderly"],
+    ["sepolia-publicnode","publicnode"],
+    ["sepolia-tenderly","tenderly"]
+  ]);
+  assert(audit.providers.every(value=>value.sources.length===1&&value.sources[0]===audit.sources[0]&&/^[a-f0-9]{64}$/.test(value.operatorEvidenceSha256)));
+});
+
 test("rejects noncanonical, open, duplicate, malformed, unknown-chain, and unsafe DVN review records",async()=>{
   const cases=[
     ["noncanonical",audit=>JSON.stringify(audit,null,2)+"\n"],
