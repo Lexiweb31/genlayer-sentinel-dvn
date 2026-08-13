@@ -1,7 +1,7 @@
 # Independent Signer Finality Witness Design
 
-**Status:** Approved by the original isolated-threshold-signer requirement and the instruction to continue code-only hardening  
-**Date:** 2026-07-28  
+**Status:** Approved by the original isolated-threshold-signer requirement and the instruction to continue code-only hardening
+**Date:** 2026-07-28
 **Target release:** `0.27.0`
 
 ## Objective

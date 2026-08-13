@@ -3,7 +3,7 @@
 ## Public site and read-only console
 
 ```text
-Prior static web deployment: DEPLOYED — https://genlayer-sentinel-console.damilexi2005.chatgpt.site (owner-private; sign-in required)
+Prior static web deployment: DEPLOYED — https://genlayer-sentinel-console.damilexi2005.chatgpt.site
 Route-separated package: LOCALLY VERIFIED — NOT DEPLOYED BY THIS CHANGE
 Pathway contracts: NOT DEPLOYED BY THIS MILESTONE
 LayerZero DVN onboarding: NOT COMPLETED
@@ -18,7 +18,7 @@ Walk through the route-separated package in this order:
 3. At `/console/`, use **Search observed packets** and the **Observed message inbox**. A selected message presents packet, policy, signer, and destination evidence without offering a mutation control.
 4. Show the fail-closed states explicitly: `COORDINATOR UNAVAILABLE` when the static host has no coordinator API, `NO PACKETS DETECTED` when a connected coordinator has no jobs, `SELECTION UNAVAILABLE` when a requested GUID is not observed, and `NOT OBSERVED` before a local evidence file passes closed validation. No state is replaced with fixture data.
 
-The route-separated package is not deployed by this documentation change, so the prior owner-private URL is not evidence that `/` and `/console/` have switched. Even after a separate approved web deployment, these routes would remain presentation only: they do not host the coordinator, signer services, GenLayer account integration, testnet contracts, or a live DVN pathway. Only the explicit loopback local demo below can expose a capability that enables the wallet action workspace.
+The route-separated package is not deployed by this documentation change, so the prior static URL is not evidence that `/` and `/console/` have switched. Even after a separate approved web deployment, these routes would remain presentation only: they do not host the coordinator, signer services, GenLayer account integration, testnet contracts, or a live DVN pathway. Only the explicit loopback local demo below can expose a capability that enables the wallet action workspace.
 
 ## Runnable local wallet demo
 
@@ -103,13 +103,13 @@ Fixtures:
 
 Unavailable:
 
-- public unauthenticated app access, testnet contracts, live GenLayer request, independent DVNs/providers, five isolated DVN signer operators, five isolated recovery operators, on-chain recovery governance, HSM custody, external audit anchoring, monitoring, audit, and mainnet support. The owner-private static dashboard exists, but it supplies none of these operational capabilities.
+- deployment of the route-separated app package, testnet contracts, live GenLayer request, independent DVNs/providers, five isolated DVN signer operators, five isolated recovery operators, on-chain recovery governance, HSM custody, external audit anchoring, monitoring, audit, and mainnet support. The existing static dashboard supplies none of these operational capabilities.
 
 ## Public demo gate
 
-A public end-to-end pathway demo requires explicit approval for contract deployment and funding, re-verification of official addresses and pathway support, approved GenLayer finality consumption, independent source/destination RPCs, independent LayerZero DVNs, account providers, isolated signer processes, monitoring, and explorer evidence. Sentinel must remain an additional/optional verifier rather than the sole production verifier. The owner-private static dashboard URL does not satisfy this gate.
+A public end-to-end pathway demo requires explicit approval for contract deployment and funding, re-verification of official addresses and pathway support, approved GenLayer finality consumption, independent source/destination RPCs, independent LayerZero DVNs, account providers, isolated signer processes, monitoring, and explorer evidence. Sentinel must remain an additional/optional verifier rather than the sole production verifier. The existing static dashboard URL does not satisfy this gate.
 
-The future public walkthrough should publish one authoritative governance authorization; send matching and mismatching treasury actions; show both source transactions in explorers; follow the exact GUID through deterministic checks and live GenLayer finality; show three independently operated signer identities; show LayerZero verification and OApp execution only for the match; and demonstrate replay rejection. Until those facts exist, the deployed URL must be described only as the owner-private static dashboard—not as a live Sentinel pathway.
+The future public walkthrough should publish one authoritative governance authorization; send matching and mismatching treasury actions; show both source transactions in explorers; follow the exact GUID through deterministic checks and live GenLayer finality; show three independently operated signer identities; show LayerZero verification and OApp execution only for the match; and demonstrate replay rejection. Until those facts exist, the deployed URL must be described only as the existing static dashboard—not as a live Sentinel pathway.
 
 ## Video and submission
 

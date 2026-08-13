@@ -1,7 +1,7 @@
 # Native Mutual-TLS Signer Daemon Design
 
-**Date:** 2026-07-28  
-**Target release:** 0.28.0  
+**Date:** 2026-07-28
+**Target release:** 0.28.0
 **Status:** Approved design, pending implementation plan
 
 ## Purpose

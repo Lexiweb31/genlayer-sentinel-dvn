@@ -115,6 +115,34 @@ test("the worker resolves the console route to the packaged console HTML",async(
   assert.match(await response.text(),/Sentinel Console/);
 });
 
+test("the worker permits the public and console document dependencies",async()=>{
+  const cases=[
+    ["/src/landing.css","text/css; charset=utf-8"],
+    ["/src/landing.js","text/javascript; charset=utf-8"],
+    ["/src/console.css","text/css; charset=utf-8"],
+    ["/src/app.js","text/javascript; charset=utf-8"],
+    ["/assets/demo.js","text/javascript; charset=utf-8"],
+    ["/assets/og.png","image/png"]
+  ];
+  for(const[path,contentType]of cases){
+    const expected=await readFile(`dist/public${path}`);
+    const env={ASSETS:{fetch:async request=>{
+      assert.equal(new URL(request.url).pathname,path);
+      assert.equal(request.method,"GET");
+      return new Response(expected,{headers:{"content-type":contentType}});
+    }}};
+    for(const method of["GET","HEAD"]){
+      const response=await worker.fetch(new Request(`https://sentinel.example${path}`,{method}),env);
+      assert.equal(response.status,200,`${method} ${path}`);
+      assert.equal(response.headers.get("content-type"),contentType,`${method} ${path}`);
+      assert.equal(response.headers.get("cache-control"),path==="/assets/og.png"?"public, max-age=31536000, immutable":"public, max-age=300",`${method} ${path}`);
+      assert.equal(response.headers.get("content-security-policy"),expectedCsp,`${method} ${path}`);
+      if(method==="HEAD")assert.equal(await response.text(),"",path);
+      else assert.deepEqual(Buffer.from(await response.arrayBuffer()),expected,path);
+    }
+  }
+});
+
 test("the worker permits HEAD without returning the delegated HTML body",async()=>{
   const page=await readFile("dist/public/index.html");
   const response=await worker.fetch(

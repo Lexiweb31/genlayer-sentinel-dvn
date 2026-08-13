@@ -1,8 +1,8 @@
 # Sentinel Operations-First Hero UI Design
 
-**Date:** 2026-08-09  
-**Status:** Approved design direction  
-**Product:** GenLayer Sentinel  
+**Date:** 2026-08-09
+**Status:** Approved design direction
+**Product:** GenLayer Sentinel
 **Scope:** Dashboard visual shell and local evidence-entry experience
 
 ## Outcome

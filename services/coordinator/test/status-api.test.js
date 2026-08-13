@@ -86,6 +86,40 @@ test("exposes only allowlisted hash-chained recovery evidence through GET",async
 test("exposes a sanitized demo capability only when intentionally injected",async()=>{const c=coordinator();assert.equal((await statusResponse(c,"GET","/api/demo/config",undefined,undefined,presentation)).status,404);const response=await statusResponse(c,"GET","/api/demo/config",undefined,undefined,presentation,demo),body=JSON.parse(response.body);assert.equal(response.status,200);assert.equal(body.chainId,"31337");assert.equal(body.semanticSource,"LOCAL_POLICY_FIXTURE");assert.equal(JSON.stringify(body).includes("private"),false);assert.equal((await statusResponse(c,"POST","/api/demo/config",undefined,undefined,presentation,demo)).status,405)});
 test("serves only allowlisted dashboard assets beside the read-only API",async()=>{const c=coordinator(),root=resolve("apps/dashboard");const page=await dashboardResponse(c,"GET","/",root,undefined,undefined,presentation);assert.equal(page.status,200);assert.equal(page.contentType,"text/html; charset=utf-8");assert.match(Buffer.from(page.body).toString(),/GenLayer Sentinel/);assert.equal((await dashboardResponse(c,"GET","/src/app.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/src/timeline.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/src/runtime-status.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/src/pathway-audit.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/src/hero-motion.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/assets/demo.js",root,undefined,undefined,presentation)).contentType,"text/javascript; charset=utf-8");assert.equal((await dashboardResponse(c,"GET","/assets/anything-else.js",root,undefined,undefined,presentation)).status,404);assert.equal((await dashboardResponse(c,"GET","/dist/apps/dashboard/demo.js",root,undefined,undefined,presentation)).status,404);assert.equal((await dashboardResponse(c,"GET","/api/jobs",root,undefined,undefined,presentation)).status,200);assert.equal((await dashboardResponse(c,"GET","/../package.json",root,undefined,undefined,presentation)).status,404);assert.equal((await dashboardResponse(c,"POST","/",root,undefined,undefined,presentation)).status,405)});
 
+test("serves the public and console documents from each supported local route",async()=>{
+  const c=coordinator(),root=resolve("apps/dashboard");
+  const cases=[
+    ["/",/Proof before value moves\./],
+    ["/console",/Sentinel Console/],
+    ["/console/",/Sentinel Console/],
+    ["/console/index.html",/Sentinel Console/]
+  ];
+  for(const[path,content]of cases){
+    const response=await dashboardResponse(c,"GET",path,root,undefined,undefined,presentation);
+    assert.equal(response.status,200,path);
+    assert.equal(response.contentType,"text/html; charset=utf-8",path);
+    assert.match(Buffer.from(response.body).toString(),content,path);
+  }
+});
+
+test("serves every direct self-origin dependency of the public and console documents",async()=>{
+  const c=coordinator(),root=resolve("apps/dashboard");
+  const cases=[
+    ["/src/landing.css","src/landing.css","text/css; charset=utf-8"],
+    ["/src/landing.js","src/landing.js","text/javascript; charset=utf-8"],
+    ["/src/console.css","src/console.css","text/css; charset=utf-8"],
+    ["/src/app.js","src/app.js","text/javascript; charset=utf-8"],
+    ["/assets/demo.js","../../dist/apps/dashboard/demo.js","text/javascript; charset=utf-8"],
+    ["/assets/og.png","assets/og.png","image/png"]
+  ];
+  for(const[path,diskPath,contentType]of cases){
+    const response=await dashboardResponse(c,"GET",path,root,undefined,undefined,presentation);
+    assert.equal(response.status,200,path);
+    assert.equal(response.contentType,contentType,path);
+    assert.deepEqual(Buffer.from(response.body),await readFile(resolve(root,diskPath)),path);
+  }
+});
+
 test("serves each reviewed dashboard media asset with its exact bytes and MIME",async()=>{
   const c=coordinator(),root=resolve("apps/dashboard");
   const cases=[
