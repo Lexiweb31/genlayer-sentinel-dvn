@@ -147,6 +147,18 @@ test("bundle is canonical public evidence with sorted blockers and a reproducibl
   assert.notDeepEqual(parsed,bundle);
 });
 
+test("builder canonicalizes repeated endpoint blockers into one blocker",()=>{
+  const input=observation();
+  input.blockers=[
+    blockers.RPC_INDEPENDENCE,blockers.RPC_INDEPENDENCE,
+    blockers.RPC_INDEPENDENCE,blockers.RPC_INDEPENDENCE,
+    blockers.PATHWAY_CONFIGURATION
+  ];
+  const bundle=buildPathwayAuditBundle({observation:input,runTimestamp:"2026-08-02T12:34:56.789Z"});
+  assert.deepEqual(bundle.blockers,[blockers.PATHWAY_CONFIGURATION,blockers.RPC_INDEPENDENCE]);
+  assert.deepEqual(parsePathwayAuditBundleText(encodePathwayAuditBundle(bundle)),bundle);
+});
+
 test("strict parser rejects noncanonical, unknown, secret, unsafe, and internally inconsistent artifacts",()=>{
   const bundle=buildPathwayAuditBundle({observation:observation(),runTimestamp:"2026-08-02T12:34:56.789Z"});
   const redigest=value=>{

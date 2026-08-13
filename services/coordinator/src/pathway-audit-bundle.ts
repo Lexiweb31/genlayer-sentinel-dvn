@@ -117,7 +117,7 @@ function observationValue(value:unknown,fromBundle:boolean):PathwayAuditObservat
   ];
   if(!fromBundle)exactKeys(root,keys);
   const label=field(root,"truthLabel");if(label!==truthLabel)invalid();
-  const blockers=blockerArray(field(root,"blockers"));
+  const blockers=blockerArray(field(root,"blockers"),fromBundle);
   if(fromBundle&&canonicalJson(field(root,"blockers"))!==canonicalJson(blockers))invalid();
   const suppliedStatus=statusValue(field(root,"status")),derivedStatus=statusFor(blockers);
   if(fromBundle&&suppliedStatus!==derivedStatus)invalid();
@@ -432,10 +432,11 @@ function dvnCode(value:unknown):{address:string;codeKeccak256:string}{
   return{address:address(field(root,"address")),codeKeccak256:hash(field(root,"codeKeccak256"))};
 }
 
-function blockerArray(value:unknown):PathwayAuditBlocker[]{
-  const blockers=denseArray(value).map(blockerValue),sorted=[...blockers].sort(compareBlockers);
-  if(new Set(sorted.map(item=>item.code)).size!==sorted.length)invalid();
-  return sorted;
+function blockerArray(value:unknown,requireUnique:boolean):PathwayAuditBlocker[]{
+  const sorted=denseArray(value).map(blockerValue).sort(compareBlockers);
+  const blockers=sorted.filter((blocker,index)=>index===0||blocker.code!==sorted[index-1]!.code);
+  if(requireUnique&&blockers.length!==sorted.length)invalid();
+  return blockers;
 }
 
 function blockerValue(value:unknown):PathwayAuditBlocker{
